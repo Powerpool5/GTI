@@ -128,8 +128,8 @@
       <label for="signUpName">Full name</label>
       <input type="text" id="signUpName" name="name" autocomplete="name" required maxlength="120" placeholder="John Doe">
 
-      <label for="signUpStudentId">Student ID</label>
-      <input type="text" id="signUpStudentId" name="studentId" autocomplete="off" required maxlength="30" pattern="[A-Za-z0-9\-\/]+" title="Letters, numbers, - and / only" placeholder="e.g., 12345678">
+      <label for="signUpStudentId">Student ID</label> The first 2 numbers and the last 4 numbers.
+      <input type="text" id="signUpStudentId" name="studentId" autocomplete="off" required maxlength="8" pattern="[A-Za-z0-9\-\/]+" title="Letters, numbers, - and / only" placeholder="e.g., 25-1729">
 
       <label for="signUpEmail">Email</label>
       <input type="email" id="signUpEmail" name="email" autocomplete="username" required maxlength="254" placeholder="student@gmail.com">
