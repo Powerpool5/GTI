@@ -242,44 +242,74 @@ function renderAvatar(container, name, avatarUrl) {
 }
 
 /* -------------------------------------------------------
-   Database connectivity watchdog — shows a red, scrolling
-   banner across the top of every page when Supabase stops
-   responding, and hides it again automatically once it
-   recovers. Checks Supabase's own health endpoint rather
-   than a table, so it isn't affected by login state or RLS.
+   Status banner — one fixed, scrolling banner element shared
+   by two independent watchdogs:
+
+     1. Connectivity (automatic) — checkDbHealth() below pings
+        Supabase's own health endpoint on a timer and raises
+        the banner itself if it stops responding.
+     2. Maintenance (manual) — checkMaintenanceMode() polls the
+        system_status table for a flag an admin can flip from
+        the admin panel ("Send maintenance banner"), to warn
+        everyone before planned downtime rather than after.
+
+   Maintenance wins the display when both happen to be true,
+   since it's a deliberate message rather than an inferred one;
+   it also uses an amber "maintenance" style so it reads as
+   different from the automatic red outage alarm.
    ------------------------------------------------------- */
-let dbDownBanner = null;
+let statusBanner = null;
+let statusBannerTrack = null;
+let connectivityDown = false;
+let maintenanceActive = false;
+let maintenanceMessage = "";
+
+const DEFAULT_MAINTENANCE_MESSAGE =
+  "The database is restarting for scheduled maintenance - please save your work. Some pages may be briefly unavailable.";
+const CONNECTIVITY_DOWN_MESSAGE =
+  "The database is currently down for maintenance - Data cannot be saved or accessed at this time. We apologize for any inconvenience. For safety all accounts have been logged out until our systems are back online.";
+
+function ensureStatusBanner() {
+  if (statusBanner) return statusBanner;
+  statusBanner = document.createElement("div");
+  statusBanner.className = "db-down-banner";
+  statusBanner.hidden = true;
+  statusBanner.setAttribute("role", "alert");
+  statusBannerTrack = document.createElement("div");
+  statusBannerTrack.className = "db-down-track";
+  statusBanner.appendChild(statusBannerTrack);
+  document.body.prepend(statusBanner);
+  return statusBanner;
+}
+
+function renderStatusBanner(message, variant) {
+  const banner = ensureStatusBanner();
+  const padded = "       " + message + "       ";
+  statusBannerTrack.textContent = padded + padded; // repeated so the scroll loop has no gap
+  banner.classList.toggle("maintenance", variant === "maintenance");
+  banner.hidden = false;
+}
+
+function hideStatusBanner() {
+  if (statusBanner) statusBanner.hidden = true;
+}
+
+function updateStatusBanner() {
+  if (maintenanceActive) {
+    renderStatusBanner(maintenanceMessage || DEFAULT_MAINTENANCE_MESSAGE, "maintenance");
+  } else if (connectivityDown) {
+    renderStatusBanner(CONNECTIVITY_DOWN_MESSAGE, "down");
+  } else {
+    hideStatusBanner();
+  }
+}
+
+/* --- 1. Connectivity watchdog (automatic) --- */
 let dbDownFailureStreak = 0;
 const DB_DOWN_FAILURE_THRESHOLD = 2; // require 2 consecutive failed checks before alarming, to ignore a single blip
 const DB_HEALTHY_RECHECK_MS = 8000;  // how often to check while things look fine
 const DB_RETRY_RECHECK_MS = 1500;    // how often to recheck while a check just failed — fast, so both alarming and recovery happen quickly
 const DB_HEALTH_CHECK_TIMEOUT_MS = 3000;
-
-function ensureDbDownBanner() {
-  if (dbDownBanner) return dbDownBanner;
-  dbDownBanner = document.createElement("div");
-  dbDownBanner.className = "db-down-banner";
-  dbDownBanner.hidden = true;
-  dbDownBanner.setAttribute("role", "alert");
-  const track = document.createElement("div");
-  track.className = "db-down-track";
-  track.textContent =
-    "       The database is currently down for maintenance - Data cannot be saved or accessed at this time. We apologize for any inconvenience. For safety all accounts have been logged out until our systems are back online." 
-    "       The database is currently down for maintenance - Data cannot be saved or accessed at this time. We apologize for any inconvenience. For safety all accounts have been logged out until our systems are back online." 
-
-    
-  dbDownBanner.appendChild(track);
-  document.body.prepend(dbDownBanner);
-  return dbDownBanner;
-}
-
-function showDbDownBanner() {
-  ensureDbDownBanner().hidden = false;
-}
-
-function hideDbDownBanner() {
-  if (dbDownBanner) dbDownBanner.hidden = true;
-}
 
 async function checkDbHealth() {
   const controller = new AbortController();
@@ -301,19 +331,40 @@ async function checkDbHealth() {
 
   if (healthy) {
     dbDownFailureStreak = 0;
-    hideDbDownBanner();
+    connectivityDown = false;
   } else {
     dbDownFailureStreak += 1;
     if (dbDownFailureStreak >= DB_DOWN_FAILURE_THRESHOLD) {
-      showDbDownBanner();
+      connectivityDown = true;
     }
   }
+  updateStatusBanner();
 
   // Recheck sooner while things are failing (to alarm fast, and to notice
   // recovery fast too) than while things are healthy (no need to hammer it).
   window.setTimeout(checkDbHealth, healthy ? DB_HEALTHY_RECHECK_MS : DB_RETRY_RECHECK_MS);
 }
 
+/* --- 2. Maintenance watchdog (manual, admin-triggered) --- */
+const MAINTENANCE_POLL_MS = 5000;
+
+async function checkMaintenanceMode() {
+  try {
+    const { data, error } = await supabaseClient
+      .from("system_status")
+      .select("maintenance_mode, maintenance_message")
+      .eq("id", 1)
+      .maybeSingle();
+    maintenanceActive = !error && !!data && data.maintenance_mode === true;
+    maintenanceMessage = (data && data.maintenance_message) || "";
+  } catch {
+    maintenanceActive = false;
+  }
+  updateStatusBanner();
+  window.setTimeout(checkMaintenanceMode, MAINTENANCE_POLL_MS);
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   checkDbHealth();
+  checkMaintenanceMode();
 });
