@@ -19,6 +19,8 @@
   <div class="brand">
     <span class="brand-mark">GTI STAFF</span>
     <h1>Staff Dashboard</h1>
+     <a href="lecturer-home.html" class="logo-link">
+    </a>
   </div>
   <div class="header-actions" style="display:flex;align-items:center;gap:16px;">
     <button class="btn-icon" id="themeToggleBtn" type="button" aria-label="Toggle dark mode">☾</button>
@@ -32,17 +34,28 @@
 <div class="app-shell" id="appShell" hidden>
   <nav class="app-nav" role="tablist" aria-label="Staff sections">
     <button class="nav-item active" role="tab" aria-selected="true" aria-controls="overview" data-tab="overview">
-      <span class="nav-icon" aria-hidden="true">▣</span> Overview
+      <span class="nav-icon" aria-hidden="true">🔍</span> Overview
     </button>
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="students" data-tab="students">
-      <span class="nav-icon" aria-hidden="true">▤</span> Students
+      <span class="nav-icon" aria-hidden="true">🎓</span> Students
     </button>
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="announcements" data-tab="announcements">
-      <span class="nav-icon" aria-hidden="true">▥</span> Announcements
+      <span class="nav-icon" aria-hidden="true">📢</span> Announcements
     </button>
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="timetable" data-tab="timetable">
-      <span class="nav-icon" aria-hidden="true">▧</span> Timetable
+      <span class="nav-icon" aria-hidden="true">📅</span> Timetable
     </button>
+
+     <button class="nav-item" role="tab" aria-selected="false" aria-controls="grades"
+      data-tab="grades">
+      <span class="nav-icon" aria-hidden="true">📚</span> Input Grades
+    </button>
+
+    <button class="nav-item" role="tab" aria-selected="false" aria-controls="support"
+      data-tab="support">
+      <span class="nav-icon" aria-hidden="true">❓</span> Support
+    </button>
+   
   </nav>
 
   <main class="app-main wide">
@@ -88,6 +101,67 @@
         </div>
       </div>
     </section>
+
+
+    <!-- SUPPORT -->
+    <section id="support" class="tab-content">
+      <h2>Support</h2>
+      <div class="card">
+        <p style="margin:0; color:var(--slate); font-size:0.9rem;">
+          If you have any questions or need assistance, please contact the support team at
+        </p>
+        <p style="margin:0; color:var(--slate); font-size:0.9rem;">
+          <a href="mailto:nathonchase92@gmail.com">nathonchase92@gmail.com</a>
+        </p>
+        <p style="margin:0; color:var(--slate); font-size:0.9rem;">
+         <a href="mailto:ducksan452@gmail.com">ducksan452@gmail.com</a>
+        </p>
+        <p style="margin:0; color:var(--slate); font-size:0.9rem;">
+       <a href="mailto:nadeshboodhan975@gmail.com">nadeshboodhan975@gmail.com</a>
+        </p>
+        <p style="margin:0; color:var(--slate); font-size:0.9rem;">
+          Please include your name, email, and a detailed description of the issue you are facing and we will get back to you as soon as possible.
+        </p>
+      </div>
+    </section>
+
+
+    <!-- GRADES  -->
+    <section id="grades" class="tab-content">
+      <h2>Input Grades</h2>
+      <div class="card">
+        <div class="search-row">
+          <select id="gradesCourseSelect" class="course-select-target" style="max-width:320px;">
+            <option value="" disabled selected>-- Select a course --</option>
+          </select>
+          <button type="button" class="btn btn-secondary btn-sm" id="gradesRefresh">Refresh</button>
+        </div>
+        <div class="table-wrap">
+          <table class="admin-table">
+            <thead><tr><th>Student Name</th><th>Student ID</th><th>Email</th><th>Grade</th><th></th></tr></thead>
+            <tbody id="gradesTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     <!-- ANNOUNCEMENTS -->
     <section id="announcements" class="tab-content">
