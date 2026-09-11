@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<meta http-equiv="Content-Security-Policy"
+  content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://iqcwrberwzumxxjktgux.supabase.co; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
+<title>Sign In - GTI Student Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<script src="theme.js"></script>
+</head>
+<body>
+
+<div class="auth-screen">
+  <div class="auth-visual grid-texture">
+    <span class="brand-mark">GTI</span>
+    <h1>Government Technical Institute</h1>
+    <p>Committed to offering quality training with the availability of high quality facilities and qualified, caring staff. Sign in to check your timetable, announcements, and course record.</p>
+  </div>
+
+  <div class="auth-panel">
+    <button type="button" class="btn-icon-light theme-toggle-corner" id="themeToggleBtn" aria-label="Toggle dark mode">☾</button>
+
+    <h2 id="formHeading">Welcome back</h2>
+    <p class="subtitle" id="formSubtitle">Sign in with your student email.</p>
+
+    <div class="auth-tabs" role="tablist">
+      <button type="button" class="auth-tab active" id="tabSignIn" role="tab" aria-selected="true" aria-controls="signInForm">Sign in</button>
+      <button type="button" class="auth-tab" id="tabSignUp" role="tab" aria-selected="false" aria-controls="signUpForm">Create account</button>
+    </div>
+
+    <!-- SIGN IN -->
+    <form id="signInForm" class="auth-form active" novalidate autocomplete="on">
+      <label for="signInEmail">Email</label>
+      <input type="email" id="signInEmail" name="email" autocomplete="username" required maxlength="254">
+
+      <label for="signInPassword">Password</label>
+      <input type="password" id="signInPassword" name="password" autocomplete="current-password" required minlength="8" maxlength="128">
+
+      <div class="sr-only" aria-hidden="true">
+        <label for="companyWebsite">Leave blank</label>
+        <input type="text" id="companyWebsite" name="companyWebsite" tabindex="-1" autocomplete="off">
+      </div>
+
+      <p class="status-message" id="signInStatus" role="alert"></p>
+
+      <div class="form-footer">
+        <button type="button" class="btn-link" id="forgotPasswordBtn">Forgot password?</button>
+      </div>
+      <br>
+      <button type="submit" class="btn btn-block" id="signInSubmit">Sign in</button>
+    </form>
+
+    <!-- SIGN UP -->
+    <form id="signUpForm" class="auth-form" novalidate autocomplete="on">
+      <label for="signUpCourse">Choose your course</label>
+      <select id="signUpCourse" name="course" required>
+        <option value="" disabled selected>-- Select a Course --</option>
+        <optgroup label="Building">
+          <option value="TCAD_E">Technician Certificate in Architectural Drawing</option>
+          <option value="TCBE1">Technician Certificate in Building and Civil Engineering Part 1</option>
+          <option value="TCBE2">Technician Certificate in Building and Civil Engineering Part 2</option>
+          <option value="PL1">Plumbing 1</option>
+          <option value="PL2">Plumbing 2</option>
+          <option value="GC1">General Construction 1</option>
+          <option value="GC2">General Construction 2</option>
+          <option value="FM1">Furniture Making 1</option>
+          <option value="FM2">Furniture Making 2</option>
+        </optgroup>
+        <optgroup label="Business Department">
+          <option value="ODC1">Ordinary Diploma in Commerce 1</option>
+          <option value="ODC2">Ordinary Diploma in Commerce 2</option>
+          <option value="GOA">General Office Administration</option>
+          <option value="APP1">Diploma in Administrative Principles and Practices 1</option>
+          <option value="APP2">Diploma in Administrative Principles and Practices 2</option>
+        </optgroup>
+        <optgroup label="Natural Sciences">
+          <option value="ODCS1">Ordinary Diploma in Computer Science 1</option>
+          <option value="ODCS2">Ordinary Diploma in Computer Science 2</option>
+          <option value="DO1">Data Operations 1</option>
+          <option value="DO2">Data Operations 2</option>
+          <option value="ODS1">Ordinary Diploma in Science 1</option>
+          <option value="ODS2">Ordinary Diploma in Science 2</option>
+        </optgroup>
+        <optgroup label="Electrical">
+          <option value="ED1">Technician Diploma in Electrical Department 1</option>
+          <option value="ED2">Technician Diploma in Electrical Department 2</option>
+          <option value="EC1">Technician Certificate in Electrical Engineering 1</option>
+          <option value="EC2">Technician Certificate in Electrical Engineering 2</option>
+          <option value="EC3">Technician Certificate in Electrical Engineering 3</option>
+          <option value="TC1">Technician Certificate in Telecommunications 1</option>
+          <option value="TC2">Technician Certificate in Telecommunications 2</option>
+          <option value="ETC1">Elementary Certificate in Telecommunications 1</option>
+          <option value="ETC2">Elementary Certificate in Telecommunications 2</option>
+          <option value="SAR">Small Appliance Repairs 1</option>
+          <option value="SAR2">Small Appliance Repairs 2</option>
+          <option value="AC1">Refrigeration and Air Conditioning 1</option>
+          <option value="AC2">Refrigeration and Air Conditioning 2</option>
+          <option value="ETE1">Electrical Installation 1</option>
+          <option value="ETE2">Electrical Installation 2</option>
+        </optgroup>
+        <optgroup label="Mechanical">
+          <option value="TDM1">Technician Diploma in Mechanical Engineering 1</option>
+          <option value="TDM2">Technician Diploma in Mechanical Engineering 2</option>
+          <option value="TCE1">Technician Certificate in Mechanical Engineering 1</option>
+          <option value="TCE2">Technician Certificate in Mechanical Engineering 2</option>
+          <option value="MWE1">Metal Work Engineering 1</option>
+          <option value="MWE2">Metal Work Engineering 2</option>
+          <option value="MVR1">Motor Vehicle Repairs 1</option>
+          <option value="MVR2">Motor Vehicle Repairs 2</option>
+          <option value="MVES1">Motor Vehicle Engine Systems 1</option>
+          <option value="MVES2">Motor Vehicle Engine Systems 2</option>
+          <option value="W1">Welding 1</option>
+          <option value="W2">Welding 2</option>
+          <option value="CCAM1">Craft Certificate in Agricultural Machinery 1</option>
+          <option value="CCAM2">Craft Certificate in Agricultural Machinery 2</option>
+        </optgroup>
+        <optgroup label="Land Surveying">
+          <option value="ODLS1">Ordinary Diploma in Land Surveying 1</option>
+          <option value="ODLS2">Ordinary Diploma in Land Surveying 2</option>
+        </optgroup>
+      </select>
+
+      <label for="signUpName">Full name</label>
+      <input type="text" id="signUpName" name="name" autocomplete="name" required maxlength="120" placeholder="John Doe">
+
+      <label for="signUpStudentId">Student ID</label>
+      <input type="text" id="signUpStudentId" name="studentId" autocomplete="off" required maxlength="30" pattern="[A-Za-z0-9\-\/]+" title="Letters, numbers, - and / only" placeholder="e.g., 12345678">
+
+      <label for="signUpEmail">Email</label>
+      <input type="email" id="signUpEmail" name="email" autocomplete="username" required maxlength="254" placeholder="student@gmail.com">
+
+      <label for="signUpPassword">Password</label>
+      <input type="password" id="signUpPassword" name="password" autocomplete="new-password" required minlength="8" maxlength="128" placeholder="At least 8 characters">
+      <p class="field-hint">At least 8 characters. Longer, unique passwords are safer than complex short ones.</p>
+
+      <div class="sr-only" aria-hidden="true">
+        <label for="companyWebsite2">Leave blank</label>
+        <input type="text" id="companyWebsite2" name="companyWebsite" tabindex="-1" autocomplete="off">
+      </div>
+
+      <p class="status-message" id="signUpStatus" role="alert"></p>
+
+      <button type="submit" class="btn btn-block" id="signUpSubmit">Create account</button>
+    </form>
+
+    <!-- RESET -->
+    <form id="resetForm" class="auth-form" novalidate>
+      <label for="resetEmail">Email</label>
+      <input type="email" id="resetEmail" name="email" autocomplete="username" required maxlength="254">
+      <p class="status-message" id="resetStatus" role="alert"></p>
+      <div class="form-footer">
+        <button type="button" class="btn-link" id="backToSignIn">Back to sign in</button>
+        <button type="submit" class="btn" id="resetSubmit">Send reset link</button>
+      </div>
+    </form>
+
+    <p style="margin-top:20px; font-size:0.85rem;"><a href="lecturer-login.html">Staff login</a></p>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="app.js"></script>
+<script src="login.js"></script>
+</body>
+</html>

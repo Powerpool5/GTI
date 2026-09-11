@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<meta http-equiv="Content-Security-Policy"
+  content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://iqcwrberwzumxxjktgux.supabase.co; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
+<title>Staff Dashboard - GTI Staff Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<script src="theme.js"></script>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="brand">
+    <span class="brand-mark">GTI STAFF</span>
+    <h1>Staff Dashboard</h1>
+  </div>
+  <div class="header-actions" style="display:flex;align-items:center;gap:16px;">
+    <button class="btn-icon" id="themeToggleBtn" type="button" aria-label="Toggle dark mode">☾</button>
+    <div class="user-chip"><span id="avatarSlot"></span><span id="headerName"></span></div>
+    <button class="btn btn-secondary" id="signOutButton" type="button" hidden style="border-color:rgba(255,255,255,0.4); color:#fff;">Sign out</button>
+  </div>
+</header>
+
+<p id="loadingMessage" class="loading-state">Checking staff access…</p>
+
+<div class="app-shell" id="appShell" hidden>
+  <nav class="app-nav" role="tablist" aria-label="Staff sections">
+    <button class="nav-item active" role="tab" aria-selected="true" aria-controls="overview" data-tab="overview">
+      <span class="nav-icon" aria-hidden="true">▣</span> Overview
+    </button>
+    <button class="nav-item" role="tab" aria-selected="false" aria-controls="students" data-tab="students">
+      <span class="nav-icon" aria-hidden="true">▤</span> Students
+    </button>
+    <button class="nav-item" role="tab" aria-selected="false" aria-controls="announcements" data-tab="announcements">
+      <span class="nav-icon" aria-hidden="true">▥</span> Announcements
+    </button>
+    <button class="nav-item" role="tab" aria-selected="false" aria-controls="timetable" data-tab="timetable">
+      <span class="nav-icon" aria-hidden="true">▧</span> Timetable
+    </button>
+  </nav>
+
+  <main class="app-main wide">
+
+    <!-- OVERVIEW -->
+    <section id="overview" class="tab-content active">
+      <h2>Overview</h2>
+      <div class="stat-row">
+        <div class="stat-card"><div class="stat-value" id="statStudents">—</div><div class="stat-label">Students</div></div>
+        <div class="stat-card"><div class="stat-value" id="statStaff">—</div><div class="stat-label">Staff</div></div>
+        <div class="stat-card"><div class="stat-value" id="statAdmins">—</div><div class="stat-label">Admins</div></div>
+        <div class="stat-card"><div class="stat-value" id="statAnnouncements">—</div><div class="stat-label">Announcements</div></div>
+        <div class="stat-card"><div class="stat-value" id="statTimetable">—</div><div class="stat-label">Timetable entries</div></div>
+        <div class="stat-card"><div class="stat-value" id="statInactive">—</div><div class="stat-label">Pending reactivation</div></div>
+      </div>
+      <h2>Recently joined</h2>
+      <div class="card">
+        <ul class="record-list" id="recentList"></ul>
+      </div>
+      <div class="card">
+        <p style="margin:0; color:var(--slate); font-size:0.9rem;">
+          Accounts inactive for 1 year are automatically deactivated. If nobody
+          signs back in within 1 month of that, the account and its data are
+          permanently deleted. Signing in during that window reactivates it
+          automatically — see the Students tab for who's currently pending.
+        </p>
+      </div>
+    </section>
+
+    <!-- STUDENTS -->
+    <section id="students" class="tab-content">
+      <h2>Students &amp; staff</h2>
+      <div class="card">
+        <div class="search-row">
+          <input type="search" id="studentSearch" placeholder="Search by name, email, or student ID">
+          <button type="button" class="btn btn-secondary btn-sm" id="studentRefresh">Refresh</button>
+        </div>
+        <div class="table-wrap">
+          <table class="admin-table">
+            <thead><tr><th>Name</th><th>Student ID</th><th>Email</th><th>Course</th><th>Role</th><th>Status</th><th></th></tr></thead>
+            <tbody id="studentsTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ANNOUNCEMENTS -->
+    <section id="announcements" class="tab-content">
+      <h2>Announcements</h2>
+      <div class="card">
+        <div class="search-row">
+          <span class="empty-state" id="announcementsCount" style="padding:0;"></span>
+          <button type="button" class="btn btn-sm" id="announcementNewBtn" style="margin-left:auto;">New announcement</button>
+        </div>
+        <div class="table-wrap">
+          <table class="admin-table">
+            <thead><tr><th>Title</th><th>Audience</th><th>Posted</th><th></th></tr></thead>
+            <tbody id="announcementsTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- TIMETABLE -->
+    <section id="timetable" class="tab-content">
+      <h2>Timetable</h2>
+      <div class="card">
+        <div class="search-row">
+          <select id="timetableFilter" class="course-select-target" style="max-width:320px;">
+            <option value="">All courses</option>
+          </select>
+          <button type="button" class="btn btn-sm" id="timetableNewBtn" style="margin-left:auto;">New entry</button>
+        </div>
+        <div class="table-wrap">
+          <table class="admin-table">
+            <thead><tr><th>Course</th><th>Day</th><th>Time</th><th>Subject</th><th>Room</th><th>Lecturer</th><th>File</th><th></th></tr></thead>
+            <tbody id="timetableTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- STUDENT EDIT MODAL -->
+<div class="modal-backdrop" id="studentModalBackdrop" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="studentModalTitle" style="margin:0;">Editing</h2>
+      <button type="button" class="modal-close" id="studentModalClose" aria-label="Close">&times;</button>
+    </div>
+    <form id="studentEditForm" novalidate>
+      <div class="field-row">
+        <div>
+          <label for="studentFullName">Full name</label>
+          <input type="text" id="studentFullName" maxlength="120" required>
+        </div>
+        <div>
+          <label for="studentStudentId">Student ID</label>
+          <input type="text" id="studentStudentId" maxlength="30" pattern="[A-Za-z0-9\-\/]+" title="Letters, numbers, - and / only">
+        </div>
+      </div>
+      <label for="studentCourseSelect">Course</label>
+      <select id="studentCourseSelect" class="course-select-target">
+        <option value="">-- No course selected --</option>
+      </select>
+      <label for="studentRoleSelect">Role</label>
+      <select id="studentRoleSelect">
+        <option value="student">Student</option>
+        <option value="staff">Staff</option>
+        <option value="admin">Admin</option>
+      </select>
+      <p class="field-hint" id="roleFieldHint">Admins can sign in to this dashboard and manage everything here, including other people's roles. Staff can sign in too, and can verify students, post announcements, and manage the timetable — but can't change anyone's role.</p>
+
+      <label style="display:flex;align-items:center;gap:6px;font-weight:400;">
+        <input type="checkbox" id="studentVerifiedCheckbox" style="width:auto;margin:0;"> Verified (admin has confirmed this is a real enrolled student)
+      </label>
+
+      <div id="studentReactivateWrap" style="margin-top:14px;" hidden>
+        <p class="field-hint" id="studentDeactivatedNote" style="margin-top:0;"></p>
+        <button type="button" class="btn btn-secondary btn-sm" id="studentReactivateBtn">Reactivate now</button>
+      </div>
+
+      <p class="status-message" id="studentEditStatus" role="alert"></p>
+      <div class="form-footer">
+        <button type="button" class="btn-link" id="studentEditCancel">Cancel</button>
+        <button type="submit" class="btn" id="studentEditSubmit">Save changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ANNOUNCEMENT EDIT MODAL -->
+<div class="modal-backdrop" id="announcementModalBackdrop" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="announcementModalTitle" style="margin:0;">New announcement</h2>
+      <button type="button" class="modal-close" id="announcementModalClose" aria-label="Close">&times;</button>
+    </div>
+    <form id="announcementEditForm" novalidate>
+      <label for="announcementTitle">Title</label>
+      <input type="text" id="announcementTitle" maxlength="140" required>
+
+      <label for="announcementAudience">Audience</label>
+      <select id="announcementAudience" required>
+        <option value="course">This course</option>
+        <option value="all_students">All students</option>
+        <option value="staff">Staff only</option>
+        <option value="everyone">Everyone, including staff</option>
+      </select>
+
+      <div id="announcementScopeWrap">
+        <label for="announcementScope">Course</label>
+        <select id="announcementScope" class="course-select-target"></select>
+      </div>
+
+      <label for="announcementMessage">Message</label>
+      <textarea id="announcementMessage" maxlength="2000" required></textarea>
+
+      <p class="status-message" id="announcementEditStatus" role="alert"></p>
+      <div class="form-footer">
+        <button type="button" class="btn-link" id="announcementEditCancel">Cancel</button>
+        <button type="submit" class="btn" id="announcementEditSubmit">Post announcement</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- TIMETABLE EDIT MODAL -->
+<div class="modal-backdrop" id="timetableModalBackdrop" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="timetableModalTitle" style="margin:0;">New entry</h2>
+      <button type="button" class="modal-close" id="timetableModalClose" aria-label="Close">&times;</button>
+    </div>
+    <form id="timetableEditForm" novalidate>
+      <div class="field-row">
+        <div>
+          <label for="timetableCourseSelect">Course</label>
+          <select id="timetableCourseSelect" class="course-select-target" required>
+            <option value="" disabled selected>-- Select a course --</option>
+          </select>
+        </div>
+        <div>
+          <label for="timetableDay">Day</label>
+          <select id="timetableDay" required>
+            <option value="" disabled selected>-- Select a day --</option>
+            <option>Monday</option><option>Tuesday</option><option>Wednesday</option>
+            <option>Thursday</option><option>Friday</option><option>Saturday</option><option>Sunday</option>
+          </select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div>
+          <label for="timetableStart">Start time</label>
+          <input type="time" id="timetableStart" required>
+        </div>
+        <div>
+          <label for="timetableEnd">End time</label>
+          <input type="time" id="timetableEnd" required>
+        </div>
+      </div>
+      <label for="timetableSubject">Subject</label>
+      <input type="text" id="timetableSubject" maxlength="120" required>
+      <div class="field-row">
+        <div>
+          <label for="timetableRoom">Room</label>
+          <input type="text" id="timetableRoom" maxlength="40">
+        </div>
+        <div>
+          <label for="timetableLecturer">Lecturer</label>
+          <input type="text" id="timetableLecturer" maxlength="120">
+        </div>
+      </div>
+
+      <label for="timetableFileUrl">File link (optional)</label>
+      <input type="text" id="timetableFileUrl" maxlength="500" placeholder="https://…">
+      <label for="timetableFileName">File label (optional)</label>
+      <input type="text" id="timetableFileName" maxlength="100" placeholder="e.g., Week 3 handout">
+
+      <p class="status-message" id="timetableEditStatus" role="alert"></p>
+      <div class="form-footer">
+        <button type="button" class="btn-link" id="timetableEditCancel">Cancel</button>
+        <button type="submit" class="btn" id="timetableEditSubmit">Save entry</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="app.js"></script>
+<script src="courses-data.js"></script>
+<script src="lecturer-home.js"></script>
+</body>
+</html>
