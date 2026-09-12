@@ -34,26 +34,26 @@
 <div class="app-shell" id="appShell" hidden>
   <nav class="app-nav" role="tablist" aria-label="Staff sections">
     <button class="nav-item active" role="tab" aria-selected="true" aria-controls="overview" data-tab="overview">
-      <span class="nav-icon" aria-hidden="true">🔍</span> Overview
+      <span class="nav-icon" aria-hidden="true"></span> Overview
     </button>
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="students" data-tab="students">
-      <span class="nav-icon" aria-hidden="true">🎓</span> Students
+      <span class="nav-icon" aria-hidden="true"></span> Students
     </button>
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="announcements" data-tab="announcements">
-      <span class="nav-icon" aria-hidden="true">📢</span> Announcements
+      <span class="nav-icon" aria-hidden="true"></span> Announcements
     </button>
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="timetable" data-tab="timetable">
-      <span class="nav-icon" aria-hidden="true">📅</span> Timetable
+      <span class="nav-icon" aria-hidden="true"></span> Timetable
     </button>
 
      <button class="nav-item" role="tab" aria-selected="false" aria-controls="grades"
       data-tab="grades">
-      <span class="nav-icon" aria-hidden="true">📚</span> Input Grades
+      <span class="nav-icon" aria-hidden="true"></span> Input Grades
     </button>
 
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="support"
       data-tab="support">
-      <span class="nav-icon" aria-hidden="true">❓</span> Support
+      <span class="nav-icon" aria-hidden="true"></span> Support
     </button>
    
   </nav>
@@ -83,6 +83,21 @@
           automatically — see the Students tab for who's currently pending.
         </p>
       </div>
+
+      <div class="card" id="maintenanceCard" hidden>
+        <h3 style="margin-top:0;">Maintenance banner</h3>
+        <p style="margin:0 0 12px; color:var(--slate); font-size:0.9rem;">
+          Shows an amber banner on every page (student and staff) — use this to warn
+          people before planned downtime, e.g. a database reboot.
+        </p>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:400;">
+          <input type="checkbox" id="maintenanceToggle" style="width:auto;margin:0;"> Maintenance mode active
+        </label>
+        <label for="maintenanceMessage">Message (optional — leave blank for the default)</label>
+        <textarea id="maintenanceMessage" maxlength="300" placeholder="The database is restarting for scheduled maintenance - please save your work."></textarea>
+        <p class="status-message" id="maintenanceStatus" role="alert"></p>
+        <button type="button" class="btn btn-sm" id="maintenanceSaveBtn">Save</button>
+      </div>
     </section>
 
     <!-- STUDENTS -->
@@ -95,7 +110,7 @@
         </div>
         <div class="table-wrap">
           <table class="admin-table">
-            <thead><tr><th>Name</th><th>Student ID</th><th>Email</th><th>Course</th><th>Role</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Name</th><th>Student ID</th><th>Email</th><th>Course</th><th>Role</th><th>Root</th><th>Status</th><th></th></tr></thead>
             <tbody id="studentsTbody"></tbody>
           </table>
         </div>
@@ -144,25 +159,6 @@
         </div>
       </div>
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     <!-- ANNOUNCEMENTS -->
     <section id="announcements" class="tab-content">
       <h2>Announcements</h2>
@@ -192,7 +188,7 @@
         </div>
         <div class="table-wrap">
           <table class="admin-table">
-            <thead><tr><th>Course</th><th>Day</th><th>Time</th><th>Subject</th><th>Room</th><th>Lecturer</th><th>File</th><th></th></tr></thead>
+            <thead><tr><th>Course</th><th>Timetable</th><th>Updated</th><th></th></tr></thead>
             <tbody id="timetableTbody"></tbody>
           </table>
         </div>
@@ -294,49 +290,19 @@
       <button type="button" class="modal-close" id="timetableModalClose" aria-label="Close">&times;</button>
     </div>
     <form id="timetableEditForm" novalidate>
-      <div class="field-row">
-        <div>
-          <label for="timetableCourseSelect">Course</label>
-          <select id="timetableCourseSelect" class="course-select-target" required>
-            <option value="" disabled selected>-- Select a course --</option>
-          </select>
-        </div>
-        <div>
-          <label for="timetableDay">Day</label>
-          <select id="timetableDay" required>
-            <option value="" disabled selected>-- Select a day --</option>
-            <option>Monday</option><option>Tuesday</option><option>Wednesday</option>
-            <option>Thursday</option><option>Friday</option><option>Saturday</option><option>Sunday</option>
-          </select>
-        </div>
-      </div>
-      <div class="field-row">
-        <div>
-          <label for="timetableStart">Start time</label>
-          <input type="time" id="timetableStart" required>
-        </div>
-        <div>
-          <label for="timetableEnd">End time</label>
-          <input type="time" id="timetableEnd" required>
-        </div>
-      </div>
-      <label for="timetableSubject">Subject</label>
-      <input type="text" id="timetableSubject" maxlength="120" required>
-      <div class="field-row">
-        <div>
-          <label for="timetableRoom">Room</label>
-          <input type="text" id="timetableRoom" maxlength="40">
-        </div>
-        <div>
-          <label for="timetableLecturer">Lecturer</label>
-          <input type="text" id="timetableLecturer" maxlength="120">
-        </div>
-      </div>
+      <label for="timetableCourseSelect">Course</label>
+      <select id="timetableCourseSelect" class="course-select-target" required>
+        <option value="" disabled selected>-- Select a course --</option>
+      </select>
 
-      <label for="timetableFileUrl">File link (optional)</label>
+      <label for="timetableFileUrl">Link to the timetable (optional)</label>
       <input type="text" id="timetableFileUrl" maxlength="500" placeholder="https://…">
-      <label for="timetableFileName">File label (optional)</label>
-      <input type="text" id="timetableFileName" maxlength="100" placeholder="e.g., Week 3 handout">
+      <label for="timetableFileName">Label (optional — defaults to the course name)</label>
+      <input type="text" id="timetableFileName" maxlength="100" placeholder="e.g., Semester 1 timetable">
+      <label for="timetableFileUpload">Or upload a picture/PDF of the timetable</label>
+      <input type="file" id="timetableFileUpload" accept="image/*,.pdf">
+      <p class="field-hint" id="timetableUploadStatus"></p>
+      <p class="field-hint">Provide a link or upload a file — at least one is required.</p>
 
       <p class="status-message" id="timetableEditStatus" role="alert"></p>
       <div class="form-footer">

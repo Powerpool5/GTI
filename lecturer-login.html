@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex, nofollow">
 <meta http-equiv="Content-Security-Policy"
   content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://iqcwrberwzumxxjktgux.supabase.co; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
-<title>Staff Login - GTI Staff Portal</title>
+<title>Staff Sign In - GTI Staff Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
@@ -19,7 +19,7 @@
   <div class="auth-visual grid-texture">
     <span class="brand-mark">GTI STAFF</span>
     <h1>Government Technical Institute</h1>
-    <p>Staff and admin sign-in. Use this page to manage students, announcements, and the timetable.</p>
+    <p>Staff sign-in for lecturers and administrators. Use the same email and password as any other GTI account — staff access is granted per-account by an administrator, not by which form you use.</p>
   </div>
 
   <div class="auth-panel">
@@ -28,7 +28,12 @@
     <h2>Staff sign in</h2>
     <p class="subtitle">Sign in with your staff email.</p>
 
-    <form id="staffSignInForm" novalidate autocomplete="on">
+    <p class="status-message error" id="deniedNotice" hidden>
+      That account doesn't have staff access. Sign in with a staff or admin account, or use student sign-in below.
+    </p>
+
+    <!-- SIGN IN -->
+    <form id="staffSignInForm" class="auth-form active" novalidate autocomplete="on">
       <label for="staffEmail">Email</label>
       <input type="email" id="staffEmail" name="email" autocomplete="username" required maxlength="254">
 
@@ -42,10 +47,25 @@
 
       <p class="status-message" id="staffSignInStatus" role="alert"></p>
 
+      <div class="form-footer">
+        <button type="button" class="btn-link" id="staffForgotPasswordBtn">Forgot password?</button>
+      </div>
+      <br>
       <button type="submit" class="btn btn-block" id="staffSignInSubmit">Sign in</button>
     </form>
 
-    <p style="margin-top:20px; font-size:0.85rem;"><a href="index.html">Student sign in</a></p>
+    <!-- RESET -->
+    <form id="staffResetForm" class="auth-form" novalidate>
+      <label for="staffResetEmail">Email</label>
+      <input type="email" id="staffResetEmail" name="email" autocomplete="username" required maxlength="254">
+      <p class="status-message" id="staffResetStatus" role="alert"></p>
+      <div class="form-footer">
+        <button type="button" class="btn-link" id="staffBackToSignIn">Back to sign in</button>
+        <button type="submit" class="btn" id="staffResetSubmit">Send reset link</button>
+      </div>
+    </form>
+
+    <p style="margin-top:20px; font-size:0.85rem;"><a href="index.html">← Student sign in</a></p>
   </div>
 </div>
 

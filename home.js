@@ -43,6 +43,20 @@
     document.getElementById('headerName').textContent = account.full_name || user.email || '';
     renderAvatar(document.getElementById('avatarSlot'), account.full_name || user.email, account.avatar_url);
 
+    // Staff/admin accounts land here too (this is the one sign-in form
+    // for everyone) but have no other way to find their dashboard, so
+    // surface it here rather than making them remember a URL.
+    const dashboardLink = document.getElementById('staffDashboardLink');
+    if (account.role === 'admin') {
+      dashboardLink.textContent = 'Admin panel →';
+      dashboardLink.href = 'admin.html';
+      dashboardLink.hidden = false;
+    } else if (account.role === 'staff') {
+      dashboardLink.textContent = 'Staff dashboard →';
+      dashboardLink.href = 'lecturer-home.html';
+      dashboardLink.hidden = false;
+    }
+
     loadingMessage.hidden = true;
     appShell.hidden = false;
     signOutButton.hidden = false;
@@ -74,10 +88,11 @@
     const { data, error } = await query;
     list.innerHTML = '';
 
-    if (error) { list.innerHTML = '<li class="empty-state">Announcements are not available right now.</li>'; return; }
-    if (!data.length) { list.innerHTML = '<li class="empty-state">No announcements yet.</li>'; return; }
+    if (error) { console.error('Loading announcements failed:', error); list.innerHTML = '<li class="empty-state">Announcements are not available right now.</li>'; return; }
+    const rows = data || [];
+    if (!rows.length) { list.innerHTML = '<li class="empty-state">No announcements yet.</li>'; return; }
 
-    data.forEach((a) => {
+    rows.forEach((a) => {
       const item = document.createElement('li');
       item.className = 'record';
 
@@ -109,47 +124,49 @@
 
     const { data, error } = await supabaseClient
       .from('timetable')
-      .select('day_name, start_time, end_time, subject, room, lecturer_name, file_name, file_url')
+      .select('file_name, file_url, updated_at')
       .eq('course_code', courseCode)
-      .order('day_name')
-      .order('start_time');
+      .maybeSingle();
 
     list.innerHTML = '';
-    if (error) { list.innerHTML = '<li class="empty-state">Timetable is not available right now.</li>'; return; }
-    if (!data.length) { list.innerHTML = '<li class="empty-state">No timetable entries for this course yet.</li>'; return; }
+    if (error) { console.error('Loading timetable failed:', error); list.innerHTML = '<li class="empty-state">Timetable is not available right now.</li>'; return; }
+    if (!data || !data.file_url) { list.innerHTML = '<li class="empty-state">No timetable has been uploaded for this course yet.</li>'; return; }
 
-    data.forEach((entry) => {
-      const item = document.createElement('li');
-      item.className = 'record';
+    const item = document.createElement('li');
+    item.className = 'record';
 
-      const title = document.createElement('div');
-      title.className = 'record-title';
-      title.textContent = entry.subject;
+    const title = document.createElement('div');
+    title.className = 'record-title';
+    title.textContent = data.file_name || 'Timetable';
+    item.appendChild(title);
 
+    if (data.updated_at) {
       const meta = document.createElement('div');
       meta.className = 'record-meta';
-      meta.textContent = `${entry.day_name} · ${entry.start_time}–${entry.end_time}`;
+      meta.textContent = 'Updated ' + new Date(data.updated_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+      item.appendChild(meta);
+    }
 
-      const body = document.createElement('div');
-      body.className = 'record-body';
-      const bits = [];
-      if (entry.room) bits.push(`Room ${entry.room}`);
-      if (entry.lecturer_name) bits.push(entry.lecturer_name);
-      body.textContent = bits.join(' · ');
+    // Show it inline if it looks like an image; otherwise link out (e.g. a PDF).
+    if (/\.(png|jpe?g|gif|webp)(\?|$)/i.test(data.file_url)) {
+      const img = document.createElement('img');
+      img.src = data.file_url;
+      img.alt = data.file_name || 'Timetable';
+      img.style.maxWidth = '100%';
+      img.style.borderRadius = '8px';
+      img.style.marginTop = '8px';
+      item.appendChild(img);
+    }
 
-      item.append(title, meta, body);
+    const fileLink = document.createElement('a');
+    fileLink.className = 'file-link';
+    fileLink.href = data.file_url;
+    fileLink.target = '_blank';
+    fileLink.rel = 'noopener noreferrer';
+    fileLink.textContent = 'Open timetable';
+    item.appendChild(fileLink);
 
-      if (entry.file_url) {
-        const fileLink = document.createElement('a');
-        fileLink.className = 'file-link';
-        fileLink.href = entry.file_url;
-        fileLink.target = '_blank';
-        fileLink.rel = 'noopener noreferrer';
-        fileLink.textContent = entry.file_name || 'Open file';
-        item.appendChild(fileLink);
-      }
-      list.appendChild(item);
-    });
+    list.appendChild(item);
   }
 
   courseChangeForm.addEventListener('submit', async (event) => {

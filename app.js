@@ -123,6 +123,45 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 /* -------------------------------------------------------
+   Lockdown mode — a root-only kill switch (system_status.lockdown_enabled)
+   that blocks everyone except admins from being in the portal. Toggled
+   from the "System" tab in admin.html.
+
+   Like the maintenance/connectivity banner below, this is a UX-layer
+   gate: it signs the person out and sends them back to the sign-in
+   page, but a stolen token used directly against the Supabase API
+   would only be stopped by an RLS policy or an Auth Hook, not by this
+   function. See SECURITY.md for the real gate.
+   ------------------------------------------------------- */
+const DEFAULT_LOCKDOWN_MESSAGE =
+  "The portal is temporarily locked down by an administrator. Please try again shortly.";
+
+/**
+ * Returns a message string if the current session belongs to someone
+ * who should be turned away right now (lockdown is on and they're not
+ * an admin), signing them out in the process. Returns null otherwise —
+ * including when lockdown is off, or the caller is an admin/root.
+ */
+async function checkLockdownBlock() {
+  try {
+    const { data, error } = await supabaseClient
+      .from("system_status")
+      .select("lockdown_enabled, lockdown_message")
+      .eq("id", 1)
+      .maybeSingle();
+    if (error || !data || data.lockdown_enabled !== true) return null;
+
+    const { data: isAdmin } = await supabaseClient.rpc("is_admin");
+    if (isAdmin === true) return null; // admins and root always get through
+
+    await supabaseClient.auth.signOut();
+    return data.lockdown_message || DEFAULT_LOCKDOWN_MESSAGE;
+  } catch {
+    return null;
+  }
+}
+
+/* -------------------------------------------------------
    Session / role guards
    ------------------------------------------------------- */
 async function requireSession() {
@@ -131,6 +170,18 @@ async function requireSession() {
     window.location.href = "index.html";
     return null;
   }
+
+  // Checked on every authenticated page load (home, admin, staff
+  // dashboard all funnel through here) so a lockdown flipped on while
+  // someone is already signed in still catches them on their next
+  // navigation/reload, not just at their next sign-in attempt.
+  const lockdownMessage = await checkLockdownBlock();
+  if (lockdownMessage) {
+    try { sessionStorage.setItem("gti-lockout-message", lockdownMessage); } catch {}
+    window.location.href = "index.html";
+    return null;
+  }
+
   return session;
 }
 
@@ -159,6 +210,11 @@ async function requireAdmin() {
 
   const { data: isAdmin } = await supabaseClient.rpc("is_admin");
 
+  // is_admin() now returns true for super admins too (root outranks
+  // role), so it alone can't tell an ordinary admin apart from a super
+  // admin for UI purposes like the Root toggle. Fetch that separately.
+  const { data: isSuperAdmin } = await supabaseClient.rpc("is_super_admin");
+
   // Purely for display (name/avatar in the header) — not part of the
   // gate above, so a hiccup here can't kick a real staff/admin back out.
   const { data: profile } = await supabaseClient
@@ -171,6 +227,7 @@ async function requireAdmin() {
     session,
     profile: profile || { role: "staff", full_name: "", avatar_url: null },
     isAdmin: isAdmin === true,
+    isSuperAdmin: isSuperAdmin === true,
   };
 }
 
@@ -253,21 +310,40 @@ function renderAvatar(container, name, avatarUrl) {
         the admin panel ("Send maintenance banner"), to warn
         everyone before planned downtime rather than after.
 
-   Maintenance wins the display when both happen to be true,
-   since it's a deliberate message rather than an inferred one;
-   it also uses an amber "maintenance" style so it reads as
-   different from the automatic red outage alarm.
+   A third, root-only source can also raise it:
+
+     3. Lockdown (manual, root-triggered) — checkMaintenanceMode() below
+        also reads system_status.lockdown_enabled, flipped from the
+        "System" tab in admin.html (Root only). It's the same table as
+        maintenance, fetched in the same poll, so it doesn't need its
+        own watchdog loop.
+
+   Priority when more than one is true: lockdown outranks maintenance,
+   which outranks the automatic connectivity alarm — lockdown is the
+   most consequential ("you're about to be signed out"), maintenance is
+   a deliberate heads-up, and connectivity-down is just an inference.
+   Each of the three reads as its own situation, not just "a red bar":
+   connectivity-down is the plain unmarked red, maintenance gets its own
+   info/warning/danger colors plus a top caution stripe, and lockdown
+   gets its own (darker) info/warning/danger colors plus a bottom amber
+   stripe. See styles.css for the actual variants.
    ------------------------------------------------------- */
 let statusBanner = null;
 let statusBannerTrack = null;
 let connectivityDown = false;
 let maintenanceActive = false;
 let maintenanceMessage = "";
+let maintenanceStyle = "warning"; // 'info' | 'warning' | 'danger' — set by root from admin.html
+let lockdownActive = false;
+let lockdownMessage = "";
+let lockdownStyle = "warning"; // 'info' | 'warning' | 'danger' — set by root from admin.html
 
 const DEFAULT_MAINTENANCE_MESSAGE =
   "The database is restarting for scheduled maintenance - please save your work. Some pages may be briefly unavailable.";
 const CONNECTIVITY_DOWN_MESSAGE =
   "The database is currently down for maintenance - Data cannot be saved or accessed at this time. We apologize for any inconvenience. For safety all accounts have been logged out until our systems are back online.";
+const DEFAULT_LOCKDOWN_BANNER_MESSAGE =
+  "Lockdown mode is active. Only admins can sign in right now — everyone else will be signed out shortly.";
 
 function ensureStatusBanner() {
   if (statusBanner) return statusBanner;
@@ -286,7 +362,8 @@ function renderStatusBanner(message, variant) {
   const banner = ensureStatusBanner();
   const padded = "       " + message + "       ";
   statusBannerTrack.textContent = padded + padded; // repeated so the scroll loop has no gap
-  banner.classList.toggle("maintenance", variant === "maintenance");
+  banner.className = "db-down-banner"; // reset any previous variant class
+  if (variant) banner.classList.add(variant);
   banner.hidden = false;
 }
 
@@ -295,8 +372,10 @@ function hideStatusBanner() {
 }
 
 function updateStatusBanner() {
-  if (maintenanceActive) {
-    renderStatusBanner(maintenanceMessage || DEFAULT_MAINTENANCE_MESSAGE, "maintenance");
+  if (lockdownActive) {
+    renderStatusBanner(lockdownMessage || DEFAULT_LOCKDOWN_BANNER_MESSAGE, "lockdown-" + (lockdownStyle || "warning"));
+  } else if (maintenanceActive) {
+    renderStatusBanner(maintenanceMessage || DEFAULT_MAINTENANCE_MESSAGE, "maintenance-" + (maintenanceStyle || "warning"));
   } else if (connectivityDown) {
     renderStatusBanner(CONNECTIVITY_DOWN_MESSAGE, "down");
   } else {
@@ -352,13 +431,18 @@ async function checkMaintenanceMode() {
   try {
     const { data, error } = await supabaseClient
       .from("system_status")
-      .select("maintenance_mode, maintenance_message")
+      .select("maintenance_mode, maintenance_message, banner_style, lockdown_enabled, lockdown_message, lockdown_style")
       .eq("id", 1)
       .maybeSingle();
     maintenanceActive = !error && !!data && data.maintenance_mode === true;
     maintenanceMessage = (data && data.maintenance_message) || "";
+    maintenanceStyle = (data && data.banner_style) || "warning";
+    lockdownActive = !error && !!data && data.lockdown_enabled === true;
+    lockdownMessage = (data && data.lockdown_message) || "";
+    lockdownStyle = (data && data.lockdown_style) || "warning";
   } catch {
     maintenanceActive = false;
+    lockdownActive = false;
   }
   updateStatusBanner();
   window.setTimeout(checkMaintenanceMode, MAINTENANCE_POLL_MS);

@@ -2,6 +2,9 @@
 // so admin.html can build several selects (and one per student row) from
 // a single source instead of duplicating markup.
 const COURSES = [
+{ label: "Staff", options: [
+    { value: "STAFF", label: "Staff" },
+  ]},
   { label: "Building", options: [
     { value: "TCAD_E", label: "Technician Certificate in Architectural Drawing" },
     { value: "TCBE1", label: "Technician Certificate in Building and Civil Engineering Part 1" },

@@ -4,10 +4,12 @@
   let currentAdminUserId = null;
 
   function populateCourseSelects() {
-    const selects = [document.getElementById('timetableCourseSelect'), document.getElementById('announcementCourse')];
-    selects.forEach((sel) => {
+    const timetableSelect = document.getElementById('timetableCourseSelect');
+    const announcementSelect = document.getElementById('announcementCourse');
+
+    function fill(sel, groups) {
       sel.innerHTML = '';
-      COURSES.forEach((group) => {
+      groups.forEach((group) => {
         const optgroup = document.createElement('optgroup');
         optgroup.label = group.label;
         group.options.forEach((opt) => {
@@ -18,7 +20,13 @@
         });
         sel.appendChild(optgroup);
       });
-    });
+    }
+
+    // Staff isn't a real course with a schedule — don't offer it as a
+    // timetable target, even though it's a valid course to assign a
+    // staff account to, or to post a course-scoped announcement for.
+    fill(timetableSelect, COURSES.filter((g) => g.label !== 'Staff'));
+    fill(announcementSelect, COURSES);
   }
 
   function courseNameFor(code) {
@@ -27,6 +35,20 @@
       if (found) return found.label;
     }
     return code;
+  }
+
+  // Prefixes a ✓ onto the course options that already have a timetable
+  // uploaded, so it's visible at a glance before you even pick one.
+  async function markUploadedTimetableCourses() {
+    const sel = document.getElementById('timetableCourseSelect');
+    if (!sel) return;
+    const { data, error } = await supabaseClient.from('timetable').select('course_code');
+    if (error) { console.error('Could not load uploaded-timetable list:', error); return; }
+    const uploaded = new Set((data || []).map((r) => r.course_code));
+    sel.querySelectorAll('option').forEach((opt) => {
+      const label = opt.textContent.replace(/^✓ /, '');
+      opt.textContent = uploaded.has(opt.value) ? `✓ ${label}` : label;
+    });
   }
 
   async function init() {
@@ -44,10 +66,16 @@
     document.getElementById('appShell').hidden = false;
     signOutButton.hidden = false;
 
+    if (admin.isSuperAdmin) {
+      document.getElementById('systemNavItem').hidden = false;
+      loadSystemStatus();
+    }
+
     loadOverviewStats();
     loadAnnouncements();
     document.getElementById('timetableCourseSelect').addEventListener('change', (e) => loadTimetable(e.target.value));
     loadTimetable(document.getElementById('timetableCourseSelect').value);
+    markUploadedTimetableCourses();
     loadStudents();
   }
 
@@ -66,6 +94,149 @@
     document.getElementById('statUnverified').textContent = unverifiedCount ?? '–';
     document.getElementById('statInactive').textContent = inactiveCount ?? '–';
   }
+
+  /* ---------------- System (root only) ---------------- */
+  let currentLockdownEnabled = false;
+
+  async function loadSystemStatus() {
+    const { data, error } = await supabaseClient
+      .from('system_status')
+      .select('maintenance_message, banner_style, lockdown_enabled, lockdown_message, lockdown_style')
+      .eq('id', 1)
+      .maybeSingle();
+
+    if (error || !data) return;
+
+    document.getElementById('bannerStyle').value = data.banner_style || 'warning';
+    document.getElementById('bannerMessage').value = data.maintenance_message || '';
+    syncBannerPresetToMessage();
+
+    document.getElementById('lockdownStyle').value = data.lockdown_style || 'warning';
+    document.getElementById('lockdownMessage').value = data.lockdown_message || '';
+    syncLockdownPresetToMessage();
+    currentLockdownEnabled = data.lockdown_enabled === true;
+    updateLockdownUi();
+  }
+
+  function updateLockdownUi() {
+    document.getElementById('lockdownState').textContent =
+      currentLockdownEnabled ? 'Lockdown is currently ON' : 'Lockdown is currently OFF';
+    document.getElementById('lockdownToggleBtn').textContent =
+      currentLockdownEnabled ? 'Disable lockdown' : 'Enable lockdown';
+  }
+
+  // Keeps a preset dropdown and its free-text message box in sync in both
+  // directions: picking a preset fills the textarea (still editable
+  // afterwards), and typing anything that no longer matches a preset
+  // flips the dropdown back to "Custom message…" rather than silently
+  // showing a stale preset name next to hand-edited text. Returns the
+  // sync function so the caller can also run it once after loading
+  // a saved message from the database.
+  function wirePresetSelect(selectId, textareaId) {
+    const select = document.getElementById(selectId);
+    const box = document.getElementById(textareaId);
+
+    // If either element is missing (e.g. admin.html and admin.js got out of
+    // sync), fail soft instead of throwing here and silently aborting every
+    // line of script after this — which is what previously made banner
+    // publishing (and everything else below this point) stop working.
+    if (!select || !box) {
+      console.warn(`wirePresetSelect: #${selectId} or #${textareaId} not found — admin.html may be out of date.`);
+      return () => {};
+    }
+
+    function syncSelectToMessage() {
+      const currentText = box.value;
+      const matchingOption = Array.from(select.options).find((opt) => opt.value === currentText);
+      select.value = matchingOption ? matchingOption.value : 'custom';
+    }
+
+    select.addEventListener('change', () => {
+      if (select.value === 'custom') {
+        box.focus();
+        return;
+      }
+      box.value = select.value;
+    });
+
+    box.addEventListener('input', syncSelectToMessage);
+
+    return syncSelectToMessage;
+  }
+
+  const syncLockdownPresetToMessage = wirePresetSelect('lockdownPreset', 'lockdownMessage');
+  const syncBannerPresetToMessage = wirePresetSelect('bannerPreset', 'bannerMessage');
+
+  document.getElementById('bannerPublishBtn').addEventListener('click', async () => {
+    const status = document.getElementById('bannerStatus');
+    const btn = document.getElementById('bannerPublishBtn');
+    const style = document.getElementById('bannerStyle').value;
+    const message = document.getElementById('bannerMessage').value.trim();
+
+    if (!message) { setStatus(status, 'Enter a message before publishing.', 'error'); return; }
+
+    btn.disabled = true;
+    setStatus(status, '', null);
+
+    const { error } = await supabaseClient
+      .from('system_status')
+      .update({ maintenance_mode: true, maintenance_message: message, banner_style: style })
+      .eq('id', 1);
+
+    btn.disabled = false;
+
+    if (error) { console.error('Publishing banner failed:', error); setStatus(status, 'Could not publish the banner. Please try again.', 'error'); return; }
+
+    setStatus(status, 'Banner is now live for everyone.', 'success');
+    toast('Site-wide banner published.', 'success');
+  });
+
+  document.getElementById('bannerClearBtn').addEventListener('click', async () => {
+    const status = document.getElementById('bannerStatus');
+    const btn = document.getElementById('bannerClearBtn');
+
+    btn.disabled = true;
+    setStatus(status, '', null);
+
+    const { error } = await supabaseClient
+      .from('system_status')
+      .update({ maintenance_mode: false })
+      .eq('id', 1);
+
+    btn.disabled = false;
+
+    if (error) { console.error('Clearing banner failed:', error); setStatus(status, 'Could not clear the banner. Please try again.', 'error'); return; }
+
+    setStatus(status, 'Banner cleared.', 'success');
+    toast('Site-wide banner cleared.', 'success');
+  });
+
+  document.getElementById('lockdownToggleBtn').addEventListener('click', async () => {
+    const status = document.getElementById('lockdownStatus');
+    const btn = document.getElementById('lockdownToggleBtn');
+    const nextValue = !currentLockdownEnabled;
+    const message = document.getElementById('lockdownMessage').value.trim() || null;
+    const style = document.getElementById('lockdownStyle').value;
+
+    if (nextValue && !confirm('Enable lockdown? This immediately blocks sign-in for everyone except admins, and signs out anyone else currently signed in.')) return;
+
+    btn.disabled = true;
+    setStatus(status, '', null);
+
+    const { error } = await supabaseClient
+      .from('system_status')
+      .update({ lockdown_enabled: nextValue, lockdown_message: message, lockdown_style: style })
+      .eq('id', 1);
+
+    btn.disabled = false;
+
+    if (error) { console.error('Updating lockdown mode failed:', error); setStatus(status, 'Could not update lockdown mode. Please try again.', 'error'); return; }
+
+    currentLockdownEnabled = nextValue;
+    updateLockdownUi();
+    setStatus(status, nextValue ? 'Lockdown enabled.' : 'Lockdown disabled.', 'success');
+    toast(nextValue ? 'Lockdown mode enabled.' : 'Lockdown mode disabled.', 'success');
+  });
 
   /* ---------------- Announcements ---------------- */
   const announcementModal = document.getElementById('announcementModal');
@@ -154,7 +325,6 @@
 
     if (error) { setStatus(status, 'Could not save announcement. Please try again.', 'error'); return; }
 
-    mirrorToFirestore('announcements', data.id, data);
     announcementModal.hidden = true;
     toast(id ? 'Announcement updated.' : 'Announcement published.', 'success');
     loadAnnouncements();
@@ -170,10 +340,11 @@
       .limit(50);
 
     list.innerHTML = '';
-    if (error) { list.innerHTML = '<li class="empty-state">Could not load announcements.</li>'; return; }
-    if (!data.length) { list.innerHTML = '<li class="empty-state">No announcements yet.</li>'; return; }
+    if (error) { console.error('Loading announcements failed:', error); list.innerHTML = '<li class="empty-state">Could not load announcements.</li>'; return; }
+    const rows = data || [];
+    if (!rows.length) { list.innerHTML = '<li class="empty-state">No announcements yet.</li>'; return; }
 
-    data.forEach((a) => {
+    rows.forEach((a) => {
       const item = document.createElement('li');
       item.className = 'record';
 
@@ -234,14 +405,10 @@
     document.getElementById('timetableEntryId').value = existing ? existing.id : '';
     document.getElementById('timetableModalTitle').textContent = existing ? 'Edit entry' : 'New timetable entry';
     if (existing) {
-      document.getElementById('timetableDay').value = existing.day_name;
-      document.getElementById('timetableStart').value = existing.start_time;
-      document.getElementById('timetableEnd').value = existing.end_time;
-      document.getElementById('timetableSubject').value = existing.subject;
-      document.getElementById('timetableRoom').value = existing.room || '';
-      document.getElementById('timetableLecturer').value = existing.lecturer_name || '';
       document.getElementById('timetableFileUrl').value = existing.file_url || '';
       document.getElementById('timetableFileName').value = existing.file_name || '';
+    } else {
+      document.getElementById('timetableFileName').value = courseNameFor(currentTimetableCourse);
     }
     setStatus(document.getElementById('timetableFormStatus'), '', null);
     timetableModal.hidden = false;
@@ -253,14 +420,18 @@
     event.preventDefault();
     const status = document.getElementById('timetableFormStatus');
     const submitBtn = document.getElementById('timetableSubmit');
-    const id = document.getElementById('timetableEntryId').value;
 
     let fileUrl = document.getElementById('timetableFileUrl').value.trim() || null;
-    let fileName = document.getElementById('timetableFileName').value.trim() || null;
+    let fileName = document.getElementById('timetableFileName').value.trim() || courseNameFor(currentTimetableCourse);
 
     const uploadInput = document.getElementById('timetableFileUpload');
     const uploadStatus = document.getElementById('timetableUploadStatus');
     const chosenFile = uploadInput.files && uploadInput.files[0];
+
+    if (!fileUrl && !chosenFile) {
+      setStatus(status, 'Provide a link or upload a file.', 'error');
+      return;
+    }
 
     submitBtn.disabled = true;
 
@@ -281,98 +452,100 @@
 
       const { data: publicUrlData } = supabaseClient.storage.from('timetable-files').getPublicUrl(path);
       fileUrl = publicUrlData.publicUrl;
-      fileName = fileName || chosenFile.name;
       uploadStatus.textContent = 'Uploaded.';
     }
 
     const payload = {
       course_code: currentTimetableCourse,
-      day_name: document.getElementById('timetableDay').value,
-      start_time: document.getElementById('timetableStart').value,
-      end_time: document.getElementById('timetableEnd').value,
-      subject: document.getElementById('timetableSubject').value.trim(),
-      room: document.getElementById('timetableRoom').value.trim() || null,
-      lecturer_name: document.getElementById('timetableLecturer').value.trim() || null,
       file_url: fileUrl,
       file_name: fileName,
     };
 
-    if (payload.end_time <= payload.start_time) {
-      submitBtn.disabled = false;
-      setStatus(status, 'End time must be after start time.', 'error');
-      return;
-    }
-
-    const { data, error } = id
-      ? await supabaseClient.from('timetable').update(payload).eq('id', id).select().single()
-      : await supabaseClient.from('timetable').insert(payload).select().single();
+    // One row per course — upsert on course_code so re-saving an
+    // existing course replaces its timetable instead of erroring on
+    // the unique constraint.
+    const { data, error } = await supabaseClient
+      .from('timetable')
+      .upsert(payload, { onConflict: 'course_code' })
+      .select()
+      .single();
     submitBtn.disabled = false;
 
     if (error) { setStatus(status, 'Could not save entry. Please try again.', 'error'); console.error('Saving timetable entry failed:', error); return; }
 
     uploadInput.value = '';
     uploadStatus.textContent = '';
-    mirrorToFirestore('timetable', data.id, data);
     timetableModal.hidden = true;
-    toast(id ? 'Entry updated.' : 'Entry added.', 'success');
+    toast('Timetable saved.', 'success');
     loadTimetable(currentTimetableCourse);
     loadOverviewStats();
+    markUploadedTimetableCourses();
   });
 
   async function loadTimetable(courseCode) {
     currentTimetableCourse = courseCode;
     const tbody = document.getElementById('timetableTableBody');
-    tbody.innerHTML = '<tr><td colspan="6"><div class="skeleton skeleton-line"></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4"><div class="skeleton skeleton-line"></div></td></tr>';
 
     const { data, error } = await supabaseClient
       .from('timetable')
-      .select('id, day_name, start_time, end_time, subject, room, lecturer_name, file_name, file_url')
+      .select('id, course_code, file_name, file_url, updated_at')
       .eq('course_code', courseCode)
-      .order('day_name')
-      .order('start_time');
+      .maybeSingle();
 
     tbody.innerHTML = '';
-    if (error) { tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Could not load timetable.</td></tr>'; return; }
-    if (!data.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No entries for this course yet.</td></tr>'; return; }
+    if (error) { console.error('Loading timetable failed:', error); tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Could not load timetable.</td></tr>'; return; }
+    if (!data) { tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No timetable uploaded for this course yet.</td></tr>'; return; }
 
-    data.forEach((entry) => {
-      const tr = document.createElement('tr');
+    const entry = data;
+    const tr = document.createElement('tr');
 
-      const cells = [
-        entry.day_name,
-        `${entry.start_time}–${entry.end_time}`,
-        entry.subject,
-        entry.room || '—',
-        entry.lecturer_name || '—',
-      ];
-      cells.forEach((text) => {
-        const td = document.createElement('td');
-        td.textContent = text;
-        tr.appendChild(td);
-      });
+    const courseTd = document.createElement('td');
+    courseTd.textContent = entry.course_code;
+    tr.appendChild(courseTd);
 
-      const actionsTd = document.createElement('td');
-      const editBtn = document.createElement('button');
-      editBtn.className = 'btn btn-secondary btn-sm';
-      editBtn.textContent = 'Edit';
-      editBtn.addEventListener('click', () => openTimetableModal(entry));
-      const deleteBtn = document.createElement('button');
-      deleteBtn.className = 'btn btn-danger btn-sm';
-      deleteBtn.textContent = 'Delete';
-      deleteBtn.style.marginLeft = '8px';
-      deleteBtn.addEventListener('click', async () => {
-        if (!confirm('Delete this timetable entry?')) return;
-        const { error: delError } = await supabaseClient.from('timetable').delete().eq('id', entry.id);
-        if (delError) { toast('Could not delete entry.', 'error'); return; }
-        toast('Entry deleted.', 'success');
-        loadTimetable(currentTimetableCourse);
-        loadOverviewStats();
-      });
-      actionsTd.append(editBtn, deleteBtn);
-      tr.appendChild(actionsTd);
+    const fileTd = document.createElement('td');
+    if (entry.file_url) {
+      const link = document.createElement('a');
+      link.href = entry.file_url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.className = 'file-link';
+      link.textContent = entry.file_name || 'View timetable';
+      fileTd.appendChild(link);
+    } else {
+      fileTd.textContent = '—';
+    }
+    tr.appendChild(fileTd);
 
-      tbody.appendChild(tr);
+    const updatedTd = document.createElement('td');
+    updatedTd.textContent = entry.updated_at
+      ? new Date(entry.updated_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+      : '—';
+    tr.appendChild(updatedTd);
+
+    const actionsTd = document.createElement('td');
+    const editBtn = document.createElement('button');
+    editBtn.className = 'btn btn-secondary btn-sm';
+    editBtn.textContent = 'Edit';
+    editBtn.addEventListener('click', () => openTimetableModal(entry));
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'btn btn-danger btn-sm';
+    deleteBtn.textContent = 'Remove';
+    deleteBtn.style.marginLeft = '8px';
+    deleteBtn.addEventListener('click', async () => {
+      if (!confirm(`Remove the timetable for ${entry.course_code}?`)) return;
+      const { error: delError } = await supabaseClient.from('timetable').delete().eq('id', entry.id);
+      if (delError) { toast('Could not remove entry.', 'error'); return; }
+      toast('Timetable removed.', 'success');
+      loadTimetable(currentTimetableCourse);
+      loadOverviewStats();
+      markUploadedTimetableCourses();
     });
+    actionsTd.append(editBtn, deleteBtn);
+    tr.appendChild(actionsTd);
+
+    tbody.appendChild(tr);
   }
 
   /* ---------------- Students ---------------- */
@@ -388,8 +561,13 @@
       .order('full_name')
       .limit(500);
 
-    if (error) { tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Could not load students.</td></tr>'; return; }
-    allStudents = (data || []).filter((s) => !s.is_super_admin);
+    if (error) { tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Could not load students.</td></tr>'; return; }
+    // Super admin (root) accounts are no longer hidden from this list —
+    // an admin needs to see them to grant/revoke root access below. The
+    // real gate is set_super_admin() server-side (see SECURITY.md /
+    // the super-admin migration): this page just reflects what that
+    // RPC will actually allow.
+    allStudents = data || [];
     renderStudents(allStudents);
   }
 
@@ -406,7 +584,7 @@
   function renderStudents(students) {
     const tbody = document.getElementById('studentsTableBody');
     tbody.innerHTML = '';
-    if (!students.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No matching students.</td></tr>'; return; }
+    if (!students.length) { tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No matching students.</td></tr>'; return; }
 
     students.forEach((s) => {
       const tr = document.createElement('tr');
@@ -435,7 +613,6 @@
         const newName = newCode ? courseNameFor(newCode) : null;
         const { error } = await supabaseClient.from('profiles').update({ course_code: newCode || null, course_name: newName }).eq('id', s.id);
         if (error) { toast('Could not update course.', 'error'); return; }
-        mirrorToFirestore('profiles', s.id, { course_code: newCode, course_name: newName });
         toast(`Updated ${s.full_name || 'student'}'s course.`, 'success');
       });
       courseTd.appendChild(courseSelect);
@@ -459,7 +636,6 @@
           const { error } = await supabaseClient.from('profiles').update({ verified: !s.verified }).eq('id', s.id);
           if (error) { toast('Could not update verification status.', 'error'); return; }
           s.verified = !s.verified;
-          mirrorToFirestore('profiles', s.id, { verified: s.verified });
           renderStudents(allStudents);
         });
         statusTd.appendChild(verifiedBadge);
@@ -479,11 +655,35 @@
         const { error } = await supabaseClient.from('profiles').update({ is_admin: makeAdmin }).eq('id', s.id);
         if (error) { toast('Could not update role.', 'error'); return; }
         s.is_admin = makeAdmin;
-        mirrorToFirestore('profiles', s.id, { is_admin: makeAdmin });
         renderStudents(allStudents);
       });
       roleTd.appendChild(roleBadge);
       tr.appendChild(roleTd);
+
+      const rootTd = document.createElement('td');
+      const isSelf = s.id === currentAdminUserId;
+      const rootBadge = document.createElement('button');
+      rootBadge.className = 'badge ' + (s.is_super_admin ? 'badge-admin' : 'badge-unverified');
+      rootBadge.style.cursor = isSelf ? 'default' : 'pointer';
+      rootBadge.style.border = 'none';
+      rootBadge.textContent = s.is_super_admin ? 'Root' : '—';
+      rootBadge.disabled = isSelf;
+      rootBadge.title = isSelf
+        ? "You can't change your own root status."
+        : (s.is_super_admin ? 'Click to revoke root access' : 'Click to grant root access');
+      rootBadge.addEventListener('click', async () => {
+        if (isSelf) return;
+        const grant = !s.is_super_admin;
+        const label = grant ? 'Grant ROOT (super admin) access to' : 'Revoke root access from';
+        if (!confirm(`${label} ${s.full_name || 'this user'}? This is temporary while root grants go through admins — treat it carefully.`)) return;
+        const { error } = await supabaseClient.rpc('set_super_admin', { p_user_id: s.id, p_value: grant });
+        if (error) { toast(error.message || 'Could not update root access.', 'error'); return; }
+        s.is_super_admin = grant;
+        toast(grant ? `Granted root access to ${s.full_name || 'user'}.` : `Revoked root access from ${s.full_name || 'user'}.`, 'success');
+        renderStudents(allStudents);
+      });
+      rootTd.appendChild(rootBadge);
+      tr.appendChild(rootTd);
 
       const actionsTd = document.createElement('td');
       if (s.deactivated_at) {

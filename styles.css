@@ -5,8 +5,8 @@
    ========================================================= */
 
 :root {
-  --ink-navy: #10243D;
-  --ink-navy-deep: #0A1929;
+  --ink-navy: #0b3972;
+  --ink-navy-deep: #09396d;
   --blueprint: #2B5F8C;
   --blueprint-soft: #DCE6EE;
   --on-dark-soft: #DCE6EE; /* text on the always-dark header/auth-visual — must NOT flip in dark mode, since those surfaces are already dark in both themes */
@@ -255,7 +255,7 @@ ul.record-list { list-style: none; margin: 0; padding: 0; }
 .badge-course { background: var(--blueprint-soft); color: var(--blueprint); }
 .badge-all { background: #EFE6D4; color: var(--brass-dark); }
 .badge-everyone { background: var(--danger-bg); color: var(--danger); }
-.badge-admin { background: var(--ink-navy); color: #fff; }
+.badge-admin { background: var(--ink-navy); color: #f1f1eb; }
 .badge-staff { background: var(--brass); color: #fff; }
 .badge-student { background: var(--blueprint-soft); color: var(--blueprint); }
 .badge-verified { background: var(--success-bg); color: var(--success); }
@@ -398,7 +398,7 @@ table.admin-table select, table.admin-table input { margin-bottom: 0; }
 .search-row input { margin-bottom: 0; }
 
 .modal-backdrop {
-  position: fixed; inset: 0; background: rgba(10,25,41,0.55);
+  position: fixed; inset: 0; background: rgba(14, 109, 209, 0.55);
   display: flex; align-items: center; justify-content: center;
   z-index: 100; padding: 20px;
 }
@@ -453,6 +453,37 @@ table.admin-table select, table.admin-table input { margin-bottom: 0; }
 }
 .db-down-banner[hidden] {
   display: none;
+}
+/* Root-authored banner styles (chosen from the System tab in admin.html).
+   "down" (no extra class) keeps the original plain red — that one is
+   raised automatically by the connectivity watchdog, never by a person,
+   so it deliberately carries no stripe/marker of its own. Maintenance
+   and lockdown each get the same three colors plus their own marker
+   stripe, so all three read as distinct situations at a glance instead
+   of "a red bar" three different ways. */
+.db-down-banner.maintenance-info {
+  background: #2B6CB0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25), inset 0 2px 0 #FF8C1A;
+}
+.db-down-banner.maintenance-warning {
+  background: var(--brass-dark, #96692A);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25), inset 0 2px 0 #FF8C1A;
+}
+.db-down-banner.maintenance-danger {
+  background: var(--danger, #B24C3F);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25), inset 0 2px 0 #FF8C1A;
+}
+.db-down-banner.lockdown-info {
+  background: #1B3A5C;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25), inset 0 -2px 0 #FFB020;
+}
+.db-down-banner.lockdown-warning {
+  background: #6B4310;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25), inset 0 -2px 0 #FFB020;
+}
+.db-down-banner.lockdown-danger {
+  background: #6B1410;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25), inset 0 -2px 0 #FFB020;
 }
 .db-down-banner .db-down-track {
   display: inline-block;

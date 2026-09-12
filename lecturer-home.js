@@ -6,9 +6,14 @@
   function populateCourseSelects() {
     document.querySelectorAll('select.course-select-target').forEach((select) => {
       const keepFirst = select.querySelector('option'); // preserve "All courses" / "-- Select --" placeholder
+      // Staff isn't a real course with a schedule — don't offer it as a
+      // timetable target, even though it's valid elsewhere (assigning a
+      // staff account to a course, or a course-scoped announcement).
+      const isTimetableSelect = select.id === 'timetableCourseSelect' || select.id === 'timetableFilter';
+      const groups = isTimetableSelect ? COURSES.filter((g) => g.label !== 'Staff') : COURSES;
       select.innerHTML = '';
       if (keepFirst) select.appendChild(keepFirst);
-      COURSES.forEach((group) => {
+      groups.forEach((group) => {
         const optgroup = document.createElement('optgroup');
         optgroup.label = group.label;
         group.options.forEach((opt) => {
@@ -28,6 +33,23 @@
       if (found) return found.label;
     }
     return code;
+  }
+
+  // Prefixes a ✓ onto the course options that already have a timetable
+  // uploaded, so it's visible at a glance before you even pick one.
+  async function markUploadedTimetableCourses() {
+    const { data, error } = await supabaseClient.from('timetable').select('course_code');
+    if (error) { console.error('Could not load uploaded-timetable list:', error); return; }
+    const uploaded = new Set((data || []).map((r) => r.course_code));
+    ['timetableCourseSelect', 'timetableFilter'].forEach((id) => {
+      const sel = document.getElementById(id);
+      if (!sel) return;
+      sel.querySelectorAll('option').forEach((opt) => {
+        if (!opt.value) return; // leave the placeholder/"All courses" option alone
+        const label = opt.textContent.replace(/^✓ /, '');
+        opt.textContent = uploaded.has(opt.value) ? `✓ ${label}` : label;
+      });
+    });
   }
 
   function fmtDate(iso) {
@@ -95,6 +117,7 @@
   let allProfiles = [];
   let currentUserId = null;
   let currentUserIsAdmin = false;
+  let currentUserIsSuperAdmin = false;
   let editingStudentId = null;
 
   async function loadStudents() {
@@ -106,13 +129,14 @@
     const tbody = document.getElementById('studentsTbody');
     if (error) {
       console.error('Loading accounts failed:', error);
-      tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Could not load accounts right now.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Could not load accounts right now.</td></tr>';
       return;
     }
-    // Staff should see student accounts (and other staff) but never admin
-    // accounts — only admins get the full list. This is a UI-level filter;
-    // see note in SECURITY.md about also restricting this at the RLS level.
-    allProfiles = (data || []).filter((p) => !p.is_super_admin && (currentUserIsAdmin || p.role !== 'admin'));
+    // Visibility is handled by RLS now (see the staff-visibility
+    // migration) — anyone with staff access can see every account,
+    // including admins and root. This list no longer filters anything
+    // out client-side.
+    allProfiles = data || [];
     renderStudents();
   }
 
@@ -127,7 +151,7 @@
     });
 
     if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No matching accounts.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No matching accounts.</td></tr>';
       return;
     }
 
@@ -146,6 +170,35 @@
       roleBadge.textContent = p.role;
       roleTd.appendChild(roleBadge);
       tr.appendChild(roleTd);
+
+      const rootTd = document.createElement('td');
+      const isSelf = p.id === currentUserId;
+      const rootBadge = document.createElement('button');
+      rootBadge.type = 'button';
+      rootBadge.className = 'badge ' + (p.is_super_admin ? 'badge-admin' : 'badge-unverified');
+      rootBadge.textContent = p.is_super_admin ? 'Root' : '—';
+      if (currentUserIsSuperAdmin && !isSelf) {
+        rootBadge.style.cursor = 'pointer';
+        rootBadge.style.border = 'none';
+        rootBadge.title = p.is_super_admin ? 'Click to revoke root access' : 'Click to grant root access';
+        rootBadge.addEventListener('click', async () => {
+          const grant = !p.is_super_admin;
+          const label = grant ? 'Grant ROOT (super admin) access to' : 'Revoke root access from';
+          if (!confirm(`${label} ${p.full_name || 'this user'}? This is a temporary arrangement while root grants go through admins — treat it carefully.`)) return;
+          const { error } = await supabaseClient.rpc('set_super_admin', { p_user_id: p.id, p_value: grant });
+          if (error) { toast(error.message || 'Could not update root access.', 'error'); return; }
+          toast(grant ? `Granted root access to ${p.full_name || 'user'}.` : `Revoked root access from ${p.full_name || 'user'}.`, 'success');
+          await loadStudents();
+        });
+      } else {
+        rootBadge.disabled = true;
+        rootBadge.style.border = 'none';
+        rootBadge.title = isSelf
+          ? "You can't change your own root status."
+          : (currentUserIsAdmin ? 'Only a super admin can grant or revoke root access.' : '');
+      }
+      rootTd.appendChild(rootBadge);
+      tr.appendChild(rootTd);
 
       const statusTd = document.createElement('td');
       if (p.deactivated_at) {
@@ -301,20 +354,22 @@
 
     const tbody = document.getElementById('announcementsTbody');
     if (error) {
+      console.error('Loading announcements failed:', error);
       tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Could not load announcements right now.</td></tr>';
       document.getElementById('announcementsCount').textContent = '';
       return;
     }
 
-    document.getElementById('announcementsCount').textContent = `${data.length} total`;
+    const rows = data || [];
+    document.getElementById('announcementsCount').textContent = `${rows.length} total`;
     tbody.innerHTML = '';
 
-    if (!data.length) {
+    if (!rows.length) {
       tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No announcements yet.</td></tr>';
       return;
     }
 
-    data.forEach((a) => {
+    rows.forEach((a) => {
       const tr = document.createElement('tr');
 
       const titleTd = document.createElement('td');
@@ -488,16 +543,13 @@
 
   /* ---------------- Timetable ---------------- */
 
-  let editingTimetableId = null;
-
   async function loadTimetable() {
+    markUploadedTimetableCourses();
     const filter = document.getElementById('timetableFilter').value;
     let query = supabaseClient
       .from('timetable')
-      .select('id, course_code, day_name, start_time, end_time, subject, room, lecturer_name, file_name, file_url')
-      .order('course_code')
-      .order('day_name')
-      .order('start_time');
+      .select('id, course_code, file_name, file_url, updated_at')
+      .order('course_code');
 
     if (filter) query = query.eq('course_code', filter);
 
@@ -505,25 +557,24 @@
     const tbody = document.getElementById('timetableTbody');
 
     if (error) {
-      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Could not load the timetable right now.</td></tr>';
+      console.error('Loading timetable failed:', error);
+      tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Could not load the timetable right now.</td></tr>';
       return;
     }
 
     tbody.innerHTML = '';
-    if (!data.length) {
-      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No timetable entries yet.</td></tr>';
+    const rows = data || [];
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No timetables uploaded yet.</td></tr>';
       return;
     }
 
-    data.forEach((entry) => {
+    rows.forEach((entry) => {
       const tr = document.createElement('tr');
 
-      [entry.course_code, entry.day_name, `${entry.start_time}–${entry.end_time}`, entry.subject, entry.room || '—', entry.lecturer_name || '—']
-        .forEach((text) => {
-          const td = document.createElement('td');
-          td.textContent = text;
-          tr.appendChild(td);
-        });
+      const courseTd = document.createElement('td');
+      courseTd.textContent = entry.course_code;
+      tr.appendChild(courseTd);
 
       const fileTd = document.createElement('td');
       if (entry.file_url) {
@@ -532,12 +583,18 @@
         link.target = '_blank';
         link.rel = 'noopener noreferrer';
         link.className = 'file-link';
-        link.textContent = entry.file_name || 'File';
+        link.textContent = entry.file_name || 'View timetable';
         fileTd.appendChild(link);
       } else {
         fileTd.textContent = '—';
       }
       tr.appendChild(fileTd);
+
+      const updatedTd = document.createElement('td');
+      updatedTd.textContent = entry.updated_at
+        ? new Date(entry.updated_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+        : '—';
+      tr.appendChild(updatedTd);
 
       const actionsTd = document.createElement('td');
       const editBtn = document.createElement('button');
@@ -550,7 +607,7 @@
       deleteBtn.type = 'button';
       deleteBtn.className = 'btn btn-danger btn-sm';
       deleteBtn.style.marginLeft = '6px';
-      deleteBtn.textContent = 'Delete';
+      deleteBtn.textContent = 'Remove';
       deleteBtn.addEventListener('click', () => deleteTimetableEntry(entry));
 
       actionsTd.append(editBtn, deleteBtn);
@@ -561,26 +618,28 @@
   }
 
   function openTimetableCreate() {
-    editingTimetableId = null;
     document.getElementById('timetableModalTitle').textContent = 'New entry';
     document.getElementById('timetableEditForm').reset();
     document.getElementById('timetableEditSubmit').textContent = 'Save entry';
     const filter = document.getElementById('timetableFilter').value;
-    if (filter) document.getElementById('timetableCourseSelect').value = filter;
+    if (filter) {
+      document.getElementById('timetableCourseSelect').value = filter;
+      document.getElementById('timetableFileName').value = courseNameFor(filter);
+    }
     setStatus(document.getElementById('timetableEditStatus'), '', null);
     openModal('timetableModalBackdrop');
   }
 
+  // Auto-fill the label with the course name once one's picked, unless
+  // the person's already typed their own label.
+  document.getElementById('timetableCourseSelect').addEventListener('change', (e) => {
+    const nameField = document.getElementById('timetableFileName');
+    if (!nameField.value.trim()) nameField.value = courseNameFor(e.target.value);
+  });
+
   function openTimetableEdit(entry) {
-    editingTimetableId = entry.id;
     document.getElementById('timetableModalTitle').textContent = 'Editing entry';
     document.getElementById('timetableCourseSelect').value = entry.course_code;
-    document.getElementById('timetableDay').value = entry.day_name;
-    document.getElementById('timetableStart').value = entry.start_time.slice(0, 5);
-    document.getElementById('timetableEnd').value = entry.end_time.slice(0, 5);
-    document.getElementById('timetableSubject').value = entry.subject;
-    document.getElementById('timetableRoom').value = entry.room || '';
-    document.getElementById('timetableLecturer').value = entry.lecturer_name || '';
     document.getElementById('timetableFileUrl').value = entry.file_url || '';
     document.getElementById('timetableFileName').value = entry.file_name || '';
     document.getElementById('timetableEditSubmit').textContent = 'Save changes';
@@ -589,7 +648,6 @@
   }
 
   function closeTimetableEdit() {
-    editingTimetableId = null;
     document.getElementById('timetableEditForm').reset();
     closeModal('timetableModalBackdrop');
   }
@@ -605,22 +663,22 @@
     const submitBtn = document.getElementById('timetableEditSubmit');
 
     const courseSelect = document.getElementById('timetableCourseSelect');
-    const start = document.getElementById('timetableStart').value;
-    const end = document.getElementById('timetableEnd').value;
-
     if (!courseSelect.value) { setStatus(status, 'Please select a course.', 'error'); return; }
-    if (!start || !end) { setStatus(status, 'Please set a start and end time.', 'error'); return; }
-    if (end <= start) { setStatus(status, 'End time must be after start time.', 'error'); return; }
-
-    submitBtn.disabled = true;
-    setStatus(status, '', null);
 
     let fileUrl = document.getElementById('timetableFileUrl').value.trim() || null;
-    let fileName = document.getElementById('timetableFileName').value.trim() || null;
+    let fileName = document.getElementById('timetableFileName').value.trim() || courseNameFor(courseSelect.value);
 
     const uploadInput = document.getElementById('timetableFileUpload');
     const uploadStatus = document.getElementById('timetableUploadStatus');
     const chosenFile = uploadInput.files && uploadInput.files[0];
+
+    if (!fileUrl && !chosenFile) {
+      setStatus(status, 'Provide a link or upload a file.', 'error');
+      return;
+    }
+
+    submitBtn.disabled = true;
+    setStatus(status, '', null);
 
     if (chosenFile) {
       uploadStatus.textContent = 'Uploading…';
@@ -639,25 +697,21 @@
 
       const { data: publicUrlData } = supabaseClient.storage.from('timetable-files').getPublicUrl(path);
       fileUrl = publicUrlData.publicUrl;
-      fileName = fileName || chosenFile.name;
       uploadStatus.textContent = 'Uploaded.';
     }
 
     const payload = {
       course_code: courseSelect.value,
-      day_name: document.getElementById('timetableDay').value,
-      start_time: start,
-      end_time: end,
-      subject: document.getElementById('timetableSubject').value.trim(),
-      room: document.getElementById('timetableRoom').value.trim() || null,
-      lecturer_name: document.getElementById('timetableLecturer').value.trim() || null,
       file_url: fileUrl,
       file_name: fileName,
     };
 
-    const { error } = editingTimetableId
-      ? await supabaseClient.from('timetable').update(payload).eq('id', editingTimetableId)
-      : await supabaseClient.from('timetable').insert(payload);
+    // One row per course — upsert on course_code so re-saving an
+    // existing course replaces its timetable instead of erroring on
+    // the unique constraint.
+    const { error } = await supabaseClient
+      .from('timetable')
+      .upsert(payload, { onConflict: 'course_code' });
 
     submitBtn.disabled = false;
 
@@ -672,20 +726,64 @@
     await loadTimetable();
     closeTimetableEdit();
     await loadOverview();
-    toast('Timetable entry saved.', 'success');
+    toast('Timetable saved.', 'success');
   });
 
   async function deleteTimetableEntry(entry) {
-    if (!window.confirm('Delete this timetable entry? This cannot be undone.')) return;
+    if (!window.confirm(`Remove the timetable for ${entry.course_code}? This cannot be undone.`)) return;
     const { error } = await supabaseClient.from('timetable').delete().eq('id', entry.id);
     if (error) {
-      toast('Could not delete this entry.', 'error');
+      toast('Could not remove this entry.', 'error');
       return;
     }
     await loadTimetable();
     await loadOverview();
-    toast('Timetable entry deleted.', 'success');
+    toast('Timetable removed.', 'success');
   }
+
+  /* ---------------- Maintenance banner (admin only) ---------------- */
+
+  async function loadMaintenanceCard() {
+    const card = document.getElementById('maintenanceCard');
+    if (!currentUserIsAdmin) { card.hidden = true; return; }
+    card.hidden = false;
+
+    const { data, error } = await supabaseClient
+      .from('system_status')
+      .select('maintenance_mode, maintenance_message')
+      .eq('id', 1)
+      .maybeSingle();
+
+    if (!error && data) {
+      document.getElementById('maintenanceToggle').checked = !!data.maintenance_mode;
+      document.getElementById('maintenanceMessage').value = data.maintenance_message || '';
+    }
+  }
+
+  document.getElementById('maintenanceSaveBtn').addEventListener('click', async () => {
+    const status = document.getElementById('maintenanceStatus');
+    const btn = document.getElementById('maintenanceSaveBtn');
+    const active = document.getElementById('maintenanceToggle').checked;
+    const message = document.getElementById('maintenanceMessage').value.trim() || null;
+
+    btn.disabled = true;
+    setStatus(status, '', null);
+
+    const { error } = await supabaseClient
+      .from('system_status')
+      .update({ maintenance_mode: active, maintenance_message: message })
+      .eq('id', 1);
+
+    btn.disabled = false;
+
+    if (error) {
+      setStatus(status, 'Could not update the maintenance banner.', 'error');
+      return;
+    }
+
+    setStatus(status, active ? 'Maintenance banner is now live.' : 'Maintenance banner turned off.', 'success');
+    toast(active ? 'Maintenance banner turned on.' : 'Maintenance banner turned off.', 'success');
+  });
 
   /* ---------------- Boot ---------------- */
 
@@ -695,6 +793,7 @@
 
     currentUserId = admin.session.user.id;
     currentUserIsAdmin = admin.isAdmin;
+    currentUserIsSuperAdmin = admin.isSuperAdmin;
     document.getElementById('headerName').textContent = admin.profile.full_name || admin.session.user.email || '';
     renderAvatar(document.getElementById('avatarSlot'), admin.profile.full_name || admin.session.user.email, admin.profile.avatar_url);
 
@@ -704,7 +803,7 @@
     appShell.hidden = false;
     signOutButton.hidden = false;
 
-    await Promise.all([loadOverview(), loadStudents(), loadAnnouncements(), loadTimetable()]);
+    await Promise.all([loadOverview(), loadStudents(), loadAnnouncements(), loadTimetable(), loadMaintenanceCard()]);
   }
 
   signOutButton.addEventListener('click', async () => {

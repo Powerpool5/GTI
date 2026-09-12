@@ -5,11 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex">
 <meta http-equiv="Content-Security-Policy"
-  content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://www.gstatic.com; connect-src 'self' https://iqcwrberwzumxxjktgux.supabase.co https://firestore.googleapis.com; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data: https://lh3.googleusercontent.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
+  content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://iqcwrberwzumxxjktgux.supabase.co; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data: https://lh3.googleusercontent.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
 <title>Admin - GTI Student Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
+<script src="theme.js"></script>
 <link rel="icon" type="image/x-icon" href="gti.png">
 
 </head>
@@ -17,12 +18,13 @@
 
 <header class="app-header">
   <div class="brand">
-    <a class="brand-link" href="home.html" style="color:#fff;"><span class="brand-mark">GTI · 01</span></a>
+    <a class="brand-link" href="home.html" style="color:#fff;"><span class="brand-mark">GTI Admin </span></a>
     <h1>Admin Panel</h1>
   </div>
   <div style="display:flex; align-items:center; gap:16px;">
     <a href="home.html" class="user-chip" style="text-decoration:none;">← Student view</a>
     <div class="user-chip"><span id="avatarSlot"></span><span id="headerEmail"></span></div>
+    <button class="btn-icon" id="themeToggleBtn" type="button" aria-label="Switch to dark mode">☾</button>
     <button class="btn btn-secondary" id="signOutButton" type="button" hidden style="border-color:rgba(255,255,255,0.4); color:#fff;">Sign out</button>
   </div>
 </header>
@@ -35,16 +37,19 @@
 <div class="app-shell" id="appShell" hidden>
   <nav class="app-nav" role="tablist" aria-label="Admin sections">
     <button class="nav-item active" role="tab" aria-selected="true" aria-controls="overview" data-tab="overview">
-      <span aria-hidden="true">▣</span> Overview
+      <span aria-hidden="true"></span> Overview
     </button>
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="announcements" data-tab="announcements">
-      <span aria-hidden="true">▤</span> Announcements
+      <span aria-hidden="true"></span> Announcements
     </button>
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="timetable" data-tab="timetable">
-      <span aria-hidden="true">▥</span> Timetable
+      <span aria-hidden="true"></span> Timetable
     </button>
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="students" data-tab="students">
-      <span aria-hidden="true">▧</span> Students
+      <span aria-hidden="true"></span> Students
+    </button>
+    <button class="nav-item" role="tab" aria-selected="false" aria-controls="system" data-tab="system" id="systemNavItem" hidden>
+      <span aria-hidden="true"></span> System
     </button>
   </nav>
 
@@ -84,13 +89,13 @@
         <label for="timetableCourseSelect">Course</label>
         <select id="timetableCourseSelect"></select>
         <div class="card-row-between" style="margin-top:6px;">
-          <span style="font-size:0.85rem; color:var(--slate);">Entries for the selected course</span>
-          <button class="btn btn-sm" id="newTimetableEntryBtn">+ Add entry</button>
+          <span style="font-size:0.85rem; color:var(--slate);">Timetable for the selected course</span>
+          <button class="btn btn-sm" id="newTimetableEntryBtn">Add / replace</button>
         </div>
       </div>
       <div class="card table-wrap">
         <table class="admin-table" id="timetableTable">
-          <thead><tr><th>Day</th><th>Time</th><th>Subject</th><th>Room</th><th>Lecturer</th><th></th></tr></thead>
+          <thead><tr><th>Course</th><th>Timetable</th><th>Updated</th><th></th></tr></thead>
           <tbody id="timetableTableBody"></tbody>
         </table>
       </div>
@@ -104,9 +109,76 @@
       </div>
       <div class="card table-wrap">
         <table class="admin-table" id="studentsTable">
-          <thead><tr><th>Name</th><th>Student ID</th><th>Email</th><th>Course</th><th>Status</th><th>Role</th><th></th></tr></thead>
+          <thead><tr><th>Name</th><th>Student ID</th><th>Email</th><th>Course</th><th>Status</th><th>Role</th><th>Root</th><th></th></tr></thead>
           <tbody id="studentsTableBody"></tbody>
         </table>
+      </div>
+    </section>
+
+    <!-- SYSTEM (root only) -->
+    <section id="system" class="tab-content">
+      <h2>System controls <span class="badge badge-admin">Root only</span></h2>
+
+      <div class="card">
+        <h3 style="margin-top:0;">Site-wide banner</h3>
+        <p style="margin:0 0 12px; color:var(--slate); font-size:0.9rem;">
+          Shows a scrolling banner on every page — student and staff, signed in or not —
+          until you clear it. Use this for things like "the system is down for maintenance."
+        </p>
+        <label for="bannerStyle">Style</label>
+        <select id="bannerStyle">
+          <option value="info">Info</option>
+          <option value="warning" selected>Warning</option>
+          <option value="danger">Danger</option>
+        </select>
+        <label for="bannerMessage">Message</label>
+        <select id="bannerPreset">
+          <option value="custom">Custom message…</option>
+          <option value="The system is down for maintenance and will be back online by 6pm.">Scheduled maintenance (with time)</option>
+          <option value="The database is restarting for scheduled maintenance - please save your work. Some pages may be briefly unavailable.">Scheduled maintenance (generic)</option>
+          <option value="We're aware of an issue affecting some pages and are working on a fix.">Known issue / degraded service</option>
+          <option value="Some features are temporarily unavailable while we roll out an update.">Feature rollout</option>
+          <option value="Reminder: the portal will be briefly unavailable this weekend for planned upgrades.">Upcoming maintenance reminder</option>
+        </select>
+        <textarea id="bannerMessage" maxlength="300" placeholder="e.g., The system is down for maintenance and will be back online by 6pm."></textarea>
+        <p class="field-hint">Choose a preset above to fill this in, or pick "Custom message…" and write your own.</p>
+        <p class="status-message" id="bannerStatus" role="alert"></p>
+        <div class="card-row-between" style="margin-top:10px;">
+          <button type="button" class="btn btn-sm" id="bannerPublishBtn">Publish banner</button>
+          <button type="button" class="btn btn-danger btn-sm" id="bannerClearBtn">Clear banner</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0;">Lockdown mode</h3>
+        <p style="margin:0 0 12px; color:var(--slate); font-size:0.9rem;">
+          Blocks sign-in for everyone except admins — students and staff alike. Anyone
+          currently signed in sees the banner as a warning, and gets signed out and sent
+          back to the sign-in page the next time the app checks (within a few seconds, or
+          on their next page load). Turn it off to let everyone back in immediately.
+        </p>
+        <label for="lockdownStyle">Style</label>
+        <select id="lockdownStyle">
+          <option value="info">Info</option>
+          <option value="warning" selected>Warning</option>
+          <option value="danger">Urgent</option>
+        </select>
+        <label for="lockdownPreset">Message</label>
+        <select id="lockdownPreset">
+          <option value="custom">Custom message…</option>
+          <option value="Scheduled maintenance. We'll be back online shortly.">Scheduled maintenance</option>
+          <option value="The portal is locked down for scheduled maintenance and will be back online by 6pm. Please check back later.">Scheduled maintenance (with time)</option>
+          <option value="We've paused sign-ins while we sort out a technical issue. Please check back shortly.">Technical issue</option>
+          <option value="We're migrating data to a new system. This should only take a few minutes — please check back shortly.">Data migration</option>
+          <option value="The portal is temporarily locked down by an administrator. Please try again shortly.">Generic (default message)</option>
+        </select>
+        <textarea id="lockdownMessage" maxlength="300" placeholder="e.g., The portal is locked down for scheduled maintenance. Please check back later."></textarea>
+        <p class="field-hint">Choose a preset above to fill this in, or pick "Custom message…" and write your own.</p>
+        <p class="status-message" id="lockdownStatus" role="alert"></p>
+        <div class="card-row-between" style="margin-top:10px;">
+          <strong id="lockdownState">Lockdown is currently OFF</strong>
+          <button type="button" class="btn btn-danger btn-sm" id="lockdownToggleBtn">Enable lockdown</button>
+        </div>
       </div>
     </section>
 
@@ -156,28 +228,14 @@
     </div>
     <form id="timetableForm" novalidate>
       <input type="hidden" id="timetableEntryId">
-      <label for="timetableDay">Day</label>
-      <select id="timetableDay" required>
-        <option>Monday</option><option>Tuesday</option><option>Wednesday</option>
-        <option>Thursday</option><option>Friday</option><option>Saturday</option>
-      </select>
-      <div class="field-row">
-        <div><label for="timetableStart">Start time</label><input type="time" id="timetableStart" required></div>
-        <div><label for="timetableEnd">End time</label><input type="time" id="timetableEnd" required></div>
-      </div>
-      <label for="timetableSubject">Subject</label>
-      <input type="text" id="timetableSubject" maxlength="120" required>
-      <div class="field-row">
-        <div><label for="timetableRoom">Room</label><input type="text" id="timetableRoom" maxlength="40"></div>
-        <div><label for="timetableLecturer">Lecturer</label><input type="text" id="timetableLecturer" maxlength="120"></div>
-      </div>
-      <label for="timetableFileUrl">File link (optional)</label>
+      <label for="timetableFileUrl">Link to the timetable (optional)</label>
       <input type="text" id="timetableFileUrl" maxlength="500" placeholder="https://…">
-      <label for="timetableFileName">File label (optional)</label>
-      <input type="text" id="timetableFileName" maxlength="100" placeholder="e.g., Week 3 handout">
-      <label for="timetableFileUpload">Or upload an image/PDF</label>
+      <label for="timetableFileName">Label (optional — defaults to the course name)</label>
+      <input type="text" id="timetableFileName" maxlength="100" placeholder="e.g., Semester 1 timetable">
+      <label for="timetableFileUpload">Or upload a picture/PDF of the timetable</label>
       <input type="file" id="timetableFileUpload" accept="image/*,.pdf">
       <p class="field-hint" id="timetableUploadStatus"></p>
+      <p class="field-hint">Provide a link or upload a file — at least one is required.</p>
 
       <p class="status-message" id="timetableFormStatus" role="alert"></p>
       <button type="submit" class="btn btn-block" id="timetableSubmit">Save entry</button>
@@ -187,7 +245,6 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="app.js"></script>
-<script type="module" src="firebase-init.js"></script>
 <script src="courses-data.js"></script>
 <script src="admin.js"></script>
 </body>

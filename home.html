@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex">
 <meta http-equiv="Content-Security-Policy"
-  content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://iqcwrberwzumxxjktgux.supabase.co; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
+  content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://iqcwrberwzumxxjktgux.supabase.co; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data: https://iqcwrberwzumxxjktgux.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
 <title>GTI Student Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -22,6 +22,7 @@
     <h1>Student Portal</h1>
   </div>
   <div style="display:flex; align-items:center; gap:16px;">
+    <a href="#" id="staffDashboardLink" class="user-chip" style="text-decoration:none;" hidden></a>
     <button class="btn-icon" id="themeToggleBtn" type="button" aria-label="Toggle dark mode">☾</button>
     <div class="user-chip">
       <span id="avatarSlot"></span>
@@ -39,22 +40,22 @@
 <div class="app-shell" id="appShell" hidden>
   <nav class="app-nav" role="tablist" aria-label="Portal sections">
     <button class="nav-item active" role="tab" aria-selected="true" aria-controls="overview" data-tab="overview">
-      <span aria-hidden="true">🔍</span> Overview
+      <span aria-hidden="true"></span> Overview
     </button>
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="timetable" data-tab="timetable">
-      <span aria-hidden="true">📅</span> Timetable
+      <span aria-hidden="true"></span> Timetable
     </button>
 
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="grades" data-tab="grades">
-      <span aria-hidden="true">📖</span> Grades
+      <span aria-hidden="true"></span> Grades
     </button>
 
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="students" data-tab="students">
-      <span aria-hidden="true">🎓</span> Students
+      <span aria-hidden="true"></span> Students
     </button>
 
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="course" data-tab="course">
-      <span aria-hidden="true">⚠️</span> Change course
+      <span aria-hidden="true"></span> Change course
     </button>
   </nav>
 

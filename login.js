@@ -30,6 +30,16 @@
     }
   }
 
+  // If requireSession()/requireAdmin() just bounced someone here because
+  // lockdown mode kicked in while they were signed in, say why.
+  try {
+    const lockoutMsg = sessionStorage.getItem('gti-lockout-message');
+    if (lockoutMsg) {
+      sessionStorage.removeItem('gti-lockout-message');
+      setStatus(document.getElementById('signInStatus'), lockoutMsg, 'error');
+    }
+  } catch {}
+
   tabSignIn.addEventListener('click', () => showForm('signin'));
   tabSignUp.addEventListener('click', () => showForm('signup'));
   document.getElementById('forgotPasswordBtn').addEventListener('click', () => showForm('reset'));
@@ -68,6 +78,16 @@
     if (error) {
       signInThrottle.recordFailure();
       setStatus(status, friendlyAuthError(error), 'error');
+      submitBtn.disabled = false;
+      return;
+    }
+
+    // Credentials were correct, but lockdown mode (root-only, see the
+    // admin panel's System tab) may still turn away anyone who isn't an
+    // admin. checkLockdownBlock() signs them back out if so.
+    const lockdownMessage = await checkLockdownBlock();
+    if (lockdownMessage) {
+      setStatus(status, lockdownMessage, 'error');
       submitBtn.disabled = false;
       return;
     }
