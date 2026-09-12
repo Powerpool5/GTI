@@ -2,7 +2,7 @@ name: Keep Supabase Alive
 
 on:
   schedule:
-    # Runs every 3 days at 4:27 AM UTC (bypasses peak traffic delays)
+    
     - cron: '27 4 */3 * *'
 
   workflow_dispatch:
