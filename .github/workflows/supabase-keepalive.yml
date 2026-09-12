@@ -2,9 +2,7 @@ name: Keep Supabase Alive
 
 on:
   schedule:
-    # Runs every 3 days at midnight UTC
     - cron: '0 0 */3 * *'
-  # Allows you to manually trigger the workflow from the Actions tab
   workflow_dispatch:
 
 jobs:
@@ -12,7 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Send Request to Supabase Profiles Table
+        env:
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          curl -X GET "${{ secrets.SUPABASE_URL }}profiles?select=count" \
-          -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-          -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
+          curl -i -X GET "https://supabase.co" \
+          -H "apikey: ${SUPABASE_ANON_KEY}" \
+          -H "Authorization: Bearer ${SUPABASE_ANON_KEY}"
