@@ -605,29 +605,46 @@ table.admin-table .grade-total { display: inline-block; min-width: 48px; font-fa
   .app-shell { flex-direction: column; }
   /* Wrap instead of scrolling sideways — a horizontal scrollbar next to
      a logo that has to stay put is what caused the overflow/clipping.
-     Wrapping keeps everything visible on screen at once. */
+     Wrapping keeps everything visible on screen at once. Tabs render as
+     small pills rather than the desktop's full-width list rows. */
   .app-nav {
     width: 100%;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    overflow-x: hidden;
-    overflow-y: visible;
+    overflow: visible;
     max-height: none;
-    padding: 8px 10px;
+    padding: 10px 12px;
+    gap: 6px 8px;
     border-right: none;
     border-bottom: 1px solid var(--paper-line);
   }
   .nav-logo {
     display: flex;
+    flex: 0 0 auto;
     width: auto;
-    flex-shrink: 0;
-    padding: 2px 10px 2px 2px;
-    margin-right: 4px;
+    justify-content: flex-start;
+    padding: 0 8px 0 0;
+    margin: 0;
   }
-  .nav-logo img { width: 34px; }
-  .nav-item { flex-direction: column; gap: 4px; border-left: none; border-bottom: 3px solid transparent; padding: 8px 12px; white-space: nowrap; font-size: 0.78rem; }
-  .nav-item.active { border-left-color: transparent; border-bottom-color: var(--brass); }
+  .nav-logo img { width: 28px; height: 28px; }
+  .nav-item {
+    /* Base rule sets width:100%, which is what stacked every tab into
+       its own full-width row — override back to a normal inline pill. */
+    width: auto;
+    flex: 0 1 auto;
+    flex-direction: row;
+    gap: 6px;
+    border-left: none;
+    border-bottom: none;
+    border-radius: 999px;
+    padding: 7px 14px;
+    white-space: nowrap;
+    font-size: 0.82rem;
+    background: transparent;
+  }
+  .nav-item.active { background: var(--blueprint-soft); color: var(--ink-navy); font-weight: 600; }
+  [data-theme="dark"] .nav-item.active { background: rgba(255,255,255,0.08); }
   .app-main { padding: 20px 16px 48px; }
   .field-row { flex-direction: column; gap: 0; }
 
@@ -661,19 +678,19 @@ table.admin-table .grade-total { display: inline-block; min-width: 48px; font-fa
   .app-header .user-chip span:last-child { max-width: 90px; }
 }
 /* Database-down banner (added by app.js's connectivity watchdog) */
-/* The banner is fixed/out-of-flow so it stays put while scrolling — this
-   pushes everything else down by its real (measured) height so it never
-   overlaps the sticky header or the top of the auth screens, and re-aims
-   the sticky header's own offset so it settles in just below the banner
-   once scrolled, instead of underneath it. */
-body.has-banner { padding-top: var(--banner-height, 0px); }
+/* Sticky, not fixed — it's the first element in <body>, so it simply
+   takes up its own real space in normal document flow like anything
+   else. That's what a fixed banner + a JS-measured padding-top guess
+   on <body> was trying to fake, and any mismatch between the guessed
+   height and the real one showed up as a gap under the banner. Sticky
+   needs none of that: the header (next in flow, also sticky) just
+   gets told to park itself right below the banner's real height once
+   both are pinned to the top of the viewport during scroll. */
 body.has-banner .app-header { top: var(--banner-height, 0px); }
 
 .db-down-banner {
-  position: fixed;
+  position: sticky;
   top: 0;
-  left: 0;
-  right: 0;
   z-index: 9999;
   background: var(--danger, #b3261e);
   color: #fff;
