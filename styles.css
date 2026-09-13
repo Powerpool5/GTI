@@ -53,6 +53,27 @@
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.45);
 }
 
+/* Admin panel gets its own accent color (red instead of the site's
+   usual navy/blue) so it visually reads as a distinct, higher-stakes
+   area — same technique as the dark-mode override above, just scoped
+   to admin.html's <body> instead of [data-theme="dark"]. Everything
+   built on these tokens (header background, headings, active nav
+   highlight, links, badges) picks it up automatically; nothing else
+   needs to change. Header background/text intentionally doesn't
+   change between light/dark site themes (same as the navy header does
+   everywhere else) — only the soft tint used for hover/active
+   backgrounds needs its own dark-mode variant, since that one does
+   normally flip. */
+body.theme-admin {
+  --ink-navy: #7A1F1F;
+  --ink-navy-deep: #611818;
+  --blueprint: #A83232;
+  --blueprint-soft: #F5DCDA;
+}
+[data-theme="dark"] body.theme-admin {
+  --blueprint-soft: #3A2222;
+}
+
 * { box-sizing: border-box; }
 
 html, body {
@@ -171,7 +192,18 @@ button, input, select { font-family: inherit; font-size: 1rem; }
   display: flex; align-items: center; justify-content: center;
 }
 
-.app-shell { display: flex; min-height: calc(100vh - 58px); }
+.app-shell {
+  display: flex;
+  min-height: calc(100vh - 58px);
+  /* iOS/Android browsers resize the *visual* viewport (not the layout
+     one) when the address bar shows/hides, but plain `vh` is based on
+     the layout viewport — so it's briefly wrong on load and only
+     corrects itself once a scroll forces a reflow. `dvh` tracks the
+     real, current viewport and fixes that; kept second, after the vh
+     line above, purely as a fallback for older browsers that don't
+     support dvh yet. */
+  min-height: calc(100dvh - 58px);
+}
 
 .app-nav {
   width: var(--sidebar-w); flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--paper-line); padding: 20px 0;
@@ -616,36 +648,53 @@ table.admin-table .grade-total { display: inline-block; min-width: 48px; font-fa
     display: flex;
     align-items: center;
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
     max-height: none;
     padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
     gap: 2px;
     border-right: none;
     border-top: 1px solid var(--paper-line);
     box-shadow: 0 -2px 10px rgba(16, 36, 61, 0.08);
+    /* iOS in particular can render a `position: fixed` element in the
+       wrong spot for the first paint or two — especially right after
+       load, before the address bar has settled — and only put it
+       right once a scroll forces a repaint. Promoting it to its own
+       compositor layer up front avoids that first-paint glitch instead
+       of waiting on the user to accidentally fix it by scrolling. */
+    transform: translateZ(0);
+    will-change: transform;
   }
+  /* The logo repeats the branding already shown in the header just
+     above, and on a page with five or more tabs (lecturer-home.html)
+     it was the difference between tabs merely being tight and tabs
+     actually crowding into each other. Drop it here; it's still shown
+     in the sidebar on desktop. */
   .nav-logo {
-    display: flex;
-    flex: 0 0 auto;
-    width: auto;
-    justify-content: flex-start;
-    padding: 0 8px 0 2px;
-    margin: 0;
+    display: none;
   }
-  .nav-logo img { width: 24px; height: 24px; }
   .nav-item {
     /* Base rule sets width:100%, which is what stacked every tab into
-       its own full-width row — override back to an evenly-spaced,
-       compact bottom-bar tab. */
+       its own full-width row. On mobile this used to force every tab
+       into an equal, shrinking share of the bar (flex: 1 1 0) — fine
+       with 3-4 tabs, but on pages with 5+ tabs (lecturer-home.html)
+       that squeezed each one below a usable width and their icon/label
+       started crowding and overlapping each other. Give each tab a
+       fixed, comfortable minimum width instead and let the bar itself
+       scroll horizontally (overflow-x: auto, above) for whatever
+       doesn't fit — swipeable, like a native app's tab bar, rather
+       than crushed. */
     width: auto;
-    flex: 1 1 0;
-    min-width: 0;
+    flex: 0 0 auto;
+    min-width: 68px;
+    scroll-snap-align: start;
     flex-direction: column;
     gap: 2px;
     border-left: none;
     border-bottom: none;
     border-top: 2px solid transparent;
     border-radius: 0;
-    padding: 6px 4px;
+    padding: 6px 10px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -672,7 +721,20 @@ table.admin-table .grade-total { display: inline-block; min-width: 48px; font-fa
   }
   .app-header h1 { display: none; }
   .app-header .brand { gap: 6px; }
-  .app-header > div:last-child { gap: 8px; }
+  /* admin.html has one more item here than home.html/lecturer-home.html
+     (the "← Student view" link), which was enough to overflow this
+     row on mobile — the whole group doesn't wrap internally, it's one
+     flex item, so anything past the edge (usually the sign-out button)
+     just got squeezed or cut off instead of landing at a clear trailing
+     edge. Giving the group its own full-width row and letting it wrap
+     + right-align internally fixes that for admin.html and is a no-op
+     for the other pages, which already fit on one line. */
+  .app-header > div:last-child {
+    gap: 8px;
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
 
   /* The dashboard-switch link ("Admin panel →" / "Staff dashboard →" /
      "← Student view") was wrapping its own text across two lines when
