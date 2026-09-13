@@ -1192,6 +1192,7 @@
     document.getElementById('headerName').textContent = admin.profile.full_name || admin.session.user.email || '';
     renderAvatar(document.getElementById('avatarSlot'), admin.profile.full_name || admin.session.user.email, admin.profile.avatar_url);
     document.getElementById('adminTicketsSection').hidden = !currentUserIsAdmin;
+    document.getElementById('adminPanelLink').hidden = !currentUserIsAdmin;
 
     populateCourseSelects();
     document.getElementById('timetableCourseSelect').addEventListener('change', (e) => loadTimetable(e.target.value));

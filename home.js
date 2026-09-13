@@ -55,13 +55,12 @@
 
     // Staff/admin accounts land here too (this is the one sign-in form
     // for everyone) but have no other way to find their dashboard, so
-    // surface it here rather than making them remember a URL.
+    // surface it here rather than making them remember a URL. Admins
+    // go to the staff dashboard first, same as staff — the further
+    // jump into the Admin Panel itself now lives over there (see the
+    // nav in lecturer-home.html), not directly off the student view.
     const dashboardLink = document.getElementById('staffDashboardLink');
-    if (account.role === 'admin') {
-      dashboardLink.textContent = 'Admin panel →';
-      dashboardLink.href = 'admin.html';
-      dashboardLink.hidden = false;
-    } else if (account.role === 'staff') {
+    if (account.role === 'admin' || account.role === 'staff') {
       dashboardLink.textContent = 'Staff dashboard →';
       dashboardLink.href = 'lecturer-home.html';
       dashboardLink.hidden = false;

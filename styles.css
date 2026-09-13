@@ -196,6 +196,7 @@ button, input, select { font-family: inherit; font-size: 1rem; }
   background: none; border: none;
   border-left: 3px solid transparent;
   text-align: left;
+  text-decoration: none;
   padding: 11px 20px;
   color: var(--slate);
   font-size: 0.95rem;
@@ -601,79 +602,98 @@ table.admin-table .grade-total { display: inline-block; min-width: 48px; font-fa
 
 @media (max-width: 760px) {
   .app-shell { flex-direction: column; }
-  /* Wrap instead of scrolling sideways — a horizontal scrollbar next to
-     a logo that has to stay put is what caused the overflow/clipping.
-     Wrapping keeps everything visible on screen at once. Tabs render as
-     small pills rather than the desktop's full-width list rows. */
+
+  /* The section nav moves to a fixed bar along the bottom of the screen
+     instead of sharing the top of the page with the header/banner —
+     a standard mobile pattern, and one that can't tangle with anything
+     up there since it's positioned independently of both. */
   .app-nav {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 50;
     width: 100%;
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
-    overflow: visible;
+    overflow-x: auto;
     max-height: none;
-    padding: 10px 12px;
-    gap: 6px 8px;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+    gap: 2px;
     border-right: none;
-    border-bottom: 1px solid var(--paper-line);
+    border-top: 1px solid var(--paper-line);
+    box-shadow: 0 -2px 10px rgba(16, 36, 61, 0.08);
   }
   .nav-logo {
     display: flex;
     flex: 0 0 auto;
     width: auto;
     justify-content: flex-start;
-    padding: 0 8px 0 0;
+    padding: 0 8px 0 2px;
     margin: 0;
   }
-  .nav-logo img { width: 28px; height: 28px; }
+  .nav-logo img { width: 24px; height: 24px; }
   .nav-item {
     /* Base rule sets width:100%, which is what stacked every tab into
-       its own full-width row — override back to a normal inline pill. */
+       its own full-width row — override back to an evenly-spaced,
+       compact bottom-bar tab. */
     width: auto;
-    flex: 0 1 auto;
-    flex-direction: row;
-    gap: 6px;
+    flex: 1 1 0;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
     border-left: none;
     border-bottom: none;
-    border-radius: 999px;
-    padding: 7px 14px;
+    border-top: 2px solid transparent;
+    border-radius: 0;
+    padding: 6px 4px;
     white-space: nowrap;
-    font-size: 0.82rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.68rem;
+    text-align: center;
     background: transparent;
   }
-  .nav-item.active { background: var(--blueprint-soft); color: var(--ink-navy); font-weight: 600; }
-  [data-theme="dark"] .nav-item.active { background: rgba(255,255,255,0.08); }
-  .app-main { padding: 20px 16px 48px; }
+  .nav-item.active { border-top-color: var(--brass); background: transparent; color: var(--ink-navy); font-weight: 600; }
+  [data-theme="dark"] .nav-item.active { color: var(--ink); }
+
+  /* Room for the fixed bottom bar so it never covers the last bit of
+     content, plus the phone's own home-indicator inset. */
+  .app-main { padding: 20px 16px calc(76px + env(safe-area-inset-bottom, 0px)); }
   .field-row { flex-direction: column; gap: 0; }
 
-  /* Header: several chips (theme toggle, dashboard-switch link, avatar +
-     name/email, sign-out) need to share one row on a ~360-400px phone.
-     Tighten spacing/sizing first, and let it wrap onto a second row as a
-     safety net rather than ever overflowing horizontally. */
+  /* Header: down to brand + theme toggle + avatar + sign-out. The
+     subtitle, the dashboard-switch link's full text, and the name/email
+     text all get trimmed here rather than being left to wrap or shrink
+     themselves into something unreadable. */
   .app-header {
     flex-wrap: wrap;
     row-gap: 8px;
     padding: 10px 14px;
   }
-  .app-header h1 { font-size: 0.95rem; }
-  .app-header .brand { gap: 6px; }
-  .app-header > div:last-child { gap: 10px; }
-  .app-header .user-chip span:last-child {
-    max-width: 130px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    display: inline-block;
-    vertical-align: middle;
-  }
-}
-
-@media (max-width: 420px) {
-  /* On the narrowest phones, drop the descriptive title entirely —
-     the brand mark alone is enough, and this is usually what tips the
-     header from "fits on one line" to "needs to wrap". */
   .app-header h1 { display: none; }
-  .app-header .user-chip span:last-child { max-width: 90px; }
+  .app-header .brand { gap: 6px; }
+  .app-header > div:last-child { gap: 8px; }
+
+  /* The dashboard-switch link ("Admin panel →" / "Staff dashboard →" /
+     "← Student view") was wrapping its own text across two lines when
+     the row got tight. Keep it on one line and let the *whole chip*
+     drop to the row below (the header already wraps) instead. */
+  .app-header a.user-chip {
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-size: 0.78rem;
+  }
+
+  /* Sign out was sized like a full desktop button — shrink it to match
+     the other header controls instead of dominating the row. */
+  .app-header #signOutButton {
+    padding: 6px 12px;
+    font-size: 0.8rem;
+  }
+
+  /* The name/email text was being squeezed into a max-width so small it
+     rendered as just an ellipsis. Better to drop the text and rely on
+     the avatar (which already shows an initial) than show "…". */
+  .app-header .user-chip span:last-child { display: none; }
 }
 /* Database-down banner (added by app.js's connectivity watchdog) */
 /* Plain in-flow block — no fixed/sticky positioning at all. It's the

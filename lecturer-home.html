@@ -56,7 +56,14 @@
       data-tab="support">
       <span class="nav-icon" aria-hidden="true"></span> Support
     </button>
-   
+
+    <!-- Not a tab — a real link out to admin.html. Shown only for admins
+         (see init() in lecturer-home.js); this is what used to be the
+         "Admin panel →" link on the student home page. -->
+    <a class="nav-item" id="adminPanelLink" href="admin.html" hidden>
+      <span class="nav-icon" aria-hidden="true"></span> Admin panel
+    </a>
+
   </nav>
 
   <main class="app-main wide">
