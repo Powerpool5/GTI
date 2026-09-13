@@ -22,6 +22,7 @@
   --success-bg: #E8F1EC;
   --danger: #B24C3F;
   --danger-bg: #FBEBE8;
+  --banner-height: 0px;
 
   --font-display: "Space Grotesk", "IBM Plex Sans", sans-serif;
   --font-body: "IBM Plex Sans", sans-serif;
@@ -173,7 +174,22 @@ button, input, select { font-family: inherit; font-size: 1rem; }
 
 .app-shell { display: flex; min-height: calc(100vh - 58px); }
 
-.app-nav { width: var(--sidebar-w); flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--paper-line); padding: 20px 0; }
+.app-nav {
+  width: var(--sidebar-w); flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--paper-line); padding: 20px 0;
+  /* Stays put while .app-main scrolls, instead of scrolling away with the
+     page. Offset by the sticky header's own height (plus the maintenance
+     banner's, when one is showing) so it settles in just below both
+     rather than underneath them; --header-height is measured in app.js
+     the same way --banner-height already is. */
+  position: sticky;
+  top: calc(var(--banner-height, 0px) + var(--header-height, 58px));
+  align-self: flex-start;
+  max-height: calc(100vh - var(--banner-height, 0px) - var(--header-height, 58px));
+  overflow-y: auto;
+}
+
+.nav-logo { display: flex; justify-content: center; padding: 4px 12px 20px; }
+.nav-logo img { width: 200px; max-width: 100%; height: auto; display: block; }
 
 .nav-item {
   display: flex; align-items: center; gap: 10px;
@@ -241,6 +257,7 @@ ul.record-list { list-style: none; margin: 0; padding: 0; }
 .record-meta { font-family: var(--font-mono); font-size: 0.8rem; color: var(--blueprint); margin-bottom: 4px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .record-body { color: var(--slate); font-size: 0.92rem; }
 .record a.file-link { display: inline-block; margin-top: 6px; font-size: 0.85rem; text-decoration: none; border-bottom: 1px dashed var(--blueprint); }
+.grade-breakdown { margin-top: 6px; }
 .record-actions { display: flex; gap: 10px; margin-top: 8px; }
 .empty-state { color: var(--slate); font-size: 0.92rem; padding: 8px 0; }
 
@@ -261,6 +278,32 @@ ul.record-list { list-style: none; margin: 0; padding: 0; }
 .badge-verified { background: var(--success-bg); color: var(--success); }
 .badge-unverified { background: var(--paper-line); color: var(--slate); }
 .badge-inactive { background: var(--danger-bg); color: var(--danger); }
+.badge-grade-a { background: var(--success-bg); color: var(--success); }
+.badge-grade-b { background: var(--blueprint-soft); color: var(--blueprint); }
+.badge-grade-c { background: #EFE6D4; color: var(--brass-dark); }
+.badge-grade-f { background: var(--danger-bg); color: var(--danger); }
+
+/* Closed tickets collapse to a single summary line (native <details>,
+   so no extra JS/CSP-inline handlers are needed to expand them). */
+.ticket-compact summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ticket-compact summary::-webkit-details-marker { display: none; }
+.ticket-compact summary::before {
+  content: "▸";
+  display: inline-block;
+  font-size: 0.7rem;
+  color: var(--slate);
+  transition: transform 0.15s var(--ease);
+}
+.ticket-compact[open] summary::before { transform: rotate(90deg); }
+.ticket-compact summary .record-title { margin: 0; }
+.ticket-compact-body { margin-top: 12px; }
 
 /* =========================
    Forms
@@ -286,6 +329,134 @@ input:disabled, select:disabled, button:disabled { opacity: 0.55; cursor: not-al
 .field-hint { font-size: 0.78rem; color: var(--slate); margin-top: -12px; margin-bottom: 16px; }
 .field-row { display: flex; gap: 14px; }
 .field-row > div { flex: 1; }
+
+/* =========================
+   Course picker (searchable combobox)
+   See enhanceCourseSelect() in app.js — the real <select> stays in
+   the DOM (hidden) as the source of truth; this is just its skin.
+   ========================= */
+.course-combo { position: relative; margin-bottom: 16px; }
+.course-combo-native {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
+.course-combo-input {
+  margin-bottom: 0;
+  padding-right: 30px;
+  cursor: pointer;
+  background-image: none;
+  font-family: var(--font-body);
+}
+.course-combo::after {
+  content: "▾";
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  color: var(--slate);
+  pointer-events: none;
+  font-size: 0.75rem;
+}
+.course-combo.open .course-combo-input {
+  border-color: var(--blueprint);
+  box-shadow: 0 0 0 3px rgba(43,95,140,0.12);
+}
+.course-combo-panel {
+  position: fixed;
+  z-index: 1000;
+  background: var(--surface);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 4px;
+}
+/* Accordion department headers (shown when the box isn't being
+   searched) — collapsed by default, click to reveal that
+   department's courses instead of scrolling past everyone else's. */
+.course-combo-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 9px 10px;
+  margin: 1px 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.86rem;
+  color: var(--ink-navy);
+  letter-spacing: -0.005em;
+}
+[data-theme="dark"] .course-combo-group-header { color: var(--ink); }
+.course-combo-group-header:hover { background: var(--blueprint-soft); }
+.course-combo-group-header .course-combo-group-count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--slate);
+  background: var(--paper-line);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+.course-combo-group-header .course-combo-group-chevron {
+  font-size: 0.9rem;
+  color: var(--slate);
+  transition: transform 0.15s var(--ease);
+  width: 12px;
+  text-align: center;
+}
+.course-combo-group-header.open .course-combo-group-chevron { transform: rotate(90deg); }
+/* Plain group label used only in search results, where every match is
+   already shown flat regardless of department — no click target. */
+.course-combo-group-label {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--slate);
+  padding: 10px 10px 4px;
+}
+.course-combo-option {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 8px 10px;
+  margin: 1px 0;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  color: var(--ink);
+  cursor: pointer;
+  line-height: 1.35;
+}
+.course-combo-option-name { flex: 1; }
+.course-combo-option-code {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--slate);
+  background: var(--paper-line);
+  border-radius: var(--radius-sm);
+  padding: 1px 6px;
+}
+.course-combo-option.active .course-combo-option-code { color: var(--ink-navy); }
+[data-theme="dark"] .course-combo-option.active .course-combo-option-code { color: var(--ink); }
+.course-combo-option.indented { padding-left: 20px; } /* nested under an open accordion header */
+.course-combo-option:hover, .course-combo-option.highlighted { background: var(--blueprint-soft); }
+.course-combo-option.active { font-weight: 600; color: var(--ink-navy); }
+[data-theme="dark"] .course-combo-option.active { color: var(--ink); }
+.course-combo-empty { padding: 14px 10px; font-size: 0.85rem; color: var(--slate); text-align: center; }
 
 button.btn {
   font-family: var(--font-body);
@@ -317,6 +488,8 @@ button.btn-link { background: none; border: none; color: var(--blueprint); paddi
 .status-message.visible { display: block; }
 .status-message.error { background: var(--danger-bg); color: var(--danger); }
 .status-message.success { background: var(--success-bg); color: var(--success); }
+.status-message.info { background: var(--blueprint-soft); color: var(--ink-navy); }
+[data-theme="dark"] .status-message.info { color: var(--ink); }
 
 /* =========================
    Login / auth pages
@@ -393,6 +566,8 @@ table.admin-table th {
 table.admin-table td { padding: 10px 12px; border-bottom: 1px solid var(--paper-line); vertical-align: middle; }
 table.admin-table tr:hover td { background: var(--blueprint-soft); }
 table.admin-table select, table.admin-table input { margin-bottom: 0; }
+table.admin-table input[type="number"] { width: 72px; text-align: right; }
+table.admin-table .grade-total { display: inline-block; min-width: 48px; font-family: var(--font-mono); font-weight: 600; text-align: right; }
 
 .search-row { display: flex; gap: 10px; margin-bottom: 16px; }
 .search-row input { margin-bottom: 0; }
@@ -427,13 +602,51 @@ table.admin-table select, table.admin-table input { margin-bottom: 0; }
 
 @media (max-width: 760px) {
   .app-shell { flex-direction: column; }
-  .app-nav { width: 100%; display: flex; overflow-x: auto; padding: 8px 10px; border-right: none; border-bottom: 1px solid var(--paper-line); -webkit-overflow-scrolling: touch; }
+  .app-nav { width: 100%; display: flex; overflow-x: auto; overflow-y: visible; max-height: none; padding: 8px 10px; border-right: none; border-bottom: 1px solid var(--paper-line); -webkit-overflow-scrolling: touch; }
+  .nav-logo { display: none; }
   .nav-item { flex-direction: column; gap: 4px; border-left: none; border-bottom: 3px solid transparent; padding: 8px 14px; white-space: nowrap; font-size: 0.78rem; }
   .nav-item.active { border-left-color: transparent; border-bottom-color: var(--brass); }
   .app-main { padding: 20px 16px 48px; }
   .field-row { flex-direction: column; gap: 0; }
+
+  /* Header: several chips (theme toggle, dashboard-switch link, avatar +
+     name/email, sign-out) need to share one row on a ~360-400px phone.
+     Tighten spacing/sizing first, and let it wrap onto a second row as a
+     safety net rather than ever overflowing horizontally. */
+  .app-header {
+    flex-wrap: wrap;
+    row-gap: 8px;
+    padding: 10px 14px;
+  }
+  .app-header h1 { font-size: 0.95rem; }
+  .app-header .brand { gap: 6px; }
+  .app-header > div:last-child { gap: 10px; }
+  .app-header .user-chip span:last-child {
+    max-width: 130px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: inline-block;
+    vertical-align: middle;
+  }
+}
+
+@media (max-width: 420px) {
+  /* On the narrowest phones, drop the descriptive title entirely —
+     the brand mark alone is enough, and this is usually what tips the
+     header from "fits on one line" to "needs to wrap". */
+  .app-header h1 { display: none; }
+  .app-header .user-chip span:last-child { max-width: 90px; }
 }
 /* Database-down banner (added by app.js's connectivity watchdog) */
+/* The banner is fixed/out-of-flow so it stays put while scrolling — this
+   pushes everything else down by its real (measured) height so it never
+   overlaps the sticky header or the top of the auth screens, and re-aims
+   the sticky header's own offset so it settles in just below the banner
+   once scrolled, instead of underneath it. */
+body.has-banner { padding-top: var(--banner-height, 0px); }
+body.has-banner .app-header { top: var(--banner-height, 0px); }
+
 .db-down-banner {
   position: fixed;
   top: 0;

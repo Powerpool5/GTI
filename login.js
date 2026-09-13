@@ -1,4 +1,6 @@
 (function () {
+  enhanceCourseSelect(document.getElementById('signUpCourse'));
+
   const tabSignIn = document.getElementById('tabSignIn');
   const tabSignUp = document.getElementById('tabSignUp');
   const signInForm = document.getElementById('signInForm');

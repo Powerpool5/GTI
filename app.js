@@ -299,6 +299,271 @@ function renderAvatar(container, name, avatarUrl) {
 }
 
 /* -------------------------------------------------------
+   Course picker — searchable combobox.
+
+   The course <select> (built from COURSES in courses-data.js)
+   shows up on sign-up, "change course", the admin/staff student
+   editor, the grading picker, the announcement composer, and the
+   timetable picker — 7 departments and 60+ courses in one long
+   native list every time. This wraps a course <select> with a
+   type-to-filter text box instead, while leaving the original
+   <select> in the DOM (just visually hidden) as the one source of
+   truth, so every existing `.value` read and 'change' listener
+   elsewhere in the app keeps working completely unchanged.
+
+   If code elsewhere sets `select.value = ...` directly (not via a
+   user click), call syncCourseSelectDisplay(select) right after so
+   the visible text box picks up the new value — programmatic value
+   changes don't fire 'change' or mutate the DOM, so there's nothing
+   else for this to observe.
+   ------------------------------------------------------- */
+function enhanceCourseSelect(select) {
+  if (!select || select.dataset.enhanced) return;
+  select.dataset.enhanced = "1";
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "course-combo";
+  select.parentNode.insertBefore(wrapper, select);
+  wrapper.appendChild(select);
+  select.classList.add("course-combo-native");
+  select.tabIndex = -1;
+  select.setAttribute("aria-hidden", "true");
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "course-combo-input";
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  input.setAttribute("role", "combobox");
+  input.setAttribute("aria-expanded", "false");
+  input.placeholder = "Search for a course…";
+  wrapper.appendChild(input);
+
+  const panel = document.createElement("div");
+  panel.className = "course-combo-panel";
+  panel.hidden = true;
+  document.body.appendChild(panel);
+
+  select.__comboInput = input;
+
+  function entries() {
+    const list = [];
+    Array.from(select.children).forEach((child) => {
+      if (child.tagName === "OPTGROUP") {
+        Array.from(child.children).forEach((opt) => {
+          if (!opt.disabled) list.push({ value: opt.value, label: opt.textContent, group: child.label });
+        });
+      } else if (child.tagName === "OPTION" && !child.disabled) {
+        list.push({ value: child.value, label: child.textContent, group: null });
+      }
+    });
+    return list;
+  }
+
+  // Which department groups are expanded, e.g. "Natural Sciences" — by
+  // group label, so it's the same set no matter which select this is
+  // (picking one course's department open shouldn't reset on re-render).
+  // Starts with whichever group holds the current value already open.
+  const expandedGroups = new Set();
+
+  function groupOfValue(value) {
+    const found = entries().find((e) => e.value === value);
+    return found ? found.group : null;
+  }
+  const startGroup = groupOfValue(select.value);
+  if (startGroup) expandedGroups.add(startGroup);
+
+  function currentLabel() {
+    const opt = select.options[select.selectedIndex];
+    if (!opt || opt.disabled) return "";
+    return opt.value ? `${opt.textContent} (${opt.value})` : opt.textContent;
+  }
+
+  let highlighted = -1;
+
+  function positionPanel() {
+    const rect = wrapper.getBoundingClientRect();
+    panel.style.width = rect.width + "px";
+    const spaceBelow = window.innerHeight - rect.bottom;
+    if (spaceBelow < 240 && rect.top > spaceBelow) {
+      panel.style.top = "";
+      panel.style.bottom = (window.innerHeight - rect.top + 4) + "px";
+    } else {
+      panel.style.bottom = "";
+      panel.style.top = (rect.bottom + 4) + "px";
+    }
+    panel.style.left = rect.left + "px";
+  }
+
+  function makeOptionButton(e, isHighlighted, indented) {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "course-combo-option" + (indented ? " indented" : "");
+    if (e.value === select.value) item.classList.add("active");
+    if (isHighlighted) item.classList.add("highlighted");
+
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "course-combo-option-name";
+    nameSpan.textContent = e.label;
+    item.appendChild(nameSpan);
+    if (e.value) {
+      const codeSpan = document.createElement("span");
+      codeSpan.className = "course-combo-option-code";
+      codeSpan.textContent = e.value;
+      item.appendChild(codeSpan);
+    }
+
+    item.addEventListener("mousedown", (ev) => {
+      ev.preventDefault(); // fires before input's blur would close the panel
+      select.value = e.value;
+      input.value = e.value ? `${e.label} (${e.value})` : e.label;
+      closePanel();
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    return item;
+  }
+
+  // No search text: a compact accordion, one row per department — click
+  // a department to open it instead of scrolling past every course in
+  // every other department to find one.
+  function renderAccordion() {
+    const all = entries();
+    const ungrouped = all.filter((e) => e.group === null);
+    const groupOrder = [];
+    all.forEach((e) => { if (e.group && !groupOrder.includes(e.group)) groupOrder.push(e.group); });
+
+    ungrouped.forEach((e) => panel.appendChild(makeOptionButton(e, false, false)));
+
+    groupOrder.forEach((groupLabel) => {
+      const items = all.filter((e) => e.group === groupLabel);
+      const isOpen = expandedGroups.has(groupLabel);
+
+      const header = document.createElement("button");
+      header.type = "button";
+      header.className = "course-combo-group-header" + (isOpen ? " open" : "");
+      const nameSpan = document.createElement("span");
+      nameSpan.textContent = groupLabel;
+      const countSpan = document.createElement("span");
+      countSpan.className = "course-combo-group-count";
+      countSpan.textContent = items.length;
+      const chevron = document.createElement("span");
+      chevron.className = "course-combo-group-chevron";
+      chevron.textContent = "›";
+      header.append(nameSpan, countSpan, chevron);
+      header.addEventListener("mousedown", (ev) => ev.preventDefault()); // don't blur the input
+      header.addEventListener("click", () => {
+        if (expandedGroups.has(groupLabel)) expandedGroups.delete(groupLabel);
+        else expandedGroups.add(groupLabel);
+        renderPanel(""); // re-render in place, panel stays open
+      });
+      panel.appendChild(header);
+
+      if (isOpen) {
+        items.forEach((e) => panel.appendChild(makeOptionButton(e, false, true)));
+      }
+    });
+
+    highlighted = -1;
+  }
+
+  // With search text: flat, grouped-by-department results, ignoring the
+  // accordion's open/closed state — narrowing the list is the point.
+  function renderSearchResults(q) {
+    const matches = entries().filter((e) => e.label.toLowerCase().includes(q) || e.value.toLowerCase().includes(q));
+    if (!matches.length) {
+      const empty = document.createElement("div");
+      empty.className = "course-combo-empty";
+      empty.textContent = "No matching courses.";
+      panel.appendChild(empty);
+      highlighted = -1;
+      return;
+    }
+    highlighted = 0;
+    let lastGroup;
+    matches.forEach((e, i) => {
+      if (e.group !== lastGroup) {
+        lastGroup = e.group;
+        if (e.group) {
+          const groupEl = document.createElement("div");
+          groupEl.className = "course-combo-group-label";
+          groupEl.textContent = e.group;
+          panel.appendChild(groupEl);
+        }
+      }
+      panel.appendChild(makeOptionButton(e, i === highlighted, false));
+    });
+  }
+
+  function renderPanel(filterText) {
+    const q = (filterText || "").trim().toLowerCase();
+    panel.innerHTML = "";
+    if (q) renderSearchResults(q);
+    else renderAccordion();
+  }
+
+  function moveHighlight(delta) {
+    const items = Array.from(panel.querySelectorAll(".course-combo-option"));
+    if (!items.length) return;
+    items[highlighted]?.classList.remove("highlighted");
+    highlighted = (highlighted + delta + items.length) % items.length;
+    items[highlighted].classList.add("highlighted");
+    items[highlighted].scrollIntoView({ block: "nearest" });
+  }
+
+  function openPanel() {
+    renderPanel("");
+    positionPanel();
+    panel.hidden = false;
+    input.setAttribute("aria-expanded", "true");
+    wrapper.classList.add("open");
+    document.addEventListener("scroll", positionPanel, true);
+    window.addEventListener("resize", positionPanel);
+  }
+
+  function closePanel() {
+    panel.hidden = true;
+    input.setAttribute("aria-expanded", "false");
+    wrapper.classList.remove("open");
+    input.value = currentLabel();
+    document.removeEventListener("scroll", positionPanel, true);
+    window.removeEventListener("resize", positionPanel);
+  }
+
+  input.addEventListener("focus", openPanel);
+  input.addEventListener("input", () => {
+    renderPanel(input.value);
+    positionPanel();
+    panel.hidden = false;
+    wrapper.classList.add("open");
+  });
+  input.addEventListener("blur", () => window.setTimeout(closePanel, 150));
+  input.addEventListener("keydown", (ev) => {
+    if (panel.hidden && (ev.key === "ArrowDown" || ev.key === "ArrowUp")) { openPanel(); return; }
+    if (ev.key === "ArrowDown") { ev.preventDefault(); moveHighlight(1); }
+    else if (ev.key === "ArrowUp") { ev.preventDefault(); moveHighlight(-1); }
+    else if (ev.key === "Enter") {
+      ev.preventDefault();
+      const items = panel.querySelectorAll(".course-combo-option");
+      if (items[highlighted]) items[highlighted].dispatchEvent(new Event("mousedown"));
+    } else if (ev.key === "Escape") {
+      closePanel();
+      input.blur();
+    }
+  });
+
+  input.value = currentLabel();
+}
+
+/** Call after setting a course <select>'s .value from code (not from a
+ *  user click on the combobox) so the visible search box picks it up. */
+function syncCourseSelectDisplay(select) {
+  if (select && select.__comboInput) {
+    const opt = select.options[select.selectedIndex];
+    select.__comboInput.value = opt && !opt.disabled ? opt.textContent : "";
+  }
+}
+
+/* -------------------------------------------------------
    Status banner — one fixed, scrolling banner element shared
    by two independent watchdogs:
 
@@ -365,11 +630,39 @@ function renderStatusBanner(message, variant) {
   banner.className = "db-down-banner"; // reset any previous variant class
   if (variant) banner.classList.add(variant);
   banner.hidden = false;
+  syncBannerSpacing(true);
 }
 
 function hideStatusBanner() {
   if (statusBanner) statusBanner.hidden = true;
+  syncBannerSpacing(false);
 }
+
+// The banner is `position: fixed` so it always stays visible while
+// scrolling, on every page — but that means it floats independently of
+// normal document flow and would otherwise sit on top of (covering) the
+// sticky header, or the top of the auth screens, rather than pushing
+// them down. This measures the banner's real rendered height and pushes
+// everything else down by exactly that much, and — since padding-top
+// alone only affects the page's resting position, not what a sticky
+// element re-snaps to once you scroll past it — also shifts the sticky
+// header's own "stick here" offset so it settles in just below the
+// banner instead of underneath it.
+function syncBannerSpacing(visible) {
+  if (!visible) {
+    document.body.classList.remove("has-banner");
+    return;
+  }
+  requestAnimationFrame(() => {
+    const height = statusBanner ? statusBanner.offsetHeight : 0;
+    document.documentElement.style.setProperty("--banner-height", height + "px");
+    document.body.classList.add("has-banner");
+  });
+}
+
+window.addEventListener("resize", () => {
+  if (statusBanner && !statusBanner.hidden) syncBannerSpacing(true);
+});
 
 function updateStatusBanner() {
   if (lockdownActive) {

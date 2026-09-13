@@ -27,6 +27,9 @@
     // staff account to, or to post a course-scoped announcement for.
     fill(timetableSelect, COURSES.filter((g) => g.label !== 'Staff'));
     fill(announcementSelect, COURSES);
+
+    enhanceCourseSelect(timetableSelect);
+    enhanceCourseSelect(announcementSelect);
   }
 
   function courseNameFor(code) {
@@ -49,6 +52,7 @@
       const label = opt.textContent.replace(/^✓ /, '');
       opt.textContent = uploaded.has(opt.value) ? `✓ ${label}` : label;
     });
+    syncCourseSelectDisplay(sel); // the ✓ above may have just changed the currently-selected option's text
   }
 
   async function init() {
@@ -616,6 +620,7 @@
         toast(`Updated ${s.full_name || 'student'}'s course.`, 'success');
       });
       courseTd.appendChild(courseSelect);
+      enhanceCourseSelect(courseSelect);
       tr.appendChild(courseTd);
 
       const statusTd = document.createElement('td');

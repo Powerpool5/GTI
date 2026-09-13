@@ -39,6 +39,7 @@
 
 <div class="app-shell" id="appShell" hidden>
   <nav class="app-nav" role="tablist" aria-label="Portal sections">
+    <div class="nav-logo"><img src="gti.png" alt="GTI logo"></div>
     <button class="nav-item active" role="tab" aria-selected="true" aria-controls="overview" data-tab="overview">
       <span aria-hidden="true"></span> Overview
     </button>
@@ -48,10 +49,6 @@
 
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="grades" data-tab="grades">
       <span aria-hidden="true"></span> Grades
-    </button>
-
-    <button class="nav-item" role="tab" aria-selected="false" aria-controls="students" data-tab="students">
-      <span aria-hidden="true"></span> Students
     </button>
 
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="course" data-tab="course">
@@ -82,9 +79,23 @@
       <div class="card"><ul class="record-list" id="timetableList"></ul></div>
     </section>
 
+    <section id="grades" class="tab-content">
+      <h2>Grades</h2>
+      <div class="card" id="gpaCard" hidden>
+        <div class="stat-row">
+          <div class="stat-card"><div class="stat-value" id="gpaValue">–</div><div class="stat-label">Overall GPA</div></div>
+        </div>
+      </div>
+      <div class="card"><ul class="record-list" id="gradesList"></ul></div>
+    </section>
+
     <section id="course" class="tab-content">
       <h2>Change course</h2>
       <div class="card">
+        <p class="status-message visible info" role="note">
+          This only updates your course on this site, it doesn't transfer you to a new course.
+          To actually change courses, you'll need to speak to your Head of Department first.
+        </p>
         <form id="courseChangeForm" novalidate>
           <label for="courseChange">Select a course</label>
           <select id="courseChange" required>
