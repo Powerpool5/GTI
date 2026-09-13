@@ -630,39 +630,11 @@ function renderStatusBanner(message, variant) {
   banner.className = "db-down-banner"; // reset any previous variant class
   if (variant) banner.classList.add(variant);
   banner.hidden = false;
-  syncBannerSpacing(true);
 }
 
 function hideStatusBanner() {
   if (statusBanner) statusBanner.hidden = true;
-  syncBannerSpacing(false);
 }
-
-// The banner is `position: fixed` so it always stays visible while
-// scrolling, on every page — but that means it floats independently of
-// normal document flow and would otherwise sit on top of (covering) the
-// sticky header, or the top of the auth screens, rather than pushing
-// them down. This measures the banner's real rendered height and pushes
-// everything else down by exactly that much, and — since padding-top
-// alone only affects the page's resting position, not what a sticky
-// element re-snaps to once you scroll past it — also shifts the sticky
-// header's own "stick here" offset so it settles in just below the
-// banner instead of underneath it.
-function syncBannerSpacing(visible) {
-  if (!visible) {
-    document.body.classList.remove("has-banner");
-    return;
-  }
-  requestAnimationFrame(() => {
-    const height = statusBanner ? statusBanner.offsetHeight : 0;
-    document.documentElement.style.setProperty("--banner-height", height + "px");
-    document.body.classList.add("has-banner");
-  });
-}
-
-window.addEventListener("resize", () => {
-  if (statusBanner && !statusBanner.hidden) syncBannerSpacing(true);
-});
 
 function updateStatusBanner() {
   if (lockdownActive) {

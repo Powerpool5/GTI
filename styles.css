@@ -22,7 +22,6 @@
   --success-bg: #E8F1EC;
   --danger: #B24C3F;
   --danger-bg: #FBEBE8;
-  --banner-height: 0px;
 
   --font-display: "Space Grotesk", "IBM Plex Sans", sans-serif;
   --font-body: "IBM Plex Sans", sans-serif;
@@ -64,7 +63,6 @@ html, body {
   font-size: 16px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  overflow-x: hidden;
 }
 
 body { transition: background 0.2s var(--ease), color 0.2s var(--ease); }
@@ -178,14 +176,14 @@ button, input, select { font-family: inherit; font-size: 1rem; }
 .app-nav {
   width: var(--sidebar-w); flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--paper-line); padding: 20px 0;
   /* Stays put while .app-main scrolls, instead of scrolling away with the
-     page. Offset by the sticky header's own height (plus the maintenance
-     banner's, when one is showing) so it settles in just below both
-     rather than underneath them; --header-height is measured in app.js
-     the same way --banner-height already is. */
+     page. Offset by the sticky header's own height so it settles in just
+     below it. The banner (a normal in-flow block, not sticky) doesn't
+     need to factor in here — once scrolled past, the header is already
+     pinned at the very top on its own. */
   position: sticky;
-  top: calc(var(--banner-height, 0px) + var(--header-height, 58px));
+  top: var(--header-height, 58px);
   align-self: flex-start;
-  max-height: calc(100vh - var(--banner-height, 0px) - var(--header-height, 58px));
+  max-height: calc(100vh - var(--header-height, 58px));
   overflow-y: auto;
 }
 
@@ -678,20 +676,18 @@ table.admin-table .grade-total { display: inline-block; min-width: 48px; font-fa
   .app-header .user-chip span:last-child { max-width: 90px; }
 }
 /* Database-down banner (added by app.js's connectivity watchdog) */
-/* Sticky, not fixed — it's the first element in <body>, so it simply
-   takes up its own real space in normal document flow like anything
-   else. That's what a fixed banner + a JS-measured padding-top guess
-   on <body> was trying to fake, and any mismatch between the guessed
-   height and the real one showed up as a gap under the banner. Sticky
-   needs none of that: the header (next in flow, also sticky) just
-   gets told to park itself right below the banner's real height once
-   both are pinned to the top of the viewport during scroll. */
-body.has-banner .app-header { top: var(--banner-height, 0px); }
-
+/* Plain in-flow block — no fixed/sticky positioning at all. It's the
+   first element in <body>, so it just takes up its own real space and
+   scrolls away with the rest of the page like any other element. A
+   fixed banner paired with a JS-measured padding-top on <body> used to
+   fake this same layout, and any mismatch between the guessed height
+   and the real one left a gap under the banner (worse, sticky/fixed
+   positioning here was fighting with the sticky header for the same
+   spot at scroll-time, which is what caused the gap to only resolve
+   itself after a scroll). A static block can't drift out of sync with
+   its own height, and it never overlaps or covers the header or nav
+   the way a fixed/sticky banner could. */
 .db-down-banner {
-  position: sticky;
-  top: 0;
-  z-index: 9999;
   background: var(--danger, #b3261e);
   color: #fff;
   overflow: hidden;
