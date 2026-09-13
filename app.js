@@ -196,10 +196,25 @@ async function requireAdmin() {
   // Single source of truth: the same has_staff_access() RPC that
   // lecturer-login.js uses, so the two checks can never disagree and
   // bounce back and forth (that disagreement used to cause a redirect
-  // loop between this page and the staff login page).
-  const { data: hasAccess, error: accessError } = await supabaseClient.rpc("has_staff_access");
+  // loop between this page and the staff login page). Root outranks
+  // role though — an account can be granted root (is_super_admin)
+  // without being staff/admin by role (see the Root badge in
+  // admin.html / lecturer-home.html, tracked separately from role) —
+  // so root always counts as access here too, even when
+  // has_staff_access() alone would say no.
+  const [
+    { data: hasAccess, error: accessError },
+    { data: isSuperAdmin },
+  ] = await Promise.all([
+    supabaseClient.rpc("has_staff_access"),
+    supabaseClient.rpc("is_super_admin"),
+  ]);
 
-  if (accessError || hasAccess !== true) {
+  if (accessError && isSuperAdmin !== true) {
+    window.location.href = "lecturer-login.html?denied=1";
+    return null;
+  }
+  if (hasAccess !== true && isSuperAdmin !== true) {
     // Note: this is a UX redirect only. The real gate is the RLS
     // policies on the tables the staff dashboard writes to — even if
     // someone bypassed this redirect, every insert/update/delete call
@@ -209,11 +224,10 @@ async function requireAdmin() {
   }
 
   const { data: isAdmin } = await supabaseClient.rpc("is_admin");
-
-  // is_admin() now returns true for super admins too (root outranks
+  // is_admin() also returns true for super admins (root outranks
   // role), so it alone can't tell an ordinary admin apart from a super
-  // admin for UI purposes like the Root toggle. Fetch that separately.
-  const { data: isSuperAdmin } = await supabaseClient.rpc("is_super_admin");
+  // admin for UI purposes like the Root toggle — isSuperAdmin (above)
+  // covers that distinction.
 
   // Purely for display (name/avatar in the header) — not part of the
   // gate above, so a hiccup here can't kick a real staff/admin back out.
@@ -610,6 +624,43 @@ const CONNECTIVITY_DOWN_MESSAGE =
 const DEFAULT_LOCKDOWN_BANNER_MESSAGE =
   "Lockdown mode is active. Only admins can sign in right now — everyone else will be signed out shortly.";
 
+/* Sticky wrapper for banner + header together. Only created the first
+   time a banner actually needs to show — on the (usual) banner-free
+   path, .app-header keeps its own plain `position: sticky; top: 0`
+   from styles.css and nothing here ever runs. Wrapping them in one
+   sticky container (instead of making the banner sticky on its own)
+   means the browser keeps whatever's currently inside it — header
+   alone, or banner+header — pinned together as a single unit. No
+   height has to be guessed or kept in sync by JS, which is what
+   caused the gap bug the older fixed-banner approach had. */
+function ensureStickyTopWrap() {
+  let wrap = document.getElementById("stickyTopWrap");
+  if (wrap) return wrap;
+  wrap = document.createElement("div");
+  wrap.id = "stickyTopWrap";
+  wrap.className = "sticky-top-wrap";
+  document.body.prepend(wrap);
+  const header = document.querySelector(".app-header");
+  if (header) wrap.appendChild(header); // move it in; banner is prepended ahead of it below
+  return wrap;
+}
+
+/* .app-nav's sticky offset (styles.css) is a fixed --header-height
+   fallback that only ever accounted for the header. Now that a banner
+   can sit above the header inside the same sticky block, the sidebar
+   needs to know the block's real current height, or it'll settle too
+   high (overlapping the banner) whenever one is showing. Only affects
+   desktop, where .app-nav is sticky at all — the mobile layout moves
+   nav to a fixed bottom bar that doesn't use this variable. */
+function updateHeaderHeightVar() {
+  const wrap = document.getElementById("stickyTopWrap");
+  const el = wrap || document.querySelector(".app-header");
+  if (!el) return;
+  const height = Math.round(el.getBoundingClientRect().height);
+  if (height > 0) document.documentElement.style.setProperty("--header-height", height + "px");
+}
+window.addEventListener("resize", updateHeaderHeightVar);
+
 function ensureStatusBanner() {
   if (statusBanner) return statusBanner;
   statusBanner = document.createElement("div");
@@ -619,21 +670,27 @@ function ensureStatusBanner() {
   statusBannerTrack = document.createElement("div");
   statusBannerTrack.className = "db-down-track";
   statusBanner.appendChild(statusBannerTrack);
-  document.body.prepend(statusBanner);
+  ensureStickyTopWrap().prepend(statusBanner); // ahead of the header, not after
   return statusBanner;
 }
 
 function renderStatusBanner(message, variant) {
   const banner = ensureStatusBanner();
-  const padded = "       " + message + "       ";
-  statusBannerTrack.textContent = padded + padded; // repeated so the scroll loop has no gap
+  // A visible separator (not just spaces) between the two repeats —
+  // plain spaces collapse to one when rendered, which is what made a
+  // single message look like it had been sent twice with no gap.
+  const separator = "     •     ";
+  const loop = message + separator;
+  statusBannerTrack.textContent = loop + loop; // repeated so the scroll loop has no gap
   banner.className = "db-down-banner"; // reset any previous variant class
   if (variant) banner.classList.add(variant);
   banner.hidden = false;
+  window.requestAnimationFrame(updateHeaderHeightVar);
 }
 
 function hideStatusBanner() {
   if (statusBanner) statusBanner.hidden = true;
+  window.requestAnimationFrame(updateHeaderHeightVar);
 }
 
 function updateStatusBanner() {

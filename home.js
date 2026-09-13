@@ -59,8 +59,16 @@
     // go to the staff dashboard first, same as staff — the further
     // jump into the Admin Panel itself now lives over there (see the
     // nav in lecturer-home.html), not directly off the student view.
+    //
+    // Root outranks role — an account can be granted root without
+    // being staff/admin by role (see the Root badge in admin.html /
+    // lecturer-home.html, tracked separately from role) — so also show
+    // this link for root even when role is plain "student", or a root
+    // account would pass the dashboard's own access check but never
+    // see a way to get there.
+    const { data: isSuperAdmin } = await supabaseClient.rpc('is_super_admin');
     const dashboardLink = document.getElementById('staffDashboardLink');
-    if (account.role === 'admin' || account.role === 'staff') {
+    if (account.role === 'admin' || account.role === 'staff' || isSuperAdmin === true) {
       dashboardLink.textContent = 'Staff dashboard →';
       dashboardLink.href = 'lecturer-home.html';
       dashboardLink.hidden = false;

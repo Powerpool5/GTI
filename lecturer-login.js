@@ -11,6 +11,20 @@
   document.getElementById('staffForgotPasswordBtn').addEventListener('click', () => showReset(true));
   document.getElementById('staffBackToSignIn').addEventListener('click', () => showReset(false));
 
+  // Root (super admin) outranks role — someone can be granted root
+  // without being staff/admin (see the "Root" badge in admin.html /
+  // lecturer-home.html, which is tracked separately from the role
+  // badge). So this form's gate can't be has_staff_access() alone, or
+  // a root account without the staff/admin role would get turned away
+  // from its own dashboard. Check both and let either one through.
+  async function hasStaffOrRootAccess() {
+    const [{ data: hasAccess }, { data: isSuperAdmin }] = await Promise.all([
+      supabaseClient.rpc('has_staff_access'),
+      supabaseClient.rpc('is_super_admin'),
+    ]);
+    return hasAccess === true || isSuperAdmin === true;
+  }
+
   // requireAdmin() (app.js) sends people here with ?denied=1 when they
   // had a session but no staff access, rather than because they chose
   // "Staff login" themselves — say why, once.
@@ -28,8 +42,7 @@
   // they may be about to sign in with a different, staff, account.)
   supabaseClient.auth.getSession().then(async ({ data: { session } }) => {
     if (!session) return;
-    const { data: hasAccess } = await supabaseClient.rpc('has_staff_access');
-    if (hasAccess === true) window.location.href = 'lecturer-home.html';
+    if (await hasStaffOrRootAccess()) window.location.href = 'lecturer-home.html';
   });
 
   signInForm.addEventListener('submit', async (event) => {
@@ -65,8 +78,9 @@
     // Credentials were fine, but this form is staff-only — check access
     // before letting them further in, and sign back out if they don't
     // have it (rather than leaving a stray non-staff session live here).
-    const { data: hasAccess } = await supabaseClient.rpc('has_staff_access');
-    if (hasAccess !== true) {
+    // Root always counts as access here too, even on an account that
+    // isn't staff/admin by role (see hasStaffOrRootAccess above).
+    if (!(await hasStaffOrRootAccess())) {
       await supabaseClient.auth.signOut();
       setStatus(status, "That account doesn't have staff access. Sign in with a staff or admin account, or use the student sign-in.", 'error');
       submitBtn.disabled = false;

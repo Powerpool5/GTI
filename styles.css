@@ -176,10 +176,11 @@ button, input, select { font-family: inherit; font-size: 1rem; }
 .app-nav {
   width: var(--sidebar-w); flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--paper-line); padding: 20px 0;
   /* Stays put while .app-main scrolls, instead of scrolling away with the
-     page. Offset by the sticky header's own height so it settles in just
-     below it. The banner (a normal in-flow block, not sticky) doesn't
-     need to factor in here — once scrolled past, the header is already
-     pinned at the very top on its own. */
+     page. Offset by the height of the sticky header — and, when a
+     banner is showing above it, the banner too — kept in sync via
+     --header-height, set by app.js's updateHeaderHeightVar(). Not used
+     on mobile, where this nav becomes a fixed bottom bar instead (see
+     the responsive rules below). */
   position: sticky;
   top: var(--header-height, 58px);
   align-self: flex-start;
@@ -696,22 +697,25 @@ table.admin-table .grade-total { display: inline-block; min-width: 48px; font-fa
   .app-header .user-chip span:last-child { display: none; }
 }
 /* Database-down banner (added by app.js's connectivity watchdog) */
-/* Plain in-flow block — no fixed/sticky positioning at all. It's the
-   first element in <body>, so it just takes up its own real space and
-   scrolls away with the rest of the page like any other element. A
-   fixed banner paired with a JS-measured padding-top on <body> used to
-   fake this same layout, and any mismatch between the guessed height
-   and the real one left a gap under the banner (worse, sticky/fixed
-   positioning here was fighting with the sticky header for the same
-   spot at scroll-time, which is what caused the gap to only resolve
-   itself after a scroll). A static block can't drift out of sync with
-   its own height, and it never overlaps or covers the header or nav
-   the way a fixed/sticky banner could. */
+/* Sticky wrapper (added by app.js only once a banner is actually
+   needed) holding the banner and .app-header together as one unit.
+   Sticking the wrapper — rather than the banner or header
+   individually — means whatever it currently contains (header alone,
+   or banner+header) stays pinned as-is; nothing has to compute or
+   guess a height. See ensureStickyTopWrap() in app.js. */
+.sticky-top-wrap {
+  position: sticky;
+  top: 0;
+  z-index: 21;
+}
+.sticky-top-wrap .app-header {
+  position: static; /* the wrapper is what's sticky now */
+}
 .db-down-banner {
   background: var(--danger, #b3261e);
   color: #fff;
   overflow: hidden;
-  white-space: nowrap;
+  white-space: pre; /* like nowrap, but keeps the spaced-out separator between repeats from collapsing to one space */
   padding: 8px 0;
   font-family: var(--font-mono, "IBM Plex Mono", monospace);
   font-weight: 600;
