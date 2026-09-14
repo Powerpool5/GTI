@@ -684,6 +684,20 @@ table.admin-table .grade-total { display: inline-block; min-width: 48px; font-fa
   .nav-logo {
     display: none;
   }
+  /* No actual icon image is ever put in here (still just an empty,
+     aria-hidden span) — it only reserves an 18px-tall invisible box
+     above the label. Harmless on desktop where the label sits next to
+     it, but here the tab is a column, so that empty box sits above the
+     label and pushes it down — the tab reads as bigger than its own
+     text, with the text sitting near the bottom instead of centered.
+     Only lecturer-home.html's tabs include this span at all (the
+     admin/home nav buttons use a bare, class-less span with no
+     reserved size), which is why only the staff dashboard showed it.
+     Simplest fix: don't reserve the space on mobile since nothing's
+     ever drawn there. */
+  .nav-item .nav-icon {
+    display: none;
+  }
   .nav-item {
     /* Base rule sets width:100%, which is what stacked every tab into
        its own full-width row. On mobile this used to force every tab
@@ -698,6 +712,10 @@ table.admin-table .grade-total { display: inline-block; min-width: 48px; font-fa
     width: auto;
     flex: 0 0 auto;
     min-width: 68px;
+    /* Keeps the label centered top-to-bottom in the box (matters once
+       .nav-icon is hidden below — without this, column layout's default
+       justify-content: flex-start leaves the label pinned to the top). */
+    justify-content: center;
     scroll-snap-align: start;
     flex-direction: column;
     gap: 2px;
@@ -726,26 +744,27 @@ table.admin-table .grade-total { display: inline-block; min-width: 48px; font-fa
      text all get trimmed here rather than being left to wrap or shrink
      themselves into something unreadable. */
   .app-header {
+    /* No longer wraps to two rows — brand and header-actions now share
+       one line (see below). flex-wrap stays on as a safety net only,
+       in case a future addition ever genuinely doesn't fit. */
     flex-wrap: wrap;
     row-gap: 8px;
     padding: 10px 14px;
   }
   .app-header h1 { display: none; }
-  /* Centered instead of pinned to the left edge, now that this row
-     never shares space with anything else (the header no longer holds
-     any nav-style links — those moved into the tab bar, see
+  /* Was width:100% + centered, which forced the brand onto its own
+     full row and pushed header-actions (theme toggle/avatar/sign-out)
+     down to a second row underneath. Now that the header no longer
+     holds any nav-style links (those moved into the tab bar — see
      #staffDashboardNavLink / #adminPanelLink / the Student-view link
-     in admin.html's nav). */
+     in admin.html's nav), the brand is small enough to sit on the same
+     line as the rest of the header controls, like on desktop. */
   .app-header .brand {
-    width: 100%;
-    justify-content: center;
     gap: 6px;
   }
   .app-header .header-actions {
     gap: 8px;
-    width: 100%;
-    flex-wrap: wrap;
-    justify-content: flex-end;
+    flex-wrap: nowrap;
   }
 
   /* Sign out was sized like a full desktop button — shrink it to match
