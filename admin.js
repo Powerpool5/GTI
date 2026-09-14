@@ -201,6 +201,12 @@
     if (error) { console.error('Publishing banner failed:', error); setStatus(status, 'Could not publish the banner. Please try again.', 'error'); return; }
 
     invalidateCache('system_status');
+    // Re-render right away instead of waiting on Realtime (or the 30s
+    // safety poll) to echo this write back to us — the admin who just
+    // published shouldn't need to reload, or sit around, to see their
+    // own banner. Other tabs/users still pick it up via Realtime as
+    // before; this only fixes it for the tab that made the change.
+    refreshSystemStatusOnce();
     setStatus(status, 'Banner is now live for everyone.', 'success');
     toast('Site-wide banner published.', 'success');
   });
@@ -222,6 +228,7 @@
     if (error) { console.error('Clearing banner failed:', error); setStatus(status, 'Could not clear the banner. Please try again.', 'error'); return; }
 
     invalidateCache('system_status');
+    refreshSystemStatusOnce(); // see note above — don't wait on Realtime for our own tab
     setStatus(status, 'Banner cleared.', 'success');
     toast('Site-wide banner cleared.', 'success');
   });
@@ -248,6 +255,7 @@
     if (error) { console.error('Updating lockdown mode failed:', error); setStatus(status, 'Could not update lockdown mode. Please try again.', 'error'); return; }
 
     invalidateCache('system_status');
+    refreshSystemStatusOnce(); // see note above — don't wait on Realtime for our own tab
     currentLockdownEnabled = nextValue;
     updateLockdownUi();
     setStatus(status, nextValue ? 'Lockdown enabled.' : 'Lockdown disabled.', 'success');
