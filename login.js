@@ -1,4 +1,15 @@
 (function () {
+  // Built from COURSES (courses-data.js) instead of the old hardcoded
+  // <option> markup, which had drifted out of sync with the codes
+  // admin.html actually uses (e.g. different codes for the same
+  // Electrical courses) — see courses-data.js's own comment. "Staff"
+  // is left out; a student signing up shouldn't be offered it.
+  populateCourseSelect(
+    document.getElementById('signUpCourse'),
+    COURSES.filter((g) => g.label !== 'Staff'),
+    '-- Select a Course --',
+    true
+  );
   enhanceCourseSelect(document.getElementById('signUpCourse'));
 
   const tabSignIn = document.getElementById('tabSignIn');

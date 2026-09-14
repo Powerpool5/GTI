@@ -59,6 +59,19 @@
     const admin = await requireAdmin();
     if (!admin) return;
 
+    // requireAdmin() only confirms staff/admin/root access (it's the
+    // same gate lecturer-home.html uses) — it does not by itself
+    // restrict this page to root. Enforce that here: anyone without
+    // root/super admin is bounced back to the staff dashboard, same
+    // pattern as requireAdmin()'s own redirects. This is still a
+    // UX-layer gate, same as the rest of this page — see the note in
+    // the Overview tab; the real enforcement has to live in the
+    // database's row-level security policies, not here.
+    if (!admin.isSuperAdmin) {
+      window.location.href = 'lecturer-home.html';
+      return;
+    }
+
     currentAdminUserId = admin.session.user.id;
 
     populateCourseSelects();

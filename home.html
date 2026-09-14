@@ -9,7 +9,7 @@
 <title>GTI Student Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=2">
+<link rel="stylesheet" href="styles.css?v=3">
 <script src="theme.js"></script>
 <link rel="icon" type="image/x-icon" href="gti.png">
 
@@ -21,8 +21,7 @@
     <span class="brand-mark">GTI</span>
     <h1>Student Portal</h1>
   </div>
-  <div style="display:flex; align-items:center; gap:16px;">
-    <a href="#" id="staffDashboardLink" class="user-chip" style="text-decoration:none;" hidden></a>
+  <div class="header-actions">
     <button class="btn-icon" id="themeToggleBtn" type="button" aria-label="Toggle dark mode">☾</button>
     <div class="user-chip">
       <span id="avatarSlot"></span>
@@ -54,6 +53,16 @@
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="course" data-tab="course">
       <span aria-hidden="true"></span> Change course
     </button>
+
+    <!-- Not a tab — a real link out to lecturer-home.html. Only shown
+         for staff/admin/root accounts (see loadAccount() in home.js).
+         Used to live in the header, sharing a row with the theme
+         toggle/avatar/sign-out and making that row overflow/wrap on
+         mobile; a tab-styled link here matches how admin.html's
+         nav.html does the same for #adminPanelLink. -->
+    <a class="nav-item" id="staffDashboardNavLink" href="lecturer-home.html" hidden>
+      <span aria-hidden="true"></span> Staff dashboard
+    </a>
   </nav>
 
   <main class="app-main">
@@ -175,6 +184,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="app.js"></script>
+<script src="courses-data.js"></script>
 <script src="home.js"></script>
 </body>
 </html>

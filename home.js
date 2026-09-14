@@ -3,6 +3,19 @@
   const appShell = document.getElementById('appShell');
   const signOutButton = document.getElementById('signOutButton');
   const courseChangeForm = document.getElementById('courseChangeForm');
+  // Built from COURSES (courses-data.js) instead of the old hardcoded
+  // <option> markup, which had drifted out of sync with the codes
+  // admin.html actually uses — see courses-data.js's own comment and
+  // the matching fix in login.js. "Staff" is left out, same as
+  // sign-up; a student changing course shouldn't be offered it. Not
+  // marking the placeholder disabled, matching this form's original
+  // (selectable, non-disabled) blank option.
+  populateCourseSelect(
+    document.getElementById('courseChange'),
+    COURSES.filter((g) => g.label !== 'Staff'),
+    '-- Select a Course --',
+    false
+  );
   enhanceCourseSelect(document.getElementById('courseChange'));
 
   // Filled in by loadAccount() once the profile is loaded.
@@ -67,10 +80,8 @@
     // account would pass the dashboard's own access check but never
     // see a way to get there.
     const { data: isSuperAdmin } = await supabaseClient.rpc('is_super_admin');
-    const dashboardLink = document.getElementById('staffDashboardLink');
+    const dashboardLink = document.getElementById('staffDashboardNavLink');
     if (account.role === 'admin' || account.role === 'staff' || isSuperAdmin === true) {
-      dashboardLink.textContent = 'Staff dashboard →';
-      dashboardLink.href = 'lecturer-home.html';
       dashboardLink.hidden = false;
     }
 

@@ -331,6 +331,48 @@ function renderAvatar(container, name, avatarUrl) {
    changes don't fire 'change' or mutate the DOM, so there's nothing
    else for this to observe.
    ------------------------------------------------------- */
+
+/**
+ * Fills a course <select> with <optgroup>/<option> elements built
+ * straight from COURSES (courses-data.js) — the one source of truth
+ * course codes/names are supposed to come from everywhere. Call this
+ * before enhanceCourseSelect() so the combobox it builds reflects the
+ * same list.
+ *
+ * `groups` defaults to the full COURSES list; pass a filtered copy to
+ * leave some out (e.g. sign-up and "change course" exclude the
+ * "Staff" group, same as the timetable picker in admin.js does, since
+ * it isn't a real course a student would pick).
+ *
+ * `placeholderText`, if given, adds a leading empty option (selected
+ * by default); pass `placeholderDisabled: true` to make it
+ * unselectable once a real choice is made, matching how sign-up's
+ * placeholder behaved before this was hardcoded markup.
+ */
+function populateCourseSelect(select, groups, placeholderText, placeholderDisabled) {
+  if (!select) return;
+  select.innerHTML = "";
+  if (placeholderText !== undefined) {
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.selected = true;
+    if (placeholderDisabled) placeholder.disabled = true;
+    placeholder.textContent = placeholderText;
+    select.appendChild(placeholder);
+  }
+  (groups || COURSES).forEach((group) => {
+    const optgroup = document.createElement("optgroup");
+    optgroup.label = group.label;
+    group.options.forEach((opt) => {
+      const option = document.createElement("option");
+      option.value = opt.value;
+      option.textContent = opt.label;
+      optgroup.appendChild(option);
+    });
+    select.appendChild(optgroup);
+  });
+}
+
 function enhanceCourseSelect(select) {
   if (!select || select.dataset.enhanced) return;
   select.dataset.enhanced = "1";

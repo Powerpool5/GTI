@@ -5,6 +5,47 @@
   const supportTicketForm = document.getElementById('supportTicketForm');
   let currentUserProfile = {};
 
+  /* ---------------- "New response" tracking ----------------
+     There's no DB column for this — it's just a per-browser,
+     per-account memory (localStorage) of the responded_at we've
+     already shown the person for each of their tickets. Anything
+     with a newer responded_at than what's stored counts as unseen,
+     which drives the Support nav badge, a toast on load, and a
+     "New" tag on the ticket itself. Purely a display convenience;
+     it doesn't touch the ticket rows in Postgres. */
+  let lastMyTicketsRows = [];
+
+  function seenResponsesKey() {
+    return `gti-seen-ticket-responses-${currentUserId}`;
+  }
+  function getSeenResponses() {
+    try { return JSON.parse(localStorage.getItem(seenResponsesKey())) || {}; }
+    catch { return {}; }
+  }
+  function getUnseenResponses(rows) {
+    const seen = getSeenResponses();
+    return rows.filter((t) => t.admin_response && seen[t.id] !== t.responded_at);
+  }
+  function updateSupportBadge(unseenCount) {
+    const badge = document.getElementById('supportNavBadge');
+    if (!badge) return;
+    if (unseenCount > 0) {
+      badge.textContent = String(unseenCount);
+      badge.hidden = false;
+    } else {
+      badge.hidden = true;
+    }
+  }
+  function markResponsesSeen(rows) {
+    const seen = getSeenResponses();
+    rows.forEach((t) => { if (t.admin_response) seen[t.id] = t.responded_at; });
+    try { localStorage.setItem(seenResponsesKey(), JSON.stringify(seen)); } catch {}
+    updateSupportBadge(0);
+    // Drop the inline "New" tags immediately too, rather than waiting
+    // for the list to reload.
+    document.querySelectorAll('#ticketsList .ticket-new-tag').forEach((el) => el.remove());
+  }
+
 
   function populateCourseSelects() {
     document.querySelectorAll('select.course-select-target').forEach((select) => {
@@ -137,37 +178,31 @@
       .select('id, full_name, student_id, email, course_code, course_name, role, verified, last_active_at, deactivated_at, created_at, is_super_admin')
       .order('created_at', { ascending: false });
 
-    const tbody = document.getElementById('studentsTbody');
     if (error) {
       console.error('Loading accounts failed:', error);
-      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Could not load accounts right now.</td></tr>';
+      document.getElementById('studentsTbody').innerHTML = '<tr><td colspan="8" class="empty-state">Could not load accounts right now.</td></tr>';
+      document.getElementById('staffTbody').innerHTML = '<tr><td colspan="8" class="empty-state">Could not load accounts right now.</td></tr>';
       return;
     }
     // Visibility is handled by RLS now (see the staff-visibility
     // migration) — anyone with staff access can see every account,
     // including admins and root. This list no longer filters anything
-    // out client-side.
+    // out client-side. The two tabs below (Students / Staff) each pick
+    // their own slice of allProfiles by role.
     allProfiles = data || [];
     renderStudents();
+    renderStaff();
   }
 
-  function renderStudents() {
-    const q = document.getElementById('studentSearch').value.trim().toLowerCase();
-    const tbody = document.getElementById('studentsTbody');
-    tbody.innerHTML = '';
+  function matchesProfileSearch(p, q) {
+    if (!q) return true;
+    return [p.full_name, p.email, p.student_id].some((v) => (v || '').toLowerCase().includes(q));
+  }
 
-    const rows = allProfiles.filter((p) => {
-      if (!q) return true;
-      return [p.full_name, p.email, p.student_id].some((v) => (v || '').toLowerCase().includes(q));
-    });
-
-    if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No matching accounts.</td></tr>';
-      return;
-    }
-
-    rows.forEach((p) => {
-      const tr = document.createElement('tr');
+  // Shared by the Students and Staff tabs — same columns, just a
+  // different filter feeding in above.
+  function buildProfileRow(p) {
+    const tr = document.createElement('tr');
 
       [p.full_name || '—', p.student_id || '—', p.email || '—', p.course_name || 'Not selected'].forEach((text) => {
         const td = document.createElement('td');
@@ -235,7 +270,66 @@
       actionsTd.appendChild(editBtn);
       tr.appendChild(actionsTd);
 
-      tbody.appendChild(tr);
+    return tr;
+  }
+
+  function renderStudents() {
+    const q = document.getElementById('studentSearch').value.trim().toLowerCase();
+    const courseFilter = document.getElementById('studentCourseFilter').value;
+    const tbody = document.getElementById('studentsTbody');
+    tbody.innerHTML = '';
+
+    const rows = allProfiles.filter((p) => {
+      if (p.role !== 'student') return false;
+      if (courseFilter && p.course_code !== courseFilter) return false;
+      return matchesProfileSearch(p, q);
+    });
+
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No matching students.</td></tr>';
+      return;
+    }
+
+    rows.forEach((p) => tbody.appendChild(buildProfileRow(p)));
+  }
+
+  function renderStaff() {
+    const q = document.getElementById('staffSearch').value.trim().toLowerCase();
+    const tbody = document.getElementById('staffTbody');
+    tbody.innerHTML = '';
+
+    const rows = allProfiles.filter((p) => {
+      if (p.role !== 'staff' && p.role !== 'admin') return false;
+      return matchesProfileSearch(p, q);
+    });
+
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No matching staff.</td></tr>';
+      return;
+    }
+
+    rows.forEach((p) => tbody.appendChild(buildProfileRow(p)));
+  }
+
+  function populateStudentCourseFilter() {
+    const select = document.getElementById('studentCourseFilter');
+    select.innerHTML = '';
+    const allOpt = document.createElement('option');
+    allOpt.value = '';
+    allOpt.textContent = 'All courses';
+    select.appendChild(allOpt);
+    // Staff isn't a real course with students on it, so it's left out
+    // here the same way it's left out of gradesCourseSelect above.
+    COURSES.filter((g) => g.label !== 'Staff').forEach((group) => {
+      const optgroup = document.createElement('optgroup');
+      optgroup.label = group.label;
+      group.options.forEach((opt) => {
+        const option = document.createElement('option');
+        option.value = opt.value;
+        option.textContent = opt.label;
+        optgroup.appendChild(option);
+      });
+      select.appendChild(optgroup);
     });
   }
 
@@ -291,7 +385,10 @@
   });
 
   document.getElementById('studentSearch').addEventListener('input', renderStudents);
+  document.getElementById('studentCourseFilter').addEventListener('change', renderStudents);
   document.getElementById('studentRefresh').addEventListener('click', loadStudents);
+  document.getElementById('staffSearch').addEventListener('input', renderStaff);
+  document.getElementById('staffRefresh').addEventListener('click', loadStudents);
   document.getElementById('studentEditCancel').addEventListener('click', closeStudentEdit);
   document.getElementById('studentModalClose').addEventListener('click', closeStudentEdit);
 
@@ -683,10 +780,14 @@
   }
 
   let currentGradesCourse = '';
+  let currentGradesStudents = [];
+  let currentGradesByStudent = new Map();
 
   async function loadGrades(courseCode) {
     currentGradesCourse = courseCode;
     const tbody = document.getElementById('gradesTbody');
+    currentGradesStudents = [];
+    currentGradesByStudent = new Map();
     if (!courseCode) { tbody.innerHTML = '<tr><td colspan="10" class="empty-state">Select a course to input grades.</td></tr>'; return; }
     tbody.innerHTML = '<tr><td colspan="10"><div class="skeleton skeleton-line"></div></td></tr>';
 
@@ -703,7 +804,6 @@
         .eq('course_code', courseCode),
     ]);
 
-    tbody.innerHTML = '';
     if (studentsRes.error) {
       console.error('Loading students for grades failed:', studentsRes.error);
       tbody.innerHTML = '<tr><td colspan="10" class="empty-state">Could not load students.</td></tr>';
@@ -711,14 +811,31 @@
     }
     if (gradesRes.error) console.error('Loading existing grades failed:', gradesRes.error);
 
-    const students = studentsRes.data || [];
-    if (!students.length) {
+    currentGradesStudents = studentsRes.data || [];
+    currentGradesByStudent = new Map((gradesRes.data || []).map((g) => [g.student_id, g]));
+    renderGradesTable();
+  }
+
+  function renderGradesTable() {
+    const tbody = document.getElementById('gradesTbody');
+    tbody.innerHTML = '';
+
+    if (!currentGradesStudents.length) {
       tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No students are on this course yet.</td></tr>';
       return;
     }
 
-    const gradeByStudent = new Map((gradesRes.data || []).map((g) => [g.student_id, g]));
-    students.forEach((s) => renderGradeRow(s, gradeByStudent.get(s.id)));
+    const q = document.getElementById('gradesSearch').value.trim().toLowerCase();
+    const rows = q
+      ? currentGradesStudents.filter((s) => (s.full_name || '').toLowerCase().includes(q) || (s.student_id || '').toLowerCase().includes(q))
+      : currentGradesStudents;
+
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No matching students.</td></tr>';
+      return;
+    }
+
+    rows.forEach((s) => renderGradeRow(s, currentGradesByStudent.get(s.id)));
   }
 
   function renderGradeRow(student, existing) {
@@ -825,6 +942,7 @@
 
   document.getElementById('gradesCourseSelect').addEventListener('change', (e) => loadGrades(e.target.value));
   document.getElementById('gradesRefresh').addEventListener('click', () => loadGrades(currentGradesCourse));
+  document.getElementById('gradesSearch').addEventListener('input', renderGradesTable);
 
   /* ---------------- Maintenance banner (admin only) ---------------- */
 
@@ -898,7 +1016,7 @@
   // stay fully expanded. `extraContent`, if given, is appended inside
   // the (always-visible-once-expanded) body — used by the admin "All
   // tickets" view to attach its status/response controls.
-  function renderTicketItem(t, { who, extraContent } = {}) {
+  function renderTicketItem(t, { who, extraContent, isNew } = {}) {
     const badge = document.createElement('span');
     badge.className = 'badge ' + (ticketStatusBadge[t.status] || 'badge-unverified');
     badge.textContent = ticketStatusLabel[t.status] || 'Open';
@@ -923,6 +1041,13 @@
       reply.style.marginTop = '8px';
       reply.style.paddingTop = '8px';
       reply.style.borderTop = '1px dashed var(--paper-line)';
+      if (isNew) {
+        const newTag = document.createElement('span');
+        newTag.className = 'badge badge-staff ticket-new-tag';
+        newTag.style.marginRight = '6px';
+        newTag.textContent = 'New';
+        reply.appendChild(newTag);
+      }
       const replyLabel = document.createElement('strong');
       replyLabel.textContent = 'Response: ';
       reply.appendChild(replyLabel);
@@ -986,7 +1111,7 @@
     const list = document.getElementById('ticketsList');
     const { data, error } = await supabaseClient
       .from('support_tickets')
-      .select('id, subject, body, status, attachment_url, admin_response, created_at')
+      .select('id, subject, body, status, attachment_url, admin_response, responded_at, created_at')
       .eq('user_id', currentUserId)
       .order('created_at', { ascending: false })
       .limit(20);
@@ -998,12 +1123,28 @@
       return;
     }
     const rows = data || [];
+    lastMyTicketsRows = rows;
+
     if (!rows.length) {
       list.innerHTML = '<li class="empty-state">No tickets submitted yet.</li>';
+      updateSupportBadge(0);
       return;
     }
 
-    rows.forEach((t) => list.appendChild(renderTicketItem(t)));
+    const unseen = getUnseenResponses(rows);
+    const unseenIds = new Set(unseen.map((t) => t.id));
+    updateSupportBadge(unseen.length);
+
+    rows.forEach((t) => list.appendChild(renderTicketItem(t, { isNew: unseenIds.has(t.id) })));
+
+    // Only nudge with a toast the first time this loads with something
+    // unseen — clicking into Support (see the nav listener below)
+    // clears them, so this won't re-fire on every reload.
+    if (unseen.length === 1) {
+      toast(`You have a new response on "${unseen[0].subject}".`, 'info', 6000);
+    } else if (unseen.length > 1) {
+      toast(`You have new responses on ${unseen.length} tickets.`, 'info', 6000);
+    }
   }
 
   async function loadAllTickets() {
@@ -1103,6 +1244,14 @@
   }
   document.getElementById('adminTicketsRefresh').addEventListener('click', loadAllTickets);
 
+  // Opening the Support tab means they've seen their responses —
+  // clear the nav badge and the per-ticket "New" tags right away
+  // rather than waiting for a data refetch.
+  const supportNavItem = document.querySelector('.nav-item[data-tab="support"]');
+  if (supportNavItem) {
+    supportNavItem.addEventListener('click', () => markResponsesSeen(lastMyTicketsRows));
+  }
+
   function resetTicketForm() {
     supportTicketForm.reset();
     document.getElementById('ticketName').value = currentUserProfile.full_name || '';
@@ -1192,9 +1341,14 @@
     document.getElementById('headerName').textContent = admin.profile.full_name || admin.session.user.email || '';
     renderAvatar(document.getElementById('avatarSlot'), admin.profile.full_name || admin.session.user.email, admin.profile.avatar_url);
     document.getElementById('adminTicketsSection').hidden = !currentUserIsAdmin;
-    document.getElementById('adminPanelLink').hidden = !currentUserIsAdmin;
+    // Root/super admin only — being a plain "admin" is no longer
+    // enough to see this link. (admin.js enforces the same rule on
+    // admin.html itself, in case someone bookmarks or types the URL
+    // directly instead of clicking this link.)
+    document.getElementById('adminPanelLink').hidden = !currentUserIsSuperAdmin;
 
     populateCourseSelects();
+    populateStudentCourseFilter();
     document.getElementById('timetableCourseSelect').addEventListener('change', (e) => loadTimetable(e.target.value));
     markUploadedTimetableCourses();
 

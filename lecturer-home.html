@@ -9,7 +9,7 @@
 <title>Staff Dashboard - GTI Staff Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=2">
+<link rel="stylesheet" href="styles.css?v=3">
 <script src="theme.js"></script>
 <link rel="icon" type="image/x-icon" href="gti.png">
 </head>
@@ -19,10 +19,8 @@
   <div class="brand">
     <span class="brand-mark">GTI STAFF</span>
     <h1>Staff Dashboard</h1>
-     <a href="lecturer-home.html" class="logo-link">
-    </a>
   </div>
-  <div class="header-actions" style="display:flex;align-items:center;gap:16px;">
+  <div class="header-actions">
     <button class="btn-icon" id="themeToggleBtn" type="button" aria-label="Toggle dark mode">☾</button>
     <div class="user-chip"><span id="avatarSlot"></span><span id="headerName"></span></div>
     <button class="btn btn-secondary" id="signOutButton" type="button" hidden style="border-color:rgba(255,255,255,0.4); color:#fff;">Sign out</button>
@@ -40,6 +38,9 @@
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="students" data-tab="students">
       <span class="nav-icon" aria-hidden="true"></span> Students
     </button>
+    <button class="nav-item" role="tab" aria-selected="false" aria-controls="staff" data-tab="staff">
+      <span class="nav-icon" aria-hidden="true"></span> Staff
+    </button>
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="announcements" data-tab="announcements">
       <span class="nav-icon" aria-hidden="true"></span> Announcements
     </button>
@@ -55,6 +56,7 @@
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="support"
       data-tab="support">
       <span class="nav-icon" aria-hidden="true"></span> Support
+      <span class="nav-badge" id="supportNavBadge" hidden></span>
     </button>
 
     <!-- Not a tab — a real link out to admin.html. Shown only for admins
@@ -110,10 +112,11 @@
 
     <!-- STUDENTS -->
     <section id="students" class="tab-content">
-      <h2>Students &amp; staff</h2>
+      <h2>Students</h2>
       <div class="card">
         <div class="search-row">
-          <input type="search" id="studentSearch" placeholder="Search by name, email, or student ID">
+          <input type="search" id="studentSearch" placeholder="Search by name, email, or student ID…">
+          <select id="studentCourseFilter" style="max-width:260px;"></select>
           <button type="button" class="btn btn-secondary btn-sm" id="studentRefresh">Refresh</button>
         </div>
         <div class="table-wrap">
@@ -125,13 +128,30 @@
       </div>
     </section>
 
+    <!-- STAFF -->
+    <section id="staff" class="tab-content">
+      <h2>Staff</h2>
+      <div class="card">
+        <div class="search-row">
+          <input type="search" id="staffSearch" placeholder="Search by name or email…">
+          <button type="button" class="btn btn-secondary btn-sm" id="staffRefresh">Refresh</button>
+        </div>
+        <div class="table-wrap">
+          <table class="admin-table">
+            <thead><tr><th>Name</th><th>Student ID</th><th>Email</th><th>Course</th><th>Role</th><th>Root</th><th>Status</th><th></th></tr></thead>
+            <tbody id="staffTbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
 
     <!-- SUPPORT -->
     <section id="support" class="tab-content">
       <h2>Support</h2>
       <div class="card">
         <p style="margin:0 0 14px; color:var(--slate); font-size:0.9rem;">
-          Submit a ticket and we'll get back to you — no need to leave the dashboard.
+          Submit a ticket and we'll get back to you, please give as much detail as possible. You can also attach a screenshot or photo of the issue.
           Your name, ID, and course are attached automatically.
         </p>
         <form id="supportTicketForm" novalidate>
@@ -184,6 +204,7 @@
           <select id="gradesCourseSelect" class="course-select-target" style="max-width:320px;">
             <option value="" disabled selected>-- Select a course --</option>
           </select>
+          <input type="search" id="gradesSearch" placeholder="Search by name or student ID…">
           <button type="button" class="btn btn-secondary btn-sm" id="gradesRefresh">Refresh</button>
         </div>
         <div class="table-wrap">
@@ -324,7 +345,7 @@
       <label for="timetableFileUpload">Or upload a picture/PDF of the timetable</label>
       <input type="file" id="timetableFileUpload" accept="image/*,.pdf">
       <p class="field-hint" id="timetableUploadStatus"></p>
-      <p class="field-hint">Provide a link or upload a file — at least one is required.</p>
+      <p class="field-hint">Provide a link or upload a file - at least one is required.</p>
 
       <p class="status-message" id="timetableFormStatus" role="alert"></p>
       <button type="submit" class="btn btn-block" id="timetableSubmit">Save entry</button>

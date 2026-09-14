@@ -123,6 +123,8 @@ button, input, select { font-family: inherit; font-size: 1rem; }
 
 .app-header .brand { display: flex; align-items: baseline; gap: 10px; }
 
+.app-header .header-actions { display: flex; align-items: center; gap: 16px; }
+
 .app-header .brand-mark {
   font-family: var(--font-mono);
   font-size: 0.75rem;
@@ -236,6 +238,13 @@ button, input, select { font-family: inherit; font-size: 1rem; }
   cursor: pointer;
   transition: background 0.15s var(--ease), color 0.15s var(--ease);
 }
+/* Without this, the hidden attribute does nothing on nav items: the
+   rule above always sets display:flex, which (being an author
+   stylesheet rule) beats the browser's built-in [hidden]->display:none
+   default even though it's not aimed at [hidden] elements specifically.
+   Affects every conditionally-shown nav item — Admin panel link,
+   System tab, staff dashboard link — not just one. */
+.nav-item[hidden] { display: none; }
 .nav-item:hover { background: var(--blueprint-soft); color: var(--ink-navy); }
 [data-theme="dark"] .nav-item:hover, [data-theme="dark"] .nav-item.active { color: var(--ink); }
 .nav-item.active { border-left-color: var(--brass); background: var(--blueprint-soft); color: var(--ink-navy); font-weight: 600; }
@@ -602,8 +611,10 @@ table.admin-table select, table.admin-table input { margin-bottom: 0; }
 table.admin-table input[type="number"] { width: 72px; text-align: right; }
 table.admin-table .grade-total { display: inline-block; min-width: 48px; font-family: var(--font-mono); font-weight: 600; text-align: right; }
 
-.search-row { display: flex; gap: 10px; margin-bottom: 16px; }
+.search-row { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
 .search-row input { margin-bottom: 0; }
+.search-row select { margin-bottom: 0; }
+.search-row .course-combo { margin-bottom: 0; flex: 1; min-width: 200px; }
 
 .modal-backdrop {
   position: fixed; inset: 0; background: rgba(14, 109, 209, 0.55);
@@ -720,30 +731,21 @@ table.admin-table .grade-total { display: inline-block; min-width: 48px; font-fa
     padding: 10px 14px;
   }
   .app-header h1 { display: none; }
-  .app-header .brand { gap: 6px; }
-  /* admin.html has one more item here than home.html/lecturer-home.html
-     (the "← Student view" link), which was enough to overflow this
-     row on mobile — the whole group doesn't wrap internally, it's one
-     flex item, so anything past the edge (usually the sign-out button)
-     just got squeezed or cut off instead of landing at a clear trailing
-     edge. Giving the group its own full-width row and letting it wrap
-     + right-align internally fixes that for admin.html and is a no-op
-     for the other pages, which already fit on one line. */
-  .app-header > div:last-child {
+  /* Centered instead of pinned to the left edge, now that this row
+     never shares space with anything else (the header no longer holds
+     any nav-style links — those moved into the tab bar, see
+     #staffDashboardNavLink / #adminPanelLink / the Student-view link
+     in admin.html's nav). */
+  .app-header .brand {
+    width: 100%;
+    justify-content: center;
+    gap: 6px;
+  }
+  .app-header .header-actions {
     gap: 8px;
     width: 100%;
     flex-wrap: wrap;
     justify-content: flex-end;
-  }
-
-  /* The dashboard-switch link ("Admin panel →" / "Staff dashboard →" /
-     "← Student view") was wrapping its own text across two lines when
-     the row got tight. Keep it on one line and let the *whole chip*
-     drop to the row below (the header already wraps) instead. */
-  .app-header a.user-chip {
-    white-space: nowrap;
-    flex-shrink: 0;
-    font-size: 0.78rem;
   }
 
   /* Sign out was sized like a full desktop button — shrink it to match

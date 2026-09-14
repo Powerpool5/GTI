@@ -9,7 +9,7 @@
 <title>Admin - GTI Student Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=2">
+<link rel="stylesheet" href="styles.css?v=3">
 <script src="theme.js"></script>
 <link rel="icon" type="image/x-icon" href="gti.png">
 
@@ -21,10 +21,9 @@
     <a class="brand-link" href="home.html" style="color:#fff;"><span class="brand-mark">GTI Admin </span></a>
     <h1>Admin Panel</h1>
   </div>
-  <div style="display:flex; align-items:center; gap:16px;">
-    <a href="home.html" class="user-chip" style="text-decoration:none;">← Student view</a>
-    <div class="user-chip"><span id="avatarSlot"></span><span id="headerEmail"></span></div>
+  <div class="header-actions">
     <button class="btn-icon" id="themeToggleBtn" type="button" aria-label="Switch to dark mode">☾</button>
+    <div class="user-chip"><span id="avatarSlot"></span><span id="headerEmail"></span></div>
     <button class="btn btn-secondary" id="signOutButton" type="button" hidden style="border-color:rgba(255,255,255,0.4); color:#fff;">Sign out</button>
   </div>
 </header>
@@ -52,6 +51,15 @@
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="system" data-tab="system" id="systemNavItem" hidden>
       <span aria-hidden="true"></span> System
     </button>
+    <!-- Not a tab — a real link back to home.html, same pattern as
+         home.html's #staffDashboardNavLink and lecturer-home.html's
+         #adminPanelLink. Used to live in the header, sharing a row
+         with the avatar/theme toggle/sign-out and making that row
+         wrap or crowd on mobile. Always shown (unlike those two) since
+         admin.html is only reachable by staff/admin/root already. -->
+    <a class="nav-item" href="home.html">
+      <span aria-hidden="true"></span> Student view
+    </a>
   </nav>
 
   <main class="app-main wide">
