@@ -18,10 +18,7 @@
   // a root account without the staff/admin role would get turned away
   // from its own dashboard. Check both and let either one through.
   async function hasStaffOrRootAccess() {
-    const [{ data: hasAccess }, { data: isSuperAdmin }] = await Promise.all([
-      supabaseClient.rpc('has_staff_access'),
-      supabaseClient.rpc('is_super_admin'),
-    ]);
+    const [hasAccess, isSuperAdmin] = await Promise.all([getStaffAccess(), getIsSuperAdmin()]);
     return hasAccess === true || isSuperAdmin === true;
   }
 

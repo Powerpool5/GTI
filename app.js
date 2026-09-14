@@ -123,6 +123,79 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 /* -------------------------------------------------------
+   Tiny shared read cache — every page loads this file, so it's the
+   one place a cache can actually be shared across the functions that
+   independently ask for the same thing. Two things land here:
+
+   1. system_status — checkLockdownBlock() below, the maintenance
+      poll further down, and admin.js's own System tab were each
+      firing their own independent read of the same single row,
+      often within the same second of each other on page load.
+   2. has_staff_access / is_admin / is_super_admin — cheap RPCs, but
+      requireAdmin() alone calls all three, and lecturer-login.js
+      calls two of them again right after sign-in. The role behind
+      them doesn't change mid-session in practice.
+
+   Deliberately NOT a general-purpose data cache — announcements,
+   grades, timetable etc. are personalized/RLS-scoped and only ever
+   fetched once per page load anyway, so there's nothing to dedupe
+   there. TTLs are short; callers that need certainty immediately
+   after a write (admin.js publishing a banner, toggling lockdown)
+   call invalidateCache() for that key rather than trust the TTL.
+   ------------------------------------------------------- */
+const _cache = new Map(); // key -> { value: Promise, expires: number }
+
+function cached(key, ttlMs, fetcher) {
+  const now = Date.now();
+  const hit = _cache.get(key);
+  if (hit && hit.expires > now) return hit.value;
+  const value = Promise.resolve().then(fetcher).catch((err) => { _cache.delete(key); throw err; });
+  _cache.set(key, { value, expires: now + ttlMs });
+  return value;
+}
+
+function invalidateCache(key) {
+  if (key) _cache.delete(key);
+  else _cache.clear();
+}
+
+const SYSTEM_STATUS_CACHE_TTL_MS = 4000; // just under the 5s banner poll below, so it stays effectively live
+const ROLE_CACHE_TTL_MS = 30000;
+
+/** The single system_status row (id=1), used by the lockdown check,
+ *  the maintenance/lockdown banner poll, and admin.html's System tab. */
+function getSystemStatus() {
+  return cached("system_status", SYSTEM_STATUS_CACHE_TTL_MS, async () => {
+    const { data, error } = await supabaseClient
+      .from("system_status")
+      .select("maintenance_mode, maintenance_message, banner_style, lockdown_enabled, lockdown_message, lockdown_style")
+      .eq("id", 1)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  });
+}
+
+function getStaffAccess() {
+  return cached("rpc:has_staff_access", ROLE_CACHE_TTL_MS, async () => {
+    const { data } = await supabaseClient.rpc("has_staff_access");
+    return data;
+  });
+}
+function getIsAdmin() {
+  return cached("rpc:is_admin", ROLE_CACHE_TTL_MS, async () => {
+    const { data } = await supabaseClient.rpc("is_admin");
+    return data;
+  });
+}
+function getIsSuperAdmin() {
+  return cached("rpc:is_super_admin", ROLE_CACHE_TTL_MS, async () => {
+    const { data } = await supabaseClient.rpc("is_super_admin");
+    return data;
+  });
+}
+
+/* -------------------------------------------------------
    Lockdown mode — a root-only kill switch (system_status.lockdown_enabled)
    that blocks everyone except admins from being in the portal. Toggled
    from the "System" tab in admin.html.
@@ -144,14 +217,10 @@ const DEFAULT_LOCKDOWN_MESSAGE =
  */
 async function checkLockdownBlock() {
   try {
-    const { data, error } = await supabaseClient
-      .from("system_status")
-      .select("lockdown_enabled, lockdown_message")
-      .eq("id", 1)
-      .maybeSingle();
-    if (error || !data || data.lockdown_enabled !== true) return null;
+    const data = await getSystemStatus();
+    if (!data || data.lockdown_enabled !== true) return null;
 
-    const { data: isAdmin } = await supabaseClient.rpc("is_admin");
+    const isAdmin = await getIsAdmin();
     if (isAdmin === true) return null; // admins and root always get through
 
     await supabaseClient.auth.signOut();
@@ -202,13 +271,12 @@ async function requireAdmin() {
   // admin.html / lecturer-home.html, tracked separately from role) —
   // so root always counts as access here too, even when
   // has_staff_access() alone would say no.
-  const [
-    { data: hasAccess, error: accessError },
-    { data: isSuperAdmin },
-  ] = await Promise.all([
-    supabaseClient.rpc("has_staff_access"),
-    supabaseClient.rpc("is_super_admin"),
-  ]);
+  let hasAccess, isSuperAdmin, accessError;
+  try {
+    [hasAccess, isSuperAdmin] = await Promise.all([getStaffAccess(), getIsSuperAdmin()]);
+  } catch (err) {
+    accessError = err;
+  }
 
   if (accessError && isSuperAdmin !== true) {
     window.location.href = "lecturer-login.html?denied=1";
@@ -223,7 +291,7 @@ async function requireAdmin() {
     return null;
   }
 
-  const { data: isAdmin } = await supabaseClient.rpc("is_admin");
+  const isAdmin = await getIsAdmin();
   // is_admin() also returns true for super admins (root outranks
   // role), so it alone can't tell an ordinary admin apart from a super
   // admin for UI purposes like the Root toggle — isSuperAdmin (above)
@@ -750,7 +818,8 @@ function updateStatusBanner() {
 /* --- 1. Connectivity watchdog (automatic) --- */
 let dbDownFailureStreak = 0;
 const DB_DOWN_FAILURE_THRESHOLD = 2; // require 2 consecutive failed checks before alarming, to ignore a single blip
-const DB_HEALTHY_RECHECK_MS = 8000;  // how often to check while things look fine
+const DB_HEALTHY_RECHECK_MS = 20000; // how often to check while things look fine
+const DB_HEALTHY_RECHECK_JITTER_MS = 5000; // spread out so many open tabs don't all poll in lockstep
 const DB_RETRY_RECHECK_MS = 1500;    // how often to recheck while a check just failed — fast, so both alarming and recovery happen quickly
 const DB_HEALTH_CHECK_TIMEOUT_MS = 3000;
 
@@ -785,34 +854,61 @@ async function checkDbHealth() {
 
   // Recheck sooner while things are failing (to alarm fast, and to notice
   // recovery fast too) than while things are healthy (no need to hammer it).
-  window.setTimeout(checkDbHealth, healthy ? DB_HEALTHY_RECHECK_MS : DB_RETRY_RECHECK_MS);
+  const delay = healthy ? DB_HEALTHY_RECHECK_MS + Math.random() * DB_HEALTHY_RECHECK_JITTER_MS : DB_RETRY_RECHECK_MS;
+  window.setTimeout(checkDbHealth, delay);
 }
 
-/* --- 2. Maintenance watchdog (manual, admin-triggered) --- */
-const MAINTENANCE_POLL_MS = 5000;
+/* --- 2. Maintenance/lockdown watchdog (manual, admin-triggered) ---
+   Used to poll system_status every 5s from every open tab — at a few
+   hundred people simply having the site open, that alone was enough
+   continuous request volume to keep this project's small compute
+   instance running hot. Realtime pushes the row to every subscribed
+   tab the moment admin.js writes to it instead, so there's no
+   meaningful delay AND no per-tab polling. The slow interval below
+   is just a safety net (covers a missed event or a dropped
+   websocket), not the primary mechanism, so it can afford to be slow. */
+const SYSTEM_STATUS_SAFETY_POLL_MS = 30000;
 
-async function checkMaintenanceMode() {
+function applySystemStatus(data) {
+  maintenanceActive = !!data && data.maintenance_mode === true;
+  maintenanceMessage = (data && data.maintenance_message) || "";
+  maintenanceStyle = (data && data.banner_style) || "warning";
+  lockdownActive = !!data && data.lockdown_enabled === true;
+  lockdownMessage = (data && data.lockdown_message) || "";
+  lockdownStyle = (data && data.lockdown_style) || "warning";
+  updateStatusBanner();
+}
+
+async function refreshSystemStatusOnce() {
   try {
-    const { data, error } = await supabaseClient
-      .from("system_status")
-      .select("maintenance_mode, maintenance_message, banner_style, lockdown_enabled, lockdown_message, lockdown_style")
-      .eq("id", 1)
-      .maybeSingle();
-    maintenanceActive = !error && !!data && data.maintenance_mode === true;
-    maintenanceMessage = (data && data.maintenance_message) || "";
-    maintenanceStyle = (data && data.banner_style) || "warning";
-    lockdownActive = !error && !!data && data.lockdown_enabled === true;
-    lockdownMessage = (data && data.lockdown_message) || "";
-    lockdownStyle = (data && data.lockdown_style) || "warning";
+    invalidateCache("system_status"); // always want the current row here, not a cached hit
+    applySystemStatus(await getSystemStatus());
   } catch {
     maintenanceActive = false;
     lockdownActive = false;
+    updateStatusBanner();
   }
-  updateStatusBanner();
-  window.setTimeout(checkMaintenanceMode, MAINTENANCE_POLL_MS);
+}
+
+function watchSystemStatus() {
+  refreshSystemStatusOnce(); // initial state on page load
+
+  supabaseClient
+    .channel("system_status_changes")
+    .on(
+      "postgres_changes",
+      { event: "UPDATE", schema: "public", table: "system_status", filter: "id=eq.1" },
+      (payload) => {
+        invalidateCache("system_status");
+        applySystemStatus(payload.new);
+      }
+    )
+    .subscribe();
+
+  window.setInterval(refreshSystemStatusOnce, SYSTEM_STATUS_SAFETY_POLL_MS);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
   checkDbHealth();
-  checkMaintenanceMode();
+  watchSystemStatus();
 });

@@ -116,13 +116,9 @@
   let currentLockdownEnabled = false;
 
   async function loadSystemStatus() {
-    const { data, error } = await supabaseClient
-      .from('system_status')
-      .select('maintenance_message, banner_style, lockdown_enabled, lockdown_message, lockdown_style')
-      .eq('id', 1)
-      .maybeSingle();
-
-    if (error || !data) return;
+    let data;
+    try { data = await getSystemStatus(); } catch { return; }
+    if (!data) return;
 
     document.getElementById('bannerStyle').value = data.banner_style || 'warning';
     document.getElementById('bannerMessage').value = data.maintenance_message || '';
@@ -204,6 +200,7 @@
 
     if (error) { console.error('Publishing banner failed:', error); setStatus(status, 'Could not publish the banner. Please try again.', 'error'); return; }
 
+    invalidateCache('system_status');
     setStatus(status, 'Banner is now live for everyone.', 'success');
     toast('Site-wide banner published.', 'success');
   });
@@ -224,6 +221,7 @@
 
     if (error) { console.error('Clearing banner failed:', error); setStatus(status, 'Could not clear the banner. Please try again.', 'error'); return; }
 
+    invalidateCache('system_status');
     setStatus(status, 'Banner cleared.', 'success');
     toast('Site-wide banner cleared.', 'success');
   });
@@ -249,6 +247,7 @@
 
     if (error) { console.error('Updating lockdown mode failed:', error); setStatus(status, 'Could not update lockdown mode. Please try again.', 'error'); return; }
 
+    invalidateCache('system_status');
     currentLockdownEnabled = nextValue;
     updateLockdownUi();
     setStatus(status, nextValue ? 'Lockdown enabled.' : 'Lockdown disabled.', 'success');

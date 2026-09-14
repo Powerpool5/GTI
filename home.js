@@ -79,7 +79,7 @@
     // this link for root even when role is plain "student", or a root
     // account would pass the dashboard's own access check but never
     // see a way to get there.
-    const { data: isSuperAdmin } = await supabaseClient.rpc('is_super_admin');
+    const isSuperAdmin = await getIsSuperAdmin();
     const dashboardLink = document.getElementById('staffDashboardNavLink');
     if (account.role === 'admin' || account.role === 'staff' || isSuperAdmin === true) {
       dashboardLink.hidden = false;
