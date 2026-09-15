@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex, nofollow">
 <meta http-equiv="Content-Security-Policy"
-  content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://iqcwrberwzumxxjktgux.supabase.co; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
+  content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://iqcwrberwzumxxjktgux.supabase.co wss://iqcwrberwzumxxjktgux.supabase.co; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
 <title>Staff Sign In - GTI Staff Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -20,11 +20,17 @@
     <span class="brand-mark">GTI STAFF</span>
     <h1>Government Technical Institute</h1>
     <p>Staff sign-in for lecturers and administrators. Use the same email and password as any other GTI account — staff access is granted per-account by an administrator, not by which form you use.</p>
+    <ul class="auth-dept-tags" aria-hidden="true">
+      <li>Lecturers</li>
+      <li>Admins</li>
+      <li>Root access</li>
+    </ul>
   </div>
 
   <div class="auth-panel">
     <button type="button" class="btn-icon-light theme-toggle-corner" id="themeToggleBtn" aria-label="Toggle dark mode">☾</button>
 
+    <div class="auth-panel-card">
     <h2>Staff sign in</h2>
     <p class="subtitle">Sign in with your staff email.</p>
 
@@ -38,7 +44,10 @@
       <input type="email" id="staffEmail" name="email" autocomplete="username" required maxlength="254">
 
       <label for="staffPassword">Password</label>
-      <input type="password" id="staffPassword" name="password" autocomplete="current-password" required minlength="8" maxlength="128">
+      <div class="password-field">
+        <input type="password" id="staffPassword" name="password" autocomplete="current-password" required minlength="8" maxlength="128">
+        <button type="button" class="password-toggle" data-target="staffPassword" aria-label="Show password"></button>
+      </div>
 
       <div class="sr-only" aria-hidden="true">
         <label for="staffCompanyWebsite">Leave blank</label>
@@ -66,11 +75,12 @@
     </form>
 
     <p style="margin-top:20px; font-size:0.85rem;"><a href="index.html">← Student sign in</a></p>
+    </div>
   </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="app.js"></script>
-<script src="lecturer-login.js"></script>
+<script src="app.js?v=2"></script>
+<script src="lecturer-login.js?v=2"></script>
 </body>
 </html>

@@ -27,8 +27,8 @@
   --font-body: "IBM Plex Sans", sans-serif;
   --font-mono: "IBM Plex Mono", monospace;
 
-  --radius: 6px;
-  --radius-sm: 4px;
+  --radius: 14px;
+  --radius-sm: 8px;
   --sidebar-w: 240px;
   --max-content: 780px;
 
@@ -116,6 +116,7 @@ button, input, select { font-family: inherit; font-size: 1rem; }
   align-items: center;
   justify-content: space-between;
   border-bottom: 3px solid var(--brass);
+  box-shadow: var(--shadow-md);
   position: sticky;
   top: 0;
   z-index: 20;
@@ -227,12 +228,13 @@ button, input, select { font-family: inherit; font-size: 1rem; }
 
 .nav-item {
   display: flex; align-items: center; gap: 10px;
-  width: 100%;
+  width: calc(100% - 20px);
+  margin: 2px 10px;
   background: none; border: none;
-  border-left: 3px solid transparent;
   text-align: left;
   text-decoration: none;
-  padding: 11px 20px;
+  padding: 11px 14px;
+  border-radius: 10px;
   color: var(--slate);
   font-size: 0.95rem;
   cursor: pointer;
@@ -246,8 +248,8 @@ button, input, select { font-family: inherit; font-size: 1rem; }
    System tab, staff dashboard link — not just one. */
 .nav-item[hidden] { display: none; }
 .nav-item:hover { background: var(--blueprint-soft); color: var(--ink-navy); }
-[data-theme="dark"] .nav-item:hover, [data-theme="dark"] .nav-item.active { color: var(--ink); }
-.nav-item.active { border-left-color: var(--brass); background: var(--blueprint-soft); color: var(--ink-navy); font-weight: 600; }
+[data-theme="dark"] .nav-item:hover { color: var(--ink); }
+.nav-item.active { background: var(--ink-navy); color: #fff; font-weight: 600; }
 .nav-item .nav-icon { width: 18px; height: 18px; flex-shrink: 0; }
 .nav-item .nav-badge {
   margin-left: auto;
@@ -369,6 +371,36 @@ textarea { resize: vertical; min-height: 90px; }
 input:focus, select:focus, textarea:focus { border-color: var(--blueprint); box-shadow: 0 0 0 3px rgba(43,95,140,0.12); outline: none; }
 input:disabled, select:disabled, button:disabled { opacity: 0.55; cursor: not-allowed; }
 .field-hint { font-size: 0.78rem; color: var(--slate); margin-top: -12px; margin-bottom: 16px; }
+
+/* Password show/hide toggle — see initPasswordToggles() in app.js.
+   Margin lives on the wrapper instead of the input so the eye button
+   can be centered with a plain top:50% without fighting the input's
+   own bottom margin. */
+.password-field { position: relative; margin-bottom: 16px; }
+.password-field input[type="password"], .password-field input[type="text"] {
+  margin-bottom: 0;
+  padding-right: 42px;
+}
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--slate);
+  cursor: pointer;
+  transition: color 0.15s var(--ease), background 0.15s var(--ease);
+}
+.password-toggle:hover { color: var(--ink-navy); background: var(--blueprint-soft); }
+[data-theme="dark"] .password-toggle:hover { color: var(--ink); }
+.password-toggle:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
 .field-row { display: flex; gap: 14px; }
 .field-row > div { flex: 1; }
 
@@ -537,26 +569,474 @@ button.btn-link { background: none; border: none; color: var(--blueprint); paddi
    Login / auth pages
    ========================= */
 
-.auth-screen { min-height: 100vh; display: flex; background: var(--ink-navy); }
-.auth-visual { flex: 1.1; display: flex; flex-direction: column; justify-content: flex-end; padding: 48px; color: #fff; position: relative; overflow: hidden; }
-.auth-visual .brand-mark { font-family: var(--font-mono); font-size: 0.8rem; letter-spacing: 0.1em; color: var(--brass); border: 1px solid var(--brass); display: inline-block; padding: 3px 8px; border-radius: var(--radius-sm); margin-bottom: 20px; width: fit-content; }
-.auth-visual h1 { font-size: 2rem; color: #fff; max-width: 440px; line-height: 1.2; }
-.auth-visual p { color: var(--on-dark-soft); max-width: 400px; }
+.auth-screen { min-height: 100vh; display: flex; background: var(--ink-navy-deep); }
+.auth-visual {
+  flex: 1.15;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 64px;
+  color: #fff;
+  position: relative;
+  overflow: hidden;
+}
+/* Rotating background photos, one per department/stream — sits at the
+   very back (z-index: 0). Pure CSS crossfade: every <img> shares one
+   animation but starts at a different offset (negative delay), so
+   exactly one is opaque at a time and the loop is seamless. Update the
+   count below (6 images → 24s / 6 = 4s each) if you add or remove a
+   stream photo. */
+.auth-visual-slides { position: absolute; inset: 0; z-index: 0; }
+.auth-visual-slides img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  animation: streamPhotoFade 24s infinite;
+}
+.auth-visual-slides img:nth-child(1) { animation-delay: 0s; }
+.auth-visual-slides img:nth-child(2) { animation-delay: -4s; }
+.auth-visual-slides img:nth-child(3) { animation-delay: -8s; }
+.auth-visual-slides img:nth-child(4) { animation-delay: -12s; }
+.auth-visual-slides img:nth-child(5) { animation-delay: -16s; }
+.auth-visual-slides img:nth-child(6) { animation-delay: -20s; }
+@keyframes streamPhotoFade {
+  0%   { opacity: 0; }
+  4%   { opacity: 1; }
+  14%  { opacity: 1; }
+  18%  { opacity: 0; }
+  100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-visual-slides img { animation: none; opacity: 0; }
+  .auth-visual-slides img:first-child { opacity: 1; }
+}
+/* Navy tint over the photos so the white/brass text and grid lines
+   stay legible no matter what's underneath — same tone as the old
+   solid-navy background, just letting the photo show through it. */
+.auth-visual::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(165deg, rgba(7,27,52,0.94) 0%, rgba(11,57,114,0.82) 50%, rgba(5,18,36,0.95) 100%);
+  pointer-events: none;
+}
+/* Soft brass glow in the corner — the kind of quiet, oversized light
+   flare these reference sites use to keep a dark panel from feeling
+   flat, without needing an actual image asset. Layered above the
+   photo/tint, below the text. A second, dimmer glow low on the
+   opposite side balances it so the panel doesn't read as lit from
+   one corner only. */
+.auth-visual::before {
+  content: "";
+  position: absolute;
+  top: -160px;
+  right: -140px;
+  width: 460px;
+  height: 460px;
+  z-index: 2;
+  background:
+    radial-gradient(circle at center, rgba(184,134,59,0.34), transparent 70%),
+    radial-gradient(circle at 15% 135%, rgba(43,95,140,0.4), transparent 60%);
+  pointer-events: none;
+}
+.auth-visual > * { position: relative; z-index: 3; }
+.auth-visual .brand-mark { font-family: var(--font-mono); font-size: 0.8rem; letter-spacing: 0.1em; color: var(--brass); border: 1px solid var(--brass); display: inline-block; padding: 3px 8px; border-radius: var(--radius-sm); margin-bottom: 28px; width: fit-content; }
+.auth-visual h1 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(2.4rem, 1.3rem + 3.4vw, 3.8rem);
+  line-height: 1.02;
+  letter-spacing: -0.025em;
+  color: #fff;
+  max-width: 520px;
+  margin-bottom: 18px;
+}
+.auth-visual p { color: var(--on-dark-soft); max-width: 400px; margin-bottom: 24px; }
+/* Real departments instead of a decorative eyebrow label — grounds
+   the hero in what GTI actually teaches (see courses-data.js) rather
+   than a generic "Student & Staff Portal" tagline. */
+.auth-dept-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-width: 460px;
+}
+.auth-dept-tags li {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  color: var(--on-dark-soft);
+  border: 1px solid rgba(220,230,238,0.28);
+  border-radius: 999px;
+  padding: 5px 12px;
+}
 
-.auth-panel { flex: 1; min-width: 360px; max-width: 480px; background: var(--paper); padding: 48px 44px; display: flex; flex-direction: column; justify-content: center; position: relative; }
-.auth-panel h2 { font-size: 1.3rem; margin-bottom: 4px; }
-.auth-panel .subtitle { color: var(--slate); font-size: 0.92rem; margin-bottom: 24px; }
+.auth-panel { flex: 1; min-width: 360px; max-width: 480px; background: var(--paper); display: flex; flex-direction: column; justify-content: center; align-items: center; position: relative; padding: 40px; }
+.auth-panel-card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--surface);
+  border: 1px solid var(--paper-line);
+  border-radius: 18px;
+  box-shadow: var(--shadow-lg);
+  padding: 40px 36px;
+}
+.auth-panel h2 { font-size: 1.5rem; margin-bottom: 4px; }
+.auth-panel .subtitle { color: var(--slate); font-size: 0.92rem; margin-bottom: 28px; }
 .auth-panel .theme-toggle-corner { position: absolute; top: 20px; right: 20px; }
 
-.auth-tabs { display: flex; gap: 4px; margin-bottom: 24px; border-bottom: 1px solid var(--paper-line); }
-.auth-tab { background: none; border: none; padding: 8px 4px 10px; margin-right: 20px; font-size: 0.92rem; color: var(--slate); cursor: pointer; border-bottom: 2px solid transparent; }
-.auth-tab.active { color: var(--ink-navy); font-weight: 600; border-bottom-color: var(--brass); }
-[data-theme="dark"] .auth-tab.active { color: var(--ink); }
+/* Segmented pill control instead of underlined tabs — reads more like
+   a mode switch (sign in vs. create account are mutually exclusive
+   states), which is what it actually is. */
+.auth-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 28px;
+  background: var(--paper);
+  border: 1px solid var(--paper-line);
+  border-radius: 999px;
+  padding: 3px;
+}
+.auth-tab {
+  flex: 1;
+  background: none;
+  border: none;
+  border-radius: 999px;
+  padding: 8px 4px;
+  font-size: 0.86rem;
+  color: var(--slate);
+  cursor: pointer;
+  transition: color 0.15s var(--ease), background 0.15s var(--ease);
+}
+.auth-tab.active { color: #fff; font-weight: 600; background: var(--ink-navy); }
+[data-theme="dark"] .auth-tab.active { color: var(--paper); }
 .auth-form { display: none; }
-.auth-form.active { display: block; }
+.auth-form.active { display: block; animation: authFormIn 0.32s var(--ease); }
+@keyframes authFormIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 .form-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
 
-@media (max-width: 860px) { .auth-visual { display: none; } .auth-panel { max-width: none; margin: 0 auto; } }
+@media (max-width: 860px) {
+  .auth-screen { flex-direction: column; }
+  .auth-visual {
+    flex: 0 0 auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    padding: 18px 24px;
+    overflow: visible;
+  }
+  .auth-visual::before, .auth-visual::after, .auth-visual-slides { display: none; }
+  .auth-visual .brand-mark { margin-bottom: 0; }
+  .auth-visual h1, .auth-visual p, .auth-dept-tags { display: none; }
+  .auth-panel { max-width: none; min-width: 0; width: 100%; margin: 0; justify-content: flex-start; padding: 32px 20px; }
+  .auth-panel-card { border: none; box-shadow: none; padding: 8px 4px; max-width: none; }
+}
+
+/* A little more polish specifically on the sign-in/sign-up panel —
+   slightly larger radius and a hover lift on the submit button — kept
+   scoped to .auth-panel for now rather than changed globally, since
+   the rest of the app (tables, admin forms) hasn't been redesigned
+   yet and shouldn't shift underneath it. */
+.auth-panel input[type="email"],
+.auth-panel input[type="password"],
+.auth-panel input[type="text"],
+.auth-panel select {
+  padding: 12px 14px;
+  border-radius: 10px;
+}
+.auth-panel button.btn {
+  border-radius: 10px;
+  padding: 13px 22px;
+  letter-spacing: 0.01em;
+  transition: background 0.15s var(--ease), transform 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+.auth-panel button.btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+.auth-panel button.btn:active:not(:disabled) { transform: translateY(0); }
+
+/* =========================
+   Student dashboard hero banner
+   Reuses the sign-in screen's dark navy / grid-texture / brass-glow
+   system (see .auth-visual above) so the portal reads as the same
+   product right after signing in, instead of switching to a plain
+   generic dashboard look. One static photo rather than the slideshow
+   used on .auth-visual — this is a returning-user banner, not a
+   first-impression hero, so it doesn't need to keep cycling.
+   ========================= */
+.hero-banner {
+  position: relative;
+  overflow: hidden;
+  border-radius: 20px;
+  padding: 36px 34px;
+  margin-bottom: 22px;
+  color: #fff;
+  background: var(--ink-navy-deep);
+  box-shadow: var(--shadow-lg);
+}
+.hero-banner .hero-photo { position: absolute; inset: 0; z-index: 0; }
+.hero-banner .hero-photo img { width: 100%; height: 100%; object-fit: cover; opacity: 0.5; }
+.hero-banner::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(165deg, rgba(7,27,52,0.94) 0%, rgba(11,57,114,0.82) 50%, rgba(5,18,36,0.95) 100%);
+  pointer-events: none;
+}
+.hero-banner::before {
+  content: "";
+  position: absolute;
+  top: -140px;
+  right: -110px;
+  width: 380px;
+  height: 380px;
+  z-index: 2;
+  background:
+    radial-gradient(circle at center, rgba(184,134,59,0.34), transparent 70%),
+    radial-gradient(circle at 15% 135%, rgba(43,95,140,0.4), transparent 60%);
+  pointer-events: none;
+}
+.hero-banner > * { position: relative; z-index: 3; }
+.hero-banner h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(1.5rem, 1.1rem + 1.4vw, 2.1rem);
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  color: #fff;
+  margin-bottom: 6px;
+}
+.hero-banner .hero-sub { color: var(--on-dark-soft); font-size: 0.92rem; max-width: 440px; margin-bottom: 20px; }
+
+/* Faint crest watermark — GTI's own emblem rather than a generic
+   glow shape, grounding the hero in the institute's actual identity. */
+.hero-banner .hero-crest {
+  position: absolute;
+  right: -30px;
+  bottom: -30px;
+  width: 200px;
+  height: 200px;
+  z-index: 1;
+  opacity: 0.1;
+  filter: brightness(0) invert(1);
+  pointer-events: none;
+}
+
+/* Blueprint-style corner registration ticks, echoing the drafting
+   instruments on the crest (compass, caliper) rather than a purely
+   decorative glow. */
+.hero-tick { position: absolute; z-index: 3; width: 16px; height: 16px; pointer-events: none; }
+.hero-tick::before, .hero-tick::after { content: ""; position: absolute; background: rgba(220,230,238,0.4); }
+.hero-tick::before { width: 100%; height: 1px; top: 50%; }
+.hero-tick::after { width: 1px; height: 100%; left: 50%; }
+.hero-tick-tl { top: 16px; left: 16px; }
+.hero-tick-br { bottom: 16px; right: 16px; }
+
+.hero-stats { display: flex; flex-wrap: wrap; gap: 22px; }
+.hero-stat { display: flex; flex-direction: column; gap: 3px; }
+.hero-stat-label { font-family: var(--font-mono); font-size: 0.7rem; color: var(--on-dark-soft); opacity: 0.8; }
+.hero-stat-value { font-family: var(--font-display); font-weight: 600; font-size: 1.05rem; color: #fff; }
+.hero-stat-value.tag-verified { color: #B7E0C8; }
+.hero-stat-value.tag-pending { color: #F0D9AE; }
+
+/* Radial GPA gauge — an instrument-style reading rather than a bare
+   number, in keeping with the measuring tools on the crest. */
+.gpa-gauge { display: flex; align-items: center; gap: 24px; }
+.gpa-gauge svg { flex-shrink: 0; }
+.gpa-ring-bg { stroke: var(--paper-line); }
+.gpa-ring-fg { stroke: var(--brass); stroke-dasharray: 326.73; stroke-dashoffset: 326.73; transition: stroke-dashoffset 0.6s var(--ease); }
+.gpa-gauge-center { display: flex; flex-direction: column; }
+.gpa-gauge-value { font-family: var(--font-display); font-weight: 600; font-size: 2rem; color: var(--ink-navy); letter-spacing: -0.01em; }
+[data-theme="dark"] .gpa-gauge-value { color: var(--ink); }
+.gpa-gauge-label { font-size: 0.8rem; color: var(--slate); margin-top: 2px; }
+
+@media (max-width: 760px) {
+  .hero-banner { padding: 26px 22px; border-radius: 16px; }
+  .hero-banner .hero-sub { max-width: none; }
+  .hero-banner .hero-crest { width: 140px; height: 140px; right: -20px; bottom: -20px; }
+  .hero-stats { gap: 16px; }
+  .gpa-gauge { gap: 16px; }
+  .gpa-gauge svg { width: 92px; height: 92px; }
+}
+
+/* Carries a few more auth-screen touches (pill nav, rounder cards, a
+   button lift on hover) into the rest of the student portal, so the
+   hero banner above doesn't read as a one-off graphic bolted onto an
+   otherwise unrelated page. Scoped to home.html only — admin.html and
+   lecturer-home.html aren't part of this pass. */
+.portal-home .app-nav .nav-item { border-radius: 999px; }
+.portal-home .card {
+  border-radius: 18px;
+  transition: box-shadow 0.2s var(--ease), background 0.2s var(--ease);
+}
+.portal-home .card:hover { box-shadow: var(--shadow-md); }
+.portal-home select { border-radius: 10px; }
+.portal-home button.btn {
+  border-radius: 10px;
+  transition: background 0.15s var(--ease), transform 0.1s var(--ease), box-shadow 0.15s var(--ease);
+}
+.portal-home button.btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.portal-home button.btn:active:not(:disabled) { transform: translateY(0); }
+
+/* =========================
+   Student dashboard — record cards
+   Announcements / Timetable / Grades / Resources currently render as
+   .record rows sharing one bottom-bordered .card, the same plain-list
+   treatment used on admin.html/lecturer-home.html. This lifts them to
+   match the rest of the student dashboard (hero banner, auth screens):
+   each record becomes its own rounded, elevated card with a type
+   colored left edge and icon, echoing the registration-tick/instrument
+   language above. Scoped to home.html only, same as .portal-home .card
+   — admin.html/lecturer-home.html keep the plain shared version.
+   ========================= */
+
+.portal-home ul.record-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.portal-home .record {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--paper-line);
+  border-left: 3px solid var(--blueprint);
+  border-radius: 14px;
+  padding: 16px 18px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.2s var(--ease), transform 0.2s var(--ease), background 0.2s var(--ease);
+}
+.portal-home .record:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+
+/* Accent variants, set by home.js from the record's own data (an
+   announcement's audience, a grade's letter) rather than a fixed color
+   per tab — reuses the same semantics as the existing .badge-* colors. */
+.portal-home .record.accent-brass { border-left-color: var(--brass); }
+.portal-home .record.accent-success { border-left-color: var(--success); }
+.portal-home .record.accent-danger { border-left-color: var(--danger); }
+
+.portal-home .record-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.portal-home .record-head-main { display: flex; align-items: flex-start; min-width: 0; }
+.portal-home .record-head-text { min-width: 0; }
+.portal-home .record-title { margin-bottom: 2px; }
+.portal-home .record-meta { margin-bottom: 0; }
+.portal-home .record-body { margin-top: 8px; }
+
+.portal-home .record-icon {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  background: var(--blueprint-soft);
+  color: var(--ink-navy);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  margin-right: 10px;
+}
+.portal-home .record-icon svg { width: 15px; height: 15px; }
+[data-theme="dark"] .portal-home .record-icon { color: var(--ink); }
+.portal-home .record.accent-brass .record-icon { background: #EFE6D4; color: var(--brass-dark); }
+.portal-home .record.accent-success .record-icon { background: var(--success-bg); color: var(--success); }
+.portal-home .record.accent-danger .record-icon { background: var(--danger-bg); color: var(--danger); }
+
+/* Small pill action in the card header — a clearer call to action for
+   "open this file" than the old dashed-underline text link buried
+   after the body copy. */
+.portal-home a.record-action {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.78rem;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--blueprint-soft);
+  color: var(--ink-navy);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.15s var(--ease), color 0.15s var(--ease), transform 0.1s var(--ease);
+}
+[data-theme="dark"] .portal-home a.record-action { color: var(--ink); }
+.portal-home a.record-action:hover { background: var(--brass); color: #fff; }
+.portal-home a.record-action:active { transform: translateY(1px); }
+
+/* Grade breakdown becomes progressive disclosure — the header already
+   carries course, letter grade and the two headline numbers (Grade,
+   GPA) at a glance, so the four component scores are worth a click
+   rather than always-on clutter. Same <details> pattern already used
+   for closed tickets elsewhere in the product. */
+.portal-home .grade-details { margin-top: 10px; }
+.portal-home .grade-details summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--blueprint);
+}
+.portal-home .grade-details summary::-webkit-details-marker { display: none; }
+.portal-home .grade-details summary::before { content: "Show component scores ▾"; }
+.portal-home .grade-details[open] summary::before { content: "Hide component scores ▴"; }
+.portal-home .grade-details .grade-breakdown { margin-top: 8px; }
+.portal-home .record .headline-row {
+  display: flex; flex-wrap: wrap; gap: 18px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--paper-line);
+}
+.portal-home .record .headline-stat { display: flex; flex-direction: column; gap: 2px; }
+.portal-home .record .headline-stat .label { font-size: 0.72rem; color: var(--slate); }
+.portal-home .record .headline-stat .value { font-family: var(--font-mono); font-weight: 600; font-size: 1rem; color: var(--ink-navy); }
+[data-theme="dark"] .portal-home .record .headline-stat .value { color: var(--ink); }
+
+/* Small dot marker for announcements posted in the last few days —
+   quieter than another text badge crowding the meta row. */
+.portal-home .record.is-new::after {
+  content: "";
+  position: absolute;
+  top: 16px; right: 16px;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--brass);
+  box-shadow: 0 0 0 3px var(--blueprint-soft);
+}
+[data-theme="dark"] .portal-home .record.is-new::after { box-shadow: 0 0 0 3px rgba(184,134,59,0.3); }
+
+/* Empty states get their own dashed placeholder card instead of a
+   bare line of text, matching the elevated-card treatment above. */
+.portal-home .card .empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  padding: 30px 16px;
+  border: 1.5px dashed var(--paper-line);
+  border-radius: 14px;
+  color: var(--slate);
+}
+.portal-home .card .empty-state svg { opacity: 0.45; }
+
+@media (max-width: 760px) {
+  .portal-home .record-head { flex-wrap: wrap; }
+  .portal-home a.record-action { margin-top: 4px; }
+}
 
 /* =========================
    Toasts
@@ -593,11 +1073,11 @@ button.btn-link { background: none; border: none; color: var(--blueprint); paddi
 .stat-card {
   flex: 1; min-width: 140px;
   background: var(--surface); border: 1px solid var(--paper-line); border-radius: var(--radius);
-  padding: 16px 18px; box-shadow: var(--shadow-sm);
+  padding: 18px 20px; box-shadow: var(--shadow-sm);
 }
-.stat-card .stat-value { font-family: var(--font-display); font-size: 1.6rem; color: var(--ink-navy); }
+.stat-card .stat-value { font-family: var(--font-display); font-weight: 600; font-size: 1.9rem; letter-spacing: -0.01em; color: var(--ink-navy); }
 [data-theme="dark"] .stat-card .stat-value { color: var(--ink); }
-.stat-card .stat-label { font-size: 0.78rem; color: var(--slate); text-transform: uppercase; letter-spacing: 0.04em; }
+.stat-card .stat-label { font-size: 0.78rem; color: var(--slate); letter-spacing: 0.01em; margin-top: 2px; }
 
 .table-wrap { overflow-x: auto; }
 table.admin-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
@@ -617,13 +1097,14 @@ table.admin-table .grade-total { display: inline-block; min-width: 48px; font-fa
 .search-row .course-combo { margin-bottom: 0; flex: 1; min-width: 200px; }
 
 .modal-backdrop {
-  position: fixed; inset: 0; background: rgba(14, 109, 209, 0.55);
+  position: fixed; inset: 0; background: rgba(5, 18, 36, 0.62);
+  backdrop-filter: blur(2px);
   display: flex; align-items: center; justify-content: center;
   z-index: 100; padding: 20px;
 }
 .modal-backdrop[hidden] { display: none; }
 .modal {
-  background: var(--surface); border-radius: var(--radius); padding: 24px;
+  background: var(--surface); border-radius: var(--radius); padding: 26px;
   max-width: 480px; width: 100%; box-shadow: var(--shadow-lg);
   max-height: 90vh; overflow-y: auto;
 }
@@ -710,6 +1191,7 @@ table.admin-table .grade-total { display: inline-block; min-width: 48px; font-fa
        doesn't fit — swipeable, like a native app's tab bar, rather
        than crushed. */
     width: auto;
+    margin: 0;
     flex: 0 0 auto;
     min-width: 68px;
     /* Keeps the label centered top-to-bottom in the box (matters once
@@ -719,8 +1201,6 @@ table.admin-table .grade-total { display: inline-block; min-width: 48px; font-fa
     scroll-snap-align: start;
     flex-direction: column;
     gap: 2px;
-    border-left: none;
-    border-bottom: none;
     border-top: 2px solid transparent;
     border-radius: 0;
     padding: 6px 10px;
@@ -810,12 +1290,19 @@ table.admin-table .grade-total { display: inline-block; min-width: 48px; font-fa
   display: none;
 }
 /* Root-authored banner styles (chosen from the System tab in admin.html).
-   "down" (no extra class) keeps the original plain red — that one is
-   raised automatically by the connectivity watchdog, never by a person,
-   so it deliberately carries no stripe/marker of its own. Maintenance
-   and lockdown each get the same three colors plus their own marker
-   stripe, so all three read as distinct situations at a glance instead
-   of "a red bar" three different ways. */
+   "down" keeps the original plain red — no color-coded stripe of its
+   own like maintenance/lockdown below, since it's raised automatically
+   by the connectivity watchdog rather than authored by a person. It
+   does get its own pulse, though: unlike the other two, it means the
+   app itself can't currently reach the database, so it's worth reading
+   as more urgent than a static bar at a glance. */
+.db-down-banner.down {
+  animation: db-down-pulse 1.6s ease-in-out infinite;
+}
+@keyframes db-down-pulse {
+  0%, 100% { background: var(--danger, #b3261e); }
+  50% { background: #7a1710; }
+}
 .db-down-banner.maintenance-info {
   background: #2B6CB0;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25), inset 0 2px 0 #FF8C1A;
@@ -853,5 +1340,9 @@ table.admin-table .grade-total { display: inline-block; min-width: 48px; font-fa
   .db-down-banner .db-down-track {
     animation: none;
     padding-left: 0;
+  }
+  .db-down-banner.down {
+    animation: none;
+    background: var(--danger, #b3261e);
   }
 }

@@ -6,6 +6,8 @@
   function populateCourseSelects() {
     const timetableSelect = document.getElementById('timetableCourseSelect');
     const announcementSelect = document.getElementById('announcementCourse');
+    const resourceFilterSelect = document.getElementById('resourceCourseFilter');
+    const resourceCourseSelect = document.getElementById('resourceCourse');
 
     function fill(sel, groups) {
       sel.innerHTML = '';
@@ -27,9 +29,27 @@
     // staff account to, or to post a course-scoped announcement for.
     fill(timetableSelect, COURSES.filter((g) => g.label !== 'Staff'));
     fill(announcementSelect, COURSES);
+    fill(resourceCourseSelect, COURSES.filter((g) => g.label !== 'Staff'));
+
+    // The filter keeps its "All courses" placeholder option, so fill
+    // into a fresh <optgroup> set appended after it rather than
+    // wiping the select the way fill() does for the others.
+    COURSES.filter((g) => g.label !== 'Staff').forEach((group) => {
+      const optgroup = document.createElement('optgroup');
+      optgroup.label = group.label;
+      group.options.forEach((opt) => {
+        const option = document.createElement('option');
+        option.value = opt.value;
+        option.textContent = opt.label;
+        optgroup.appendChild(option);
+      });
+      resourceFilterSelect.appendChild(optgroup);
+    });
 
     enhanceCourseSelect(timetableSelect);
     enhanceCourseSelect(announcementSelect);
+    enhanceCourseSelect(resourceCourseSelect);
+    enhanceCourseSelect(resourceFilterSelect);
   }
 
   function courseNameFor(code) {
@@ -94,20 +114,24 @@
     loadTimetable(document.getElementById('timetableCourseSelect').value);
     markUploadedTimetableCourses();
     loadStudents();
+    document.getElementById('resourceCourseFilter').addEventListener('change', (e) => loadResources(e.target.value));
+    loadResources('');
   }
 
   /* ---------------- Overview ---------------- */
   async function loadOverviewStats() {
-    const [{ count: studentCount }, { count: announcementCount }, { count: timetableCount }, { count: unverifiedCount }, { count: inactiveCount }] = await Promise.all([
+    const [{ count: studentCount }, { count: announcementCount }, { count: timetableCount }, { count: resourceCount }, { count: unverifiedCount }, { count: inactiveCount }] = await Promise.all([
       supabaseClient.from('profiles').select('*', { count: 'exact', head: true }),
       supabaseClient.from('announcements').select('*', { count: 'exact', head: true }),
       supabaseClient.from('timetable').select('*', { count: 'exact', head: true }),
+      supabaseClient.from('resources').select('*', { count: 'exact', head: true }),
       supabaseClient.from('profiles').select('*', { count: 'exact', head: true }).eq('verified', false),
       supabaseClient.from('profiles').select('*', { count: 'exact', head: true }).not('deactivated_at', 'is', null),
     ]);
     document.getElementById('statStudents').textContent = studentCount ?? '–';
     document.getElementById('statAnnouncements').textContent = announcementCount ?? '–';
     document.getElementById('statTimetable').textContent = timetableCount ?? '–';
+    document.getElementById('statResources').textContent = resourceCount ?? '–';
     document.getElementById('statUnverified').textContent = unverifiedCount ?? '–';
     document.getElementById('statInactive').textContent = inactiveCount ?? '–';
   }
@@ -570,6 +594,179 @@
     tr.appendChild(actionsTd);
 
     tbody.appendChild(tr);
+  }
+
+  /* ---------------- Resources ---------------- */
+  const resourceModal = document.getElementById('resourceModal');
+  const resourceForm = document.getElementById('resourceForm');
+  let currentResourceFilter = '';
+
+  function openResourceModal(existing) {
+    resourceForm.reset();
+    document.getElementById('resourceId').value = existing ? existing.id : '';
+    document.getElementById('resourceModalTitle').textContent = existing ? 'Edit resource' : 'New resource';
+    if (existing) {
+      document.getElementById('resourceCourse').value = existing.course_code;
+      document.getElementById('resourceTitle').value = existing.title;
+      document.getElementById('resourceAuthor').value = existing.author || '';
+      document.getElementById('resourceFileUrl').value = existing.file_url || '';
+    } else if (currentResourceFilter) {
+      document.getElementById('resourceCourse').value = currentResourceFilter;
+    }
+    syncCourseSelectDisplay(document.getElementById('resourceCourse'));
+    document.getElementById('resourceUploadStatus').textContent = '';
+    setStatus(document.getElementById('resourceFormStatus'), '', null);
+    resourceModal.hidden = false;
+  }
+  document.getElementById('newResourceBtn').addEventListener('click', () => openResourceModal(null));
+  document.getElementById('resourceModalClose').addEventListener('click', () => resourceModal.hidden = true);
+
+  resourceForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const status = document.getElementById('resourceFormStatus');
+    const submitBtn = document.getElementById('resourceSubmit');
+
+    const id = document.getElementById('resourceId').value;
+    const courseCode = document.getElementById('resourceCourse').value;
+    const title = document.getElementById('resourceTitle').value.trim();
+    const author = document.getElementById('resourceAuthor').value.trim() || null;
+    let fileUrl = document.getElementById('resourceFileUrl').value.trim() || null;
+
+    const uploadInput = document.getElementById('resourceFileUpload');
+    const uploadStatus = document.getElementById('resourceUploadStatus');
+    const chosenFile = uploadInput.files && uploadInput.files[0];
+
+    if (!fileUrl && !chosenFile) {
+      setStatus(status, 'Provide a link or upload a file.', 'error');
+      return;
+    }
+
+    submitBtn.disabled = true;
+
+    if (chosenFile) {
+      uploadStatus.textContent = 'Uploading…';
+      const path = `${courseCode}/${Date.now()}-${chosenFile.name}`;
+      const { error: uploadError } = await supabaseClient.storage
+        .from('resource-files')
+        .upload(path, chosenFile, { upsert: false });
+
+      if (uploadError) {
+        console.error('Resource file upload failed:', uploadError);
+        uploadStatus.textContent = '';
+        submitBtn.disabled = false;
+        setStatus(status, 'Could not upload the file.', 'error');
+        return;
+      }
+
+      const { data: publicUrlData } = supabaseClient.storage.from('resource-files').getPublicUrl(path);
+      fileUrl = publicUrlData.publicUrl;
+      uploadStatus.textContent = 'Uploaded.';
+    }
+
+    const payload = {
+      course_code: courseCode,
+      title,
+      author,
+      file_url: fileUrl,
+    };
+    if (!id) payload.created_by = currentAdminUserId;
+
+    // Unlike timetable (one row per course), resources are a plain
+    // list — several textbooks can exist for the same course, so this
+    // is a normal insert/update by id rather than an upsert on
+    // course_code.
+    const { error } = id
+      ? await supabaseClient.from('resources').update(payload).eq('id', id).select().single()
+      : await supabaseClient.from('resources').insert(payload).select().single();
+
+    submitBtn.disabled = false;
+
+    if (error) { setStatus(status, 'Could not save resource. Please try again.', 'error'); console.error('Saving resource failed:', error); return; }
+
+    uploadInput.value = '';
+    uploadStatus.textContent = '';
+    resourceModal.hidden = true;
+    toast('Resource saved.', 'success');
+    loadResources(currentResourceFilter);
+    loadOverviewStats();
+  });
+
+  async function loadResources(courseCode) {
+    currentResourceFilter = courseCode || '';
+    const tbody = document.getElementById('resourcesTableBody');
+    tbody.innerHTML = '<tr><td colspan="6"><div class="skeleton skeleton-line"></div></td></tr>';
+
+    let query = supabaseClient
+      .from('resources')
+      .select('id, course_code, title, author, file_url, created_at')
+      .order('course_code')
+      .order('title');
+    if (courseCode) query = query.eq('course_code', courseCode);
+
+    const { data, error } = await query;
+
+    tbody.innerHTML = '';
+    if (error) { console.error('Loading resources failed:', error); tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Could not load resources.</td></tr>'; return; }
+    const rows = data || [];
+    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No resources uploaded yet.</td></tr>'; return; }
+
+    rows.forEach((r) => {
+      const tr = document.createElement('tr');
+
+      const courseTd = document.createElement('td');
+      courseTd.textContent = r.course_code;
+      tr.appendChild(courseTd);
+
+      const titleTd = document.createElement('td');
+      titleTd.textContent = r.title;
+      tr.appendChild(titleTd);
+
+      const authorTd = document.createElement('td');
+      authorTd.textContent = r.author || '—';
+      tr.appendChild(authorTd);
+
+      const fileTd = document.createElement('td');
+      if (r.file_url) {
+        const link = document.createElement('a');
+        link.href = r.file_url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.className = 'file-link';
+        link.textContent = 'Open';
+        fileTd.appendChild(link);
+      } else {
+        fileTd.textContent = '—';
+      }
+      tr.appendChild(fileTd);
+
+      const uploadedTd = document.createElement('td');
+      uploadedTd.textContent = r.created_at
+        ? new Date(r.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+        : '—';
+      tr.appendChild(uploadedTd);
+
+      const actionsTd = document.createElement('td');
+      const editBtn = document.createElement('button');
+      editBtn.className = 'btn btn-secondary btn-sm';
+      editBtn.textContent = 'Edit';
+      editBtn.addEventListener('click', () => openResourceModal(r));
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'btn btn-danger btn-sm';
+      deleteBtn.textContent = 'Remove';
+      deleteBtn.style.marginLeft = '8px';
+      deleteBtn.addEventListener('click', async () => {
+        if (!confirm(`Remove "${r.title}"?`)) return;
+        const { error: delError } = await supabaseClient.from('resources').delete().eq('id', r.id);
+        if (delError) { toast('Could not remove resource.', 'error'); return; }
+        toast('Resource removed.', 'success');
+        loadResources(currentResourceFilter);
+        loadOverviewStats();
+      });
+      actionsTd.append(editBtn, deleteBtn);
+      tr.appendChild(actionsTd);
+
+      tbody.appendChild(tr);
+    });
   }
 
   /* ---------------- Students ---------------- */

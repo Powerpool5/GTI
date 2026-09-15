@@ -400,6 +400,38 @@ function renderAvatar(container, name, avatarUrl) {
    else for this to observe.
    ------------------------------------------------------- */
 
+/* -------------------------------------------------------
+   Password show/hide toggle
+   Markup: wrap the <input type="password"> in a .password-field div,
+   with a sibling <button class="password-toggle" data-target="INPUT_ID">
+   next to it (see index.html's sign-in/sign-up passwords). Just
+   dropping that markup on a page is enough — this wires itself up on
+   DOMContentLoaded (see the bottom of this file) and again for any
+   markup added later via initPasswordToggles(), same pattern
+   enhanceCourseSelect() uses for course pickers added after load.
+   ------------------------------------------------------- */
+const EYE_ICON =
+  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF_ICON =
+  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.4 21.4 0 0 1 5.06-6.06M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a21.4 21.4 0 0 1-3.22 4.6M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+
+function initPasswordToggles(scope) {
+  (scope || document).querySelectorAll(".password-toggle").forEach((btn) => {
+    if (btn.dataset.bound) return; // don't double-bind if called again later
+    btn.dataset.bound = "1";
+    btn.innerHTML = EYE_ICON;
+    btn.setAttribute("aria-label", "Show password");
+    btn.addEventListener("click", () => {
+      const input = document.getElementById(btn.getAttribute("data-target"));
+      if (!input) return;
+      const willShow = input.type === "password";
+      input.type = willShow ? "text" : "password";
+      btn.innerHTML = willShow ? EYE_OFF_ICON : EYE_ICON;
+      btn.setAttribute("aria-label", willShow ? "Hide password" : "Show password");
+    });
+  });
+}
+
 /**
  * Fills a course <select> with <optgroup>/<option> elements built
  * straight from COURSES (courses-data.js) — the one source of truth
@@ -728,9 +760,9 @@ let lockdownMessage = "";
 let lockdownStyle = "warning"; // 'info' | 'warning' | 'danger' — set by root from admin.html
 
 const DEFAULT_MAINTENANCE_MESSAGE =
-  "The database is restarting for scheduled maintenance - please save your work. Some pages may be briefly unavailable.";
+  "The database is will be offline for a scheduled maintenance - please save your work. Some pages may be briefly unavailable.";
 const CONNECTIVITY_DOWN_MESSAGE =
-  "The database is currently down for maintenance - Data cannot be saved or accessed at this time. We apologize for any inconvenience. For safety all accounts have been logged out until our systems are back online.";
+  "We're experiencing an unexpected system disturbance - data cannot be saved or accessed at this time. We apologize for any inconvenience. For safety all accounts have been logged out until our systems are back online.";
 const DEFAULT_LOCKDOWN_BANNER_MESSAGE =
   "Lockdown mode is active. Only admins can sign in right now — everyone else will be signed out shortly.";
 
@@ -911,4 +943,5 @@ function watchSystemStatus() {
 document.addEventListener("DOMContentLoaded", () => {
   checkDbHealth();
   watchSystemStatus();
+  initPasswordToggles();
 });

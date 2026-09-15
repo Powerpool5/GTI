@@ -66,6 +66,19 @@
     document.getElementById('headerName').textContent = account.full_name || user.email || '';
     renderAvatar(document.getElementById('avatarSlot'), account.full_name || user.email, account.avatar_url);
 
+    // Hero banner (Overview tab) — same underlying data as the detail-row
+    // card below it, just surfaced as the page's greeting first.
+    document.getElementById('heroGreeting').textContent =
+      'Welcome back' + (account.full_name ? ', ' + account.full_name.split(' ')[0] : '');
+    document.getElementById('heroSub').textContent = account.student_id
+      ? 'Student ID ' + account.student_id
+      : 'Your student ID has not been added yet.';
+    document.getElementById('heroCourseTag').textContent = account.course_name || 'No course selected';
+    const heroStatusTag = document.getElementById('heroStatusTag');
+    heroStatusTag.textContent = account.verified ? 'Verified' : 'Pending verification';
+    heroStatusTag.classList.toggle('tag-verified', !!account.verified);
+    heroStatusTag.classList.toggle('tag-pending', !account.verified);
+
     // Staff/admin accounts land here too (this is the one sign-in form
     // for everyone) but have no other way to find their dashboard, so
     // surface it here rather than making them remember a URL. Admins
@@ -96,8 +109,31 @@
     await Promise.all([
       loadAnnouncements(account.course_code),
       loadTimetable(account.course_code),
+      loadResources(account.course_code),
       loadGrades(),
     ]);
+  }
+
+  // Small stroke icons matching the sidebar nav's own icon style (18x18
+  // viewBox, currentColor strokes) so each record echoes the tab it
+  // lives in instead of introducing a new icon language.
+  const ICONS = {
+    bell: '<svg viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M9 3C7.1 3 5.6 4.6 5.6 6.5V9.3L4.2 11.4H13.8L12.4 9.3V6.5C12.4 4.6 10.9 3 9 3Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M7.4 13.4C7.4 14.3 8.1 15 9 15C9.9 15 10.6 14.3 10.6 13.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
+    calendar: '<svg viewBox="0 0 18 18" fill="none" aria-hidden="true"><rect x="2.5" y="3.5" width="13" height="12" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 7H15.5" stroke="currentColor" stroke-width="1.4"/><path d="M6 2V5M12 2V5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+    resource: '<svg viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M3.5 3.5H10.5C11.6 3.5 12.5 4.4 12.5 5.5V14.5H5.5C4.4 14.5 3.5 13.6 3.5 12.5V3.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M12.5 5.5H13.5C13.5 5.5 14.5 5.5 14.5 6.5V13.5C14.5 13.5 14.5 14.5 13.5 14.5H5.5" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M6 6.5H10M6 9H10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
+    grade: '<svg viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M4 14.5V10M9 14.5V6M14 14.5V3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+    empty: '<svg viewBox="0 0 32 32" width="28" height="28" fill="none" aria-hidden="true"><rect x="6" y="8" width="20" height="17" rx="2.5" stroke="currentColor" stroke-width="1.6"/><path d="M6 14H26M11 4V8M21 4V8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  };
+
+  function recordIcon(name) {
+    const span = document.createElement('span');
+    span.className = 'record-icon';
+    span.innerHTML = ICONS[name] || '';
+    return span;
+  }
+
+  function emptyState(message) {
+    return '<li class="empty-state">' + ICONS.empty + '<span>' + message + '</span></li>';
   }
 
   async function loadAnnouncements(courseCode) {
@@ -117,14 +153,28 @@
     const { data, error } = await query;
     list.innerHTML = '';
 
-    if (error) { console.error('Loading announcements failed:', error); list.innerHTML = '<li class="empty-state">Announcements are not available right now.</li>'; return; }
+    if (error) { console.error('Loading announcements failed:', error); list.innerHTML = emptyState('Announcements are not available right now.'); return; }
     const rows = data || [];
-    if (!rows.length) { list.innerHTML = '<li class="empty-state">No announcements yet.</li>'; return; }
+    if (!rows.length) { list.innerHTML = emptyState('No announcements yet.'); return; }
 
     rows.forEach((a) => {
       const item = document.createElement('li');
-      item.className = 'record';
+      // Left-edge accent mirrors the badge color for the same
+      // audience, so the card reads at a glance before the badge text
+      // is even read.
+      item.className = 'record' + (a.audience === 'everyone' ? ' accent-danger' : a.audience === 'all_students' ? ' accent-brass' : '');
+      // A quiet "new" dot, not another badge, for anything posted in
+      // the last 3 days.
+      const ageMs = Date.now() - new Date(a.created_at).getTime();
+      if (ageMs >= 0 && ageMs < 3 * 24 * 60 * 60 * 1000) item.classList.add('is-new');
 
+      const head = document.createElement('div');
+      head.className = 'record-head';
+      const headMain = document.createElement('div');
+      headMain.className = 'record-head-main';
+
+      const headText = document.createElement('div');
+      headText.className = 'record-head-text';
       const title = document.createElement('div');
       title.className = 'record-title';
       title.textContent = a.title;
@@ -138,18 +188,22 @@
       badge.textContent = a.audience === 'everyone' ? 'Everyone' : a.audience === 'all_students' ? 'All students' : 'Your course';
       meta.append(dateSpan, badge);
 
+      headText.append(title, meta);
+      headMain.append(recordIcon('bell'), headText);
+      head.appendChild(headMain);
+
       const body = document.createElement('div');
       body.className = 'record-body';
       body.textContent = a.message;
 
-      item.append(title, meta, body);
+      item.append(head, body);
       list.appendChild(item);
     });
   }
 
   async function loadTimetable(courseCode) {
     const list = document.getElementById('timetableList');
-    if (!courseCode) { list.innerHTML = '<li class="empty-state">No course has been selected yet.</li>'; return; }
+    if (!courseCode) { list.innerHTML = emptyState('No course has been selected yet.'); return; }
 
     const { data, error } = await supabaseClient
       .from('timetable')
@@ -158,48 +212,125 @@
       .maybeSingle();
 
     list.innerHTML = '';
-    if (error) { console.error('Loading timetable failed:', error); list.innerHTML = '<li class="empty-state">Timetable is not available right now.</li>'; return; }
-    if (!data || !data.file_url) { list.innerHTML = '<li class="empty-state">No timetable has been uploaded for this course yet.</li>'; return; }
+    if (error) { console.error('Loading timetable failed:', error); list.innerHTML = emptyState('Timetable is not available right now.'); return; }
+    if (!data || !data.file_url) { list.innerHTML = emptyState('No timetable has been uploaded for this course yet.'); return; }
 
     const item = document.createElement('li');
     item.className = 'record';
 
+    const head = document.createElement('div');
+    head.className = 'record-head';
+    const headMain = document.createElement('div');
+    headMain.className = 'record-head-main';
+
+    const headText = document.createElement('div');
+    headText.className = 'record-head-text';
     const title = document.createElement('div');
     title.className = 'record-title';
     title.textContent = data.file_name || 'Timetable';
-    item.appendChild(title);
+    headText.appendChild(title);
 
     if (data.updated_at) {
       const meta = document.createElement('div');
       meta.className = 'record-meta';
       meta.textContent = 'Updated ' + new Date(data.updated_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-      item.appendChild(meta);
+      headText.appendChild(meta);
     }
 
-    // Show it inline if it looks like an image; otherwise link out (e.g. a PDF).
+    headMain.append(recordIcon('calendar'), headText);
+    head.appendChild(headMain);
+
+    const fileLink = document.createElement('a');
+    fileLink.className = 'record-action';
+    fileLink.href = data.file_url;
+    fileLink.target = '_blank';
+    fileLink.rel = 'noopener noreferrer';
+    fileLink.textContent = 'Open ↗';
+    head.appendChild(fileLink);
+
+    item.appendChild(head);
+
+    // Show it inline if it looks like an image; otherwise the header's
+    // "Open ↗" pill above is the only way in (e.g. a PDF).
     if (/\.(png|jpe?g|gif|webp)(\?|$)/i.test(data.file_url)) {
       const img = document.createElement('img');
       img.src = data.file_url;
       img.alt = data.file_name || 'Timetable';
       img.style.maxWidth = '100%';
-      img.style.borderRadius = '8px';
-      img.style.marginTop = '8px';
+      img.style.borderRadius = '10px';
+      img.style.marginTop = '12px';
+      img.style.display = 'block';
       item.appendChild(img);
     }
-
-    const fileLink = document.createElement('a');
-    fileLink.className = 'file-link';
-    fileLink.href = data.file_url;
-    fileLink.target = '_blank';
-    fileLink.rel = 'noopener noreferrer';
-    fileLink.textContent = 'Open timetable';
-    item.appendChild(fileLink);
 
     list.appendChild(item);
   }
 
   function fmtDate(iso) {
     return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  async function loadResources(courseCode) {
+    const list = document.getElementById('resourcesList');
+    if (!courseCode) { list.innerHTML = emptyState('No course has been selected yet.'); return; }
+
+    const { data, error } = await supabaseClient
+      .from('resources')
+      .select('title, author, file_url, created_at')
+      .eq('course_code', courseCode)
+      .order('title');
+
+    list.innerHTML = '';
+    if (error) { console.error('Loading resources failed:', error); list.innerHTML = emptyState('Resources are not available right now.'); return; }
+    const rows = data || [];
+    if (!rows.length) { list.innerHTML = emptyState('No resources have been uploaded for this course yet.'); return; }
+
+    rows.forEach((r) => {
+      const item = document.createElement('li');
+      item.className = 'record';
+
+      const head = document.createElement('div');
+      head.className = 'record-head';
+      const headMain = document.createElement('div');
+      headMain.className = 'record-head-main';
+
+      const headText = document.createElement('div');
+      headText.className = 'record-head-text';
+      const title = document.createElement('div');
+      title.className = 'record-title';
+      title.textContent = r.title;
+      headText.appendChild(title);
+
+      const meta = document.createElement('div');
+      meta.className = 'record-meta';
+      if (r.author) {
+        const authorSpan = document.createElement('span');
+        authorSpan.textContent = r.author;
+        meta.appendChild(authorSpan);
+      }
+      if (r.created_at) {
+        const dateSpan = document.createElement('span');
+        dateSpan.textContent = 'Added ' + fmtDate(r.created_at);
+        meta.appendChild(dateSpan);
+      }
+      if (meta.childNodes.length) headText.appendChild(meta);
+
+      headMain.append(recordIcon('resource'), headText);
+      head.appendChild(headMain);
+
+      if (r.file_url) {
+        const fileLink = document.createElement('a');
+        fileLink.className = 'record-action';
+        fileLink.href = r.file_url;
+        fileLink.target = '_blank';
+        fileLink.rel = 'noopener noreferrer';
+        fileLink.textContent = 'Open ↗';
+        head.appendChild(fileLink);
+      }
+
+      item.appendChild(head);
+      list.appendChild(item);
+    });
   }
 
   /* ---------------- Grades ---------------- */
@@ -222,25 +353,35 @@
     list.innerHTML = '';
     if (error) {
       console.error('Loading grades failed:', error);
-      list.innerHTML = '<li class="empty-state">Grades are not available right now.</li>';
+      list.innerHTML = emptyState('Grades are not available right now.');
       gpaCard.hidden = true;
       return;
     }
 
     const rows = data || [];
     if (!rows.length) {
-      list.innerHTML = '<li class="empty-state">No grades have been entered yet.</li>';
+      list.innerHTML = emptyState('No grades have been entered yet.');
       gpaCard.hidden = true;
       return;
     }
 
+    const ACCENT_FOR_LETTER = { A: 'accent-success', B: '', C: 'accent-brass', F: 'accent-danger' };
+
     rows.forEach((r) => {
       const item = document.createElement('li');
-      item.className = 'record';
+      item.className = 'record' + (r.letter_grade && ACCENT_FOR_LETTER[r.letter_grade] ? ' ' + ACCENT_FOR_LETTER[r.letter_grade] : '');
 
+      const head = document.createElement('div');
+      head.className = 'record-head';
+      const headMain = document.createElement('div');
+      headMain.className = 'record-head-main';
+
+      const headText = document.createElement('div');
+      headText.className = 'record-head-text';
       const title = document.createElement('div');
       title.className = 'record-title';
       title.textContent = r.course_name || r.course_code;
+      headText.appendChild(title);
 
       const meta = document.createElement('div');
       meta.className = 'record-meta';
@@ -249,15 +390,51 @@
         dateSpan.textContent = 'Updated ' + fmtDate(r.updated_at);
         meta.appendChild(dateSpan);
       }
+      headText.appendChild(meta);
+
+      headMain.append(recordIcon('grade'), headText);
+      head.appendChild(headMain);
+
       if (r.letter_grade) {
         const badge = document.createElement('span');
         badge.className = 'badge badge-grade-' + r.letter_grade.toLowerCase();
         badge.textContent = 'Grade ' + LETTER_LABEL[r.letter_grade];
-        meta.appendChild(badge);
+        head.appendChild(badge);
       }
 
-      const body = document.createElement('div');
-      body.className = 'record-body';
+      item.appendChild(head);
+
+      // Grade (100%) and GPA are the headline numbers — always visible
+      // in their own row rather than buried among the four component
+      // scores below.
+      if (r.total_grade != null || r.gpa != null) {
+        const headlineRow = document.createElement('div');
+        headlineRow.className = 'headline-row';
+        if (r.total_grade != null) {
+          const stat = document.createElement('div');
+          stat.className = 'headline-stat';
+          stat.innerHTML = '<span class="label">Grade (100%)</span>';
+          const v = document.createElement('span'); v.className = 'value'; v.textContent = r.total_grade;
+          stat.appendChild(v);
+          headlineRow.appendChild(stat);
+        }
+        if (r.gpa != null) {
+          const stat = document.createElement('div');
+          stat.className = 'headline-stat';
+          stat.innerHTML = '<span class="label">GPA</span>';
+          const v = document.createElement('span'); v.className = 'value'; v.textContent = r.gpa;
+          stat.appendChild(v);
+          headlineRow.appendChild(stat);
+        }
+        item.appendChild(headlineRow);
+      }
+
+      // The four component scores are supplementary — tucked behind a
+      // details toggle instead of always-on clutter under every row.
+      const details = document.createElement('details');
+      details.className = 'grade-details';
+      const summary = document.createElement('summary');
+      details.appendChild(summary);
       const breakdown = document.createElement('div');
       breakdown.className = 'grade-breakdown';
       [
@@ -273,23 +450,9 @@
         row.append(l, v);
         breakdown.appendChild(row);
       });
-      const totalRow = document.createElement('div');
-      totalRow.className = 'detail-row';
-      const tl = document.createElement('span'); tl.className = 'label'; tl.textContent = 'Grade (100%)';
-      const tv = document.createElement('span'); tv.className = 'value'; tv.textContent = r.total_grade == null ? '—' : r.total_grade;
-      totalRow.append(tl, tv);
-      breakdown.appendChild(totalRow);
-      if (r.gpa != null) {
-        const gpaRow = document.createElement('div');
-        gpaRow.className = 'detail-row';
-        const gl = document.createElement('span'); gl.className = 'label'; gl.textContent = 'GPA';
-        const gv = document.createElement('span'); gv.className = 'value'; gv.textContent = r.gpa;
-        gpaRow.append(gl, gv);
-        breakdown.appendChild(gpaRow);
-      }
-      body.appendChild(breakdown);
+      details.appendChild(breakdown);
+      item.appendChild(details);
 
-      item.append(title, meta, body);
       list.appendChild(item);
     });
 
@@ -297,12 +460,23 @@
     // course on record (usually just the current one, but this holds
     // up if a student ends up with more than one row over time).
     const graded = rows.filter((r) => r.gpa != null);
+    const heroGpaTag = document.getElementById('heroGpaTag');
     if (graded.length) {
       const gpa = graded.reduce((sum, r) => sum + Number(r.gpa), 0) / graded.length;
       document.getElementById('gpaValue').textContent = gpa.toFixed(2);
+      // Radial gauge — a ring showing gpa/4.0 instead of a plain number,
+      // in the same spirit as the caliper/compass marks on the crest.
+      // Circumference of r=52: 2 * PI * 52.
+      const ring = document.getElementById('gpaRing');
+      const circumference = 2 * Math.PI * 52;
+      const fraction = Math.max(0, Math.min(1, gpa / 4));
+      ring.style.strokeDasharray = String(circumference);
+      ring.style.strokeDashoffset = String(circumference * (1 - fraction));
       gpaCard.hidden = false;
+      if (heroGpaTag) heroGpaTag.textContent = gpa.toFixed(2);
     } else {
       gpaCard.hidden = true;
+      if (heroGpaTag) heroGpaTag.textContent = 'No grades yet';
     }
   }
 

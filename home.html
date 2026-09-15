@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex">
 <meta http-equiv="Content-Security-Policy"
-  content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://iqcwrberwzumxxjktgux.supabase.co; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data: https://iqcwrberwzumxxjktgux.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
+  content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://iqcwrberwzumxxjktgux.supabase.co wss://iqcwrberwzumxxjktgux.supabase.co; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data: https://iqcwrberwzumxxjktgux.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
 <title>GTI Student Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -14,9 +14,9 @@
 <link rel="icon" type="image/x-icon" href="gti.png">
 
 </head>
-<body>
+<body class="portal-home">
 
-<header class="app-header">
+<header class="app-header grid-texture">
   <div class="brand">
     <span class="brand-mark">GTI</span>
     <h1>Student Portal</h1>
@@ -40,18 +40,22 @@
   <nav class="app-nav" role="tablist" aria-label="Portal sections">
     <div class="nav-logo"><img src="gti.png" alt="GTI logo"></div>
     <button class="nav-item active" role="tab" aria-selected="true" aria-controls="overview" data-tab="overview">
-      <span aria-hidden="true"></span> Overview
+      <svg class="nav-icon" viewBox="0 0 18 18" fill="none" aria-hidden="true"><circle cx="9" cy="9" r="6.25" stroke="currentColor" stroke-width="1.4"/><path d="M9 2.5V4.5M9 13.5V15.5M2.5 9H4.5M13.5 9H15.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="9" cy="9" r="1.3" fill="currentColor"/></svg> Overview
     </button>
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="timetable" data-tab="timetable">
-      <span aria-hidden="true"></span> Timetable
+      <svg class="nav-icon" viewBox="0 0 18 18" fill="none" aria-hidden="true"><rect x="2.5" y="3.5" width="13" height="12" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 7H15.5" stroke="currentColor" stroke-width="1.4"/><path d="M6 2V5M12 2V5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg> Timetable
     </button>
 
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="grades" data-tab="grades">
-      <span aria-hidden="true"></span> Grades
+      <svg class="nav-icon" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M4 14.5V10M9 14.5V6M14 14.5V3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg> Grades
+    </button>
+
+    <button class="nav-item" role="tab" aria-selected="false" aria-controls="resources" data-tab="resources">
+      <svg class="nav-icon" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M3.5 3.5H10.5C11.6 3.5 12.5 4.4 12.5 5.5V14.5H5.5C4.4 14.5 3.5 13.6 3.5 12.5V3.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M12.5 5.5H13.5C13.5 5.5 14.5 5.5 14.5 6.5V13.5C14.5 13.5 14.5 14.5 13.5 14.5H5.5" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M6 6.5H10M6 9H10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg> Resources
     </button>
 
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="course" data-tab="course">
-      <span aria-hidden="true"></span> Change course
+      <svg class="nav-icon" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M3.5 6.5H12.5L10 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M14.5 11.5H5.5L8 14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg> Change course
     </button>
 
     <!-- Not a tab — a real link out to lecturer-home.html. Only shown
@@ -61,13 +65,37 @@
          mobile; a tab-styled link here matches how admin.html's
          nav.html does the same for #adminPanelLink. -->
     <a class="nav-item" id="staffDashboardNavLink" href="lecturer-home.html" hidden>
-      <span aria-hidden="true"></span> Staff dashboard
+      <svg class="nav-icon" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M4 9H14M14 9L10 5M14 9L10 13" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg> Staff dashboard
     </a>
   </nav>
 
   <main class="app-main">
 
     <section id="overview" class="tab-content active">
+
+      <div class="hero-banner">
+        <div class="hero-photo"><img src="natural-sciences.jpg" alt=""></div>
+        <img class="hero-crest" src="gti.png" alt="" aria-hidden="true">
+        <span class="hero-tick hero-tick-tl" aria-hidden="true"></span>
+        <span class="hero-tick hero-tick-br" aria-hidden="true"></span>
+        <h2 id="heroGreeting">Welcome back</h2>
+        <p class="hero-sub" id="heroSub">Loading your record…</p>
+        <div class="hero-stats">
+          <div class="hero-stat">
+            <span class="hero-stat-label">Course</span>
+            <span class="hero-stat-value" id="heroCourseTag">—</span>
+          </div>
+          <div class="hero-stat">
+            <span class="hero-stat-label">Status</span>
+            <span class="hero-stat-value" id="heroStatusTag">—</span>
+          </div>
+          <div class="hero-stat">
+            <span class="hero-stat-label">GPA</span>
+            <span class="hero-stat-value" id="heroGpaTag">—</span>
+          </div>
+        </div>
+      </div>
+
       <h2>Your record</h2>
       <div class="card">
         <div class="detail-row"><span class="label">Name</span><span class="value" id="studentName"></span></div>
@@ -91,11 +119,23 @@
     <section id="grades" class="tab-content">
       <h2>Grades</h2>
       <div class="card" id="gpaCard" hidden>
-        <div class="stat-row">
-          <div class="stat-card"><div class="stat-value" id="gpaValue">–</div><div class="stat-label">Overall GPA</div></div>
+        <div class="gpa-gauge">
+          <svg viewBox="0 0 120 120" width="120" height="120" aria-hidden="true">
+            <circle class="gpa-ring-bg" cx="60" cy="60" r="52" fill="none" stroke-width="10"/>
+            <circle class="gpa-ring-fg" id="gpaRing" cx="60" cy="60" r="52" fill="none" stroke-width="10" stroke-linecap="round" transform="rotate(-90 60 60)"/>
+          </svg>
+          <div class="gpa-gauge-center">
+            <div class="gpa-gauge-value" id="gpaValue">–</div>
+            <div class="gpa-gauge-label">GPA / 4.0</div>
+          </div>
         </div>
       </div>
       <div class="card"><ul class="record-list" id="gradesList"></ul></div>
+    </section>
+
+    <section id="resources" class="tab-content">
+      <h2>Resources</h2>
+      <div class="card"><ul class="record-list" id="resourcesList"></ul></div>
     </section>
 
     <section id="course" class="tab-content">
@@ -183,8 +223,8 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="app.js"></script>
-<script src="courses-data.js"></script>
-<script src="home.js"></script>
+<script src="app.js?v=2"></script>
+<script src="courses-data.js?v=2"></script>
+<script src="home.js?v=2"></script>
 </body>
 </html>

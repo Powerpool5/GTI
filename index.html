@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex">
 <meta http-equiv="Content-Security-Policy"
-  content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://iqcwrberwzumxxjktgux.supabase.co; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
+  content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://iqcwrberwzumxxjktgux.supabase.co wss://iqcwrberwzumxxjktgux.supabase.co; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
 <title>Sign In - GTI Student Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -17,14 +17,37 @@
 
 <div class="auth-screen">
   <div class="auth-visual grid-texture">
+    <!-- Decorative background slideshow, one photo per department/stream
+         (see courses-data.js for the same grouping) — cycles on a loop
+         via pure CSS (see .auth-visual-slides in styles.css), no JS
+         needed. Swap these src paths for real campus photos; images
+         live in images/streams/ (not included here — drop your own
+         files in with these exact names, or change the paths). -->
+    <div class="auth-visual-slides" aria-hidden="true">
+      <img src="building.jpg" alt="">
+      <img src="images/streams/business.jpg" alt="">
+      <img src="natural-sciences.jpg" alt="">
+      <img src="images/streams/electrical.jpg" alt="">
+      <img src="images/streams/mechanical.jpg" alt="">
+      <img src="images/streams/land-surveying.jpg" alt="">
+    </div>
     <span class="brand-mark">GTI</span>
     <h1>Government Technical Institute</h1>
     <p>Committed to offering quality training with the availability of high quality facilities and qualified, caring staff. Sign in to check your timetable, announcements, and course record.</p>
+    <ul class="auth-dept-tags" aria-hidden="true">
+      <li>Building</li>
+      <li>Business</li>
+      <li>Natural Sciences</li>
+      <li>Electrical</li>
+      <li>Mechanical</li>
+      <li>Land Surveying</li>
+    </ul>
   </div>
 
   <div class="auth-panel">
     <button type="button" class="btn-icon-light theme-toggle-corner" id="themeToggleBtn" aria-label="Toggle dark mode">☾</button>
 
+    <div class="auth-panel-card">
     <h2 id="formHeading">Welcome back</h2>
     <p class="subtitle" id="formSubtitle">Sign in with your student email.</p>
 
@@ -39,7 +62,10 @@
       <input type="email" id="signInEmail" name="email" autocomplete="username" required maxlength="254">
 
       <label for="signInPassword">Password</label>
-      <input type="password" id="signInPassword" name="password" autocomplete="current-password" required minlength="8" maxlength="128">
+      <div class="password-field">
+        <input type="password" id="signInPassword" name="password" autocomplete="current-password" required minlength="8" maxlength="128">
+        <button type="button" class="password-toggle" data-target="signInPassword" aria-label="Show password"></button>
+      </div>
 
       <div class="sr-only" aria-hidden="true">
         <label for="companyWebsite">Leave blank</label>
@@ -71,7 +97,10 @@
       <input type="email" id="signUpEmail" name="email" autocomplete="username" required maxlength="254" placeholder="student@gmail.com">
 
       <label for="signUpPassword">Password</label>
-      <input type="password" id="signUpPassword" name="password" autocomplete="new-password" required minlength="8" maxlength="128" placeholder="At least 8 characters">
+      <div class="password-field">
+        <input type="password" id="signUpPassword" name="password" autocomplete="new-password" required minlength="8" maxlength="128" placeholder="At least 8 characters">
+        <button type="button" class="password-toggle" data-target="signUpPassword" aria-label="Show password"></button>
+      </div>
       <p class="field-hint">At least 8 characters. Longer, unique passwords are safer than complex short ones.</p>
 
       <div class="sr-only" aria-hidden="true">
@@ -96,12 +125,13 @@
     </form>
 
     <p style="margin-top:20px; font-size:0.85rem;"><a href="lecturer-login.html">Staff login</a></p>
+    </div>
   </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="app.js"></script>
-<script src="courses-data.js"></script>
-<script src="login.js"></script>
+<script src="app.js?v=2"></script>
+<script src="courses-data.js?v=2"></script>
+<script src="login.js?v=2"></script>
 </body>
 </html>

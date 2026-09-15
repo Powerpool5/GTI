@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex">
 <meta http-equiv="Content-Security-Policy"
-  content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://iqcwrberwzumxxjktgux.supabase.co; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data: https://lh3.googleusercontent.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
+  content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://iqcwrberwzumxxjktgux.supabase.co wss://iqcwrberwzumxxjktgux.supabase.co; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data: https://lh3.googleusercontent.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
 <title>Admin - GTI Student Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -48,6 +48,9 @@
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="students" data-tab="students">
       <span aria-hidden="true"></span> Students
     </button>
+    <button class="nav-item" role="tab" aria-selected="false" aria-controls="resources" data-tab="resources">
+      <span aria-hidden="true"></span> Resources
+    </button>
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="system" data-tab="system" id="systemNavItem" hidden>
       <span aria-hidden="true"></span> System
     </button>
@@ -71,6 +74,7 @@
         <div class="stat-card"><div class="stat-value" id="statStudents">–</div><div class="stat-label">Students</div></div>
         <div class="stat-card"><div class="stat-value" id="statAnnouncements">–</div><div class="stat-label">Announcements</div></div>
         <div class="stat-card"><div class="stat-value" id="statTimetable">–</div><div class="stat-label">Timetable entries</div></div>
+        <div class="stat-card"><div class="stat-value" id="statResources">–</div><div class="stat-label">Resources</div></div>
         <div class="stat-card"><div class="stat-value" id="statUnverified">–</div><div class="stat-label">Pending verification</div></div>
         <div class="stat-card"><div class="stat-value" id="statInactive">–</div><div class="stat-label">Pending reactivation</div></div>
       </div>
@@ -120,6 +124,24 @@
         <table class="admin-table" id="studentsTable">
           <thead><tr><th>Name</th><th>Student ID</th><th>Email</th><th>Course</th><th>Status</th><th>Role</th><th>Root</th><th></th></tr></thead>
           <tbody id="studentsTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- RESOURCES -->
+    <section id="resources" class="tab-content">
+      <div class="card-row-between">
+        <h2 style="margin:0;">Resources</h2>
+        <button class="btn btn-sm" id="newResourceBtn">+ Add resource</button>
+      </div>
+      <div class="card">
+        <label for="resourceCourseFilter">Filter by course</label>
+        <select id="resourceCourseFilter"><option value="">All courses</option></select>
+      </div>
+      <div class="card table-wrap">
+        <table class="admin-table" id="resourcesTable">
+          <thead><tr><th>Course</th><th>Title</th><th>Author</th><th>File</th><th>Uploaded</th><th></th></tr></thead>
+          <tbody id="resourcesTableBody"></tbody>
         </table>
       </div>
     </section>
@@ -252,9 +274,40 @@
   </div>
 </div>
 
+<!-- Resource modal -->
+<div class="modal-backdrop" id="resourceModal" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="resourceModalTitle" style="margin:0;">New resource</h2>
+      <button class="modal-close" id="resourceModalClose" aria-label="Close">×</button>
+    </div>
+    <form id="resourceForm" novalidate>
+      <input type="hidden" id="resourceId">
+      <label for="resourceCourse">Course</label>
+      <select id="resourceCourse" required></select>
+
+      <label for="resourceTitle">Title</label>
+      <input type="text" id="resourceTitle" maxlength="200" required placeholder="e.g., Engineering Mathematics, 5th Edition">
+
+      <label for="resourceAuthor">Author (optional)</label>
+      <input type="text" id="resourceAuthor" maxlength="150" placeholder="e.g., K.A. Stroud">
+
+      <label for="resourceFileUrl">Link to the textbook (optional)</label>
+      <input type="text" id="resourceFileUrl" maxlength="500" placeholder="https://…">
+      <label for="resourceFileUpload">Or upload a file (PDF, EPUB, DOC)</label>
+      <input type="file" id="resourceFileUpload" accept=".pdf,.epub,.doc,.docx">
+      <p class="field-hint" id="resourceUploadStatus"></p>
+      <p class="field-hint">Provide a link or upload a file — at least one is required.</p>
+
+      <p class="status-message" id="resourceFormStatus" role="alert"></p>
+      <button type="submit" class="btn btn-block" id="resourceSubmit">Save resource</button>
+    </form>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="app.js"></script>
-<script src="courses-data.js"></script>
-<script src="admin.js"></script>
+<script src="app.js?v=2"></script>
+<script src="courses-data.js?v=2"></script>
+<script src="admin.js?v=2"></script>
 </body>
 </html>
