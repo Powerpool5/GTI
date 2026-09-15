@@ -1091,7 +1091,34 @@ table.admin-table td { padding: 10px 12px; border-bottom: 1px solid var(--paper-
 table.admin-table tr:hover td { background: var(--blueprint-soft); }
 table.admin-table select, table.admin-table input { margin-bottom: 0; }
 table.admin-table input[type="number"] { width: 72px; text-align: right; }
+table.admin-table input[type="text"] { min-width: 150px; }
 table.admin-table .grade-total { display: inline-block; min-width: 48px; font-family: var(--font-mono); font-weight: 600; text-align: right; }
+
+/* Grades tab — one row per subject now (a course has several), so
+   each student gets a slim summary row of their own instead of a
+   Name/ID column repeated on every subject line. The summary row
+   carries the student's GPA once — averaged from their saved subject
+   grades — rather than showing GPA on every subject row underneath. */
+table.admin-table tr.grades-student-row td {
+  background: var(--blueprint-soft);
+  border-bottom: 1px solid var(--paper-line);
+  padding: 10px 12px;
+}
+[data-theme="dark"] table.admin-table tr.grades-student-row td { background: rgba(255,255,255,0.05); }
+table.admin-table tr.grades-student-row:hover td { background: var(--blueprint-soft); }
+[data-theme="dark"] table.admin-table tr.grades-student-row:hover td { background: rgba(255,255,255,0.05); }
+.grades-student-row-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.grades-student-id-block { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.grades-student-name { font-weight: 600; }
+.grades-student-idtext { font-family: var(--font-mono); font-size: 0.8rem; color: var(--slate); }
+.badge-gpa { background: var(--ink-navy); color: #fff; }
+[data-theme="dark"] .badge-gpa { background: var(--brass); color: #1a1a1a; }
 
 .search-row { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
 .search-row input { margin-bottom: 0; }
