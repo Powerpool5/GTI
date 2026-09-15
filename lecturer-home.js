@@ -1005,12 +1005,18 @@
 
   /* ---------------- Grades ---------------- */
 
-  // Grade (100%) and GPA are entered directly by staff, not derived
-  // from Attendance/Class work/Home work/Examination — those four stay
-  // as their own record but don't feed into the total. The letter
-  // grade is still suggested from whatever total you type in (unless
-  // you've picked one yourself), using these thresholds.
+  // Grade (100%) is entered directly by staff, not derived from
+  // Attendance/Class work/Home work/Examination — those four stay as
+  // their own record but don't feed into the total. The letter grade
+  // is still suggested from whatever total you type in (unless you've
+  // picked one yourself), using these thresholds.
   const LETTER_THRESHOLDS = [['A', 80], ['B', 70], ['C', 60], ['F', 0]];
+  // GPA is no longer typed in by hand — a subject's grade is now one
+  // of several per student, so a manually-entered GPA on every one of
+  // them stopped meaning anything. It's derived from the letter grade
+  // on save, and shown once per student (an average across their
+  // subjects) instead of repeated on every subject row.
+  const GPA_FOR_LETTER = { A: 4.0, B: 3.0, C: 2.0, F: 0.0 };
 
   function suggestLetter(total) {
     for (const [letter, min] of LETTER_THRESHOLDS) {
@@ -1019,17 +1025,42 @@
     return 'F';
   }
 
+  // Live-formats a subject name as the person types: collapses runs of
+  // spaces down to one, drops a leading space, and title-cases each
+  // word — so "computer  SCIENCE" becomes "Computer Science" without
+  // staff having to clean it up themselves. Keeps the cursor where it
+  // was rather than jumping to the end on every keystroke.
+  function formatSubjectValue(raw) {
+    let formatted = raw.replace(/ {2,}/g, ' ');
+    if (formatted.startsWith(' ')) formatted = formatted.slice(1);
+    formatted = formatted.replace(/\w\S*/g, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+    return formatted;
+  }
+  function wireSubjectFormatting(input) {
+    input.addEventListener('input', () => {
+      const raw = input.value;
+      const cursor = input.selectionStart;
+      const formatted = formatSubjectValue(raw);
+      if (formatted === raw) return;
+      const diff = raw.length - formatted.length;
+      input.value = formatted;
+      const pos = Math.max(0, cursor - diff);
+      input.setSelectionRange(pos, pos);
+    });
+    input.addEventListener('blur', () => { input.value = input.value.trim(); });
+  }
+
   let currentGradesCourse = '';
   let currentGradesStudents = [];
-  let currentGradesByStudent = new Map();
+  let currentGradesByStudent = new Map(); // student_id -> array of grade rows (one per subject)
 
   async function loadGrades(courseCode) {
     currentGradesCourse = courseCode;
     const tbody = document.getElementById('gradesTbody');
     currentGradesStudents = [];
     currentGradesByStudent = new Map();
-    if (!courseCode) { tbody.innerHTML = '<tr><td colspan="10" class="empty-state">Select a course to input grades.</td></tr>'; return; }
-    tbody.innerHTML = '<tr><td colspan="10"><div class="skeleton skeleton-line"></div></td></tr>';
+    if (!courseCode) { tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Select a course to input grades.</td></tr>'; return; }
+    tbody.innerHTML = '<tr><td colspan="8"><div class="skeleton skeleton-line"></div></td></tr>';
 
     const [studentsRes, gradesRes] = await Promise.all([
       supabaseClient
@@ -1040,19 +1071,24 @@
         .order('full_name'),
       supabaseClient
         .from('grades')
-        .select('student_id, attendance, class_work, home_work, examination, total_grade, gpa, letter_grade')
-        .eq('course_code', courseCode),
+        .select('id, student_id, subject, attendance, class_work, home_work, examination, total_grade, gpa, letter_grade')
+        .eq('course_code', courseCode)
+        .order('subject'),
     ]);
 
     if (studentsRes.error) {
       console.error('Loading students for grades failed:', studentsRes.error);
-      tbody.innerHTML = '<tr><td colspan="10" class="empty-state">Could not load students.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Could not load students.</td></tr>';
       return;
     }
     if (gradesRes.error) console.error('Loading existing grades failed:', gradesRes.error);
 
     currentGradesStudents = studentsRes.data || [];
-    currentGradesByStudent = new Map((gradesRes.data || []).map((g) => [g.student_id, g]));
+    currentGradesByStudent = new Map();
+    (gradesRes.data || []).forEach((g) => {
+      if (!currentGradesByStudent.has(g.student_id)) currentGradesByStudent.set(g.student_id, []);
+      currentGradesByStudent.get(g.student_id).push(g);
+    });
     renderGradesTable();
   }
 
@@ -1061,7 +1097,7 @@
     tbody.innerHTML = '';
 
     if (!currentGradesStudents.length) {
-      tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No students are on this course yet.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No students are on this course yet.</td></tr>';
       return;
     }
 
@@ -1071,19 +1107,87 @@
       : currentGradesStudents;
 
     if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="10" class="empty-state">No matching students.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No matching students.</td></tr>';
       return;
     }
 
-    rows.forEach((s) => renderGradeRow(s, currentGradesByStudent.get(s.id)));
+    rows.forEach((s) => renderStudentGradeBlock(s, currentGradesByStudent.get(s.id) || []));
   }
 
-  function renderGradeRow(student, existing) {
+  function renderStudentGradeBlock(student, existingRows) {
     const tbody = document.getElementById('gradesTbody');
+
+    const headerRow = document.createElement('tr');
+    headerRow.className = 'grades-student-row';
+    const headerTd = document.createElement('td');
+    headerTd.colSpan = 8;
+
+    const inner = document.createElement('div');
+    inner.className = 'grades-student-row-inner';
+
+    const idBlock = document.createElement('div');
+    idBlock.className = 'grades-student-id-block';
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'grades-student-name';
+    nameSpan.textContent = student.full_name || '—';
+    const idSpan = document.createElement('span');
+    idSpan.className = 'grades-student-idtext';
+    idSpan.textContent = student.student_id ? `ID ${student.student_id}` : '';
+    idBlock.append(nameSpan, idSpan);
+
+    // GPA averaged from this student's saved subjects — shown once
+    // here, not repeated on every subject row below.
+    const graded = existingRows.filter((r) => r.gpa != null);
+    if (graded.length) {
+      const gpa = graded.reduce((sum, r) => sum + Number(r.gpa), 0) / graded.length;
+      const gpaBadge = document.createElement('span');
+      gpaBadge.className = 'badge badge-gpa';
+      gpaBadge.textContent = 'GPA ' + gpa.toFixed(2);
+      idBlock.appendChild(gpaBadge);
+    }
+
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'btn btn-secondary btn-sm';
+    addBtn.textContent = '+ Add subject';
+
+    inner.append(idBlock, addBtn);
+    headerTd.appendChild(inner);
+    headerRow.appendChild(headerTd);
+    tbody.appendChild(headerRow);
+
+    // Tracks the most recently inserted row for this student, so
+    // "+ Add subject" always inserts right after it — including after
+    // a subject added earlier in the same session, not just the last
+    // one that came from the database.
+    const anchor = { el: headerRow };
+    const rowsToRender = existingRows.length ? existingRows : [null];
+    rowsToRender.forEach((existing) => {
+      const tr = renderGradeSubjectRow(student, existing);
+      anchor.el.insertAdjacentElement('afterend', tr);
+      anchor.el = tr;
+    });
+
+    addBtn.addEventListener('click', () => {
+      const tr = renderGradeSubjectRow(student, null);
+      anchor.el.insertAdjacentElement('afterend', tr);
+      anchor.el = tr;
+      tr.querySelector('input[type="text"]').focus();
+    });
+  }
+
+  function renderGradeSubjectRow(student, existing) {
     const tr = document.createElement('tr');
 
-    const nameTd = document.createElement('td'); nameTd.textContent = student.full_name || '—'; tr.appendChild(nameTd);
-    const idTd = document.createElement('td'); idTd.textContent = student.student_id || '—'; tr.appendChild(idTd);
+    const subjectTd = document.createElement('td');
+    const subjectInput = document.createElement('input');
+    subjectInput.type = 'text';
+    subjectInput.maxLength = 100;
+    subjectInput.placeholder = 'e.g., Computer Programming';
+    subjectInput.value = (existing && existing.subject) || '';
+    wireSubjectFormatting(subjectInput);
+    subjectTd.appendChild(subjectInput);
+    tr.appendChild(subjectTd);
 
     function numberInput(value, { max = '100', step = '0.1' } = {}) {
       const input = document.createElement('input');
@@ -1100,7 +1204,6 @@
     const homeWorkInput = numberInput(existing && existing.home_work);
     const examInput = numberInput(existing && existing.examination);
     const totalInput = numberInput(existing && existing.total_grade);
-    const gpaInput = numberInput(existing && existing.gpa, { max: '4.3', step: '0.01' });
 
     [attendanceInput, classWorkInput, homeWorkInput, examInput, totalInput].forEach((input) => {
       const td = document.createElement('td');
@@ -1119,10 +1222,6 @@
     });
     letterTd.appendChild(letterSelect);
     tr.appendChild(letterTd);
-
-    const gpaTd = document.createElement('td');
-    gpaTd.appendChild(gpaInput);
-    tr.appendChild(gpaTd);
 
     // Suggest a letter from whatever Grade (100%) you type in, unless
     // you've picked one yourself — once you touch the dropdown, this
@@ -1143,28 +1242,41 @@
     }
 
     const actionsTd = document.createElement('td');
+    actionsTd.style.whiteSpace = 'nowrap';
     const saveBtn = document.createElement('button');
     saveBtn.type = 'button';
     saveBtn.className = 'btn btn-sm';
     saveBtn.textContent = 'Save';
     saveBtn.addEventListener('click', async () => {
+      const subject = subjectInput.value.trim();
+      if (!subject) {
+        subjectInput.focus();
+        toast('Enter a subject first.', 'error');
+        return;
+      }
       saveBtn.disabled = true;
       saveBtn.textContent = 'Saving…';
+      const letter = letterSelect.value;
       const payload = {
         student_id: student.id,
         course_code: currentGradesCourse,
         course_name: courseNameFor(currentGradesCourse),
+        subject,
         attendance: attendanceInput.value === '' ? 0 : Number(attendanceInput.value),
         class_work: classWorkInput.value === '' ? 0 : Number(classWorkInput.value),
         home_work: homeWorkInput.value === '' ? 0 : Number(homeWorkInput.value),
         examination: examInput.value === '' ? 0 : Number(examInput.value),
         total_grade: totalInput.value === '' ? 0 : Number(totalInput.value),
-        gpa: gpaInput.value === '' ? null : Number(gpaInput.value),
-        letter_grade: letterSelect.value,
+        gpa: letter ? GPA_FOR_LETTER[letter] : null,
+        letter_grade: letter,
         updated_by: currentUserId,
         updated_at: new Date().toISOString(),
       };
-      const { error } = await supabaseClient.from('grades').upsert(payload, { onConflict: 'student_id,course_code' });
+
+      const { error } = existing && existing.id
+        ? await supabaseClient.from('grades').update(payload).eq('id', existing.id)
+        : await supabaseClient.from('grades').insert(payload);
+
       saveBtn.disabled = false;
       saveBtn.textContent = 'Save';
       if (error) {
@@ -1172,12 +1284,28 @@
         toast('Could not save this grade.', 'error');
         return;
       }
-      toast(`Saved grade for ${student.full_name || 'student'}.`, 'success');
+      toast(`Saved ${subject} for ${student.full_name || 'student'}.`, 'success');
+      loadGrades(currentGradesCourse);
     });
-    actionsTd.appendChild(saveBtn);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn btn-danger btn-sm';
+    removeBtn.textContent = 'Remove';
+    removeBtn.style.marginLeft = '8px';
+    removeBtn.addEventListener('click', async () => {
+      if (!existing || !existing.id) { tr.remove(); return; }
+      if (!confirm(`Remove ${existing.subject ? `"${existing.subject}"` : 'this subject'} for ${student.full_name || 'this student'}?`)) return;
+      const { error } = await supabaseClient.from('grades').delete().eq('id', existing.id);
+      if (error) { toast('Could not remove this subject.', 'error'); return; }
+      toast('Subject removed.', 'success');
+      loadGrades(currentGradesCourse);
+    });
+
+    actionsTd.append(saveBtn, removeBtn);
     tr.appendChild(actionsTd);
 
-    tbody.appendChild(tr);
+    return tr;
   }
 
   document.getElementById('gradesCourseSelect').addEventListener('change', (e) => loadGrades(e.target.value));
