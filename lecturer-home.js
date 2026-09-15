@@ -56,11 +56,15 @@
       // Staff isn't a real course with students on it, so it can't be
       // graded — leave the Staff group off the grading picker entirely
       // rather than let someone select it and find an empty table.
+      // Same reasoning for resources: a resource is course material,
+      // so "Staff" doesn't belong in either the course picker in the
+      // modal or the tab's filter dropdown.
       // studentCourseSelect and announcementCourse still get every
       // group, including Staff, since those really do apply to staff
       // accounts (assigning "Staff" as someone's course, or posting a
       // course-scoped announcement).
-      const groups = select.id === 'gradesCourseSelect' ? COURSES.filter((g) => g.label !== 'Staff') : COURSES;
+      const NO_STAFF_GROUP_SELECTS = ['gradesCourseSelect', 'resourceCourse', 'resourceCourseFilter'];
+      const groups = NO_STAFF_GROUP_SELECTS.includes(select.id) ? COURSES.filter((g) => g.label !== 'Staff') : COURSES;
       groups.forEach((group) => {
         const optgroup = document.createElement('optgroup');
         optgroup.label = group.label;
@@ -114,15 +118,38 @@
   function openModal(id) { document.getElementById(id).hidden = false; }
   function closeModal(id) { document.getElementById(id).hidden = true; }
 
+  // Small stroke icons matching the sidebar nav's own icon style, same
+  // set introduced on the student dashboard (home.js) — kept here as
+  // its own copy since this page ships as a separate script, not a
+  // shared module.
+  const ICONS = {
+    bell: '<svg viewBox="0 0 18 18" width="15" height="15" fill="none" aria-hidden="true"><path d="M9 3C7.1 3 5.6 4.6 5.6 6.5V9.3L4.2 11.4H13.8L12.4 9.3V6.5C12.4 4.6 10.9 3 9 3Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M7.4 13.4C7.4 14.3 8.1 15 9 15C9.9 15 10.6 14.3 10.6 13.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
+    resource: '<svg viewBox="0 0 18 18" width="15" height="15" fill="none" aria-hidden="true"><path d="M3.5 3.5H10.5C11.6 3.5 12.5 4.4 12.5 5.5V14.5H5.5C4.4 14.5 3.5 13.6 3.5 12.5V3.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M12.5 5.5H13.5C13.5 5.5 14.5 5.5 14.5 6.5V13.5C14.5 13.5 14.5 14.5 13.5 14.5H5.5" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M6 6.5H10M6 9H10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
+    person: '<svg viewBox="0 0 18 18" width="15" height="15" fill="none" aria-hidden="true"><circle cx="9" cy="6.5" r="3" stroke="currentColor" stroke-width="1.4"/><path d="M3.5 15C4 12 6.3 10.5 9 10.5C11.7 10.5 14 12 14.5 15" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+    empty: '<svg viewBox="0 0 32 32" width="28" height="28" fill="none" aria-hidden="true"><rect x="6" y="8" width="20" height="17" rx="2.5" stroke="currentColor" stroke-width="1.6"/><path d="M6 14H26M11 4V8M21 4V8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  };
+
+  function recordIcon(name) {
+    const span = document.createElement('span');
+    span.className = 'record-icon';
+    span.innerHTML = ICONS[name] || '';
+    return span;
+  }
+
+  function emptyState(message) {
+    return '<li class="empty-state">' + ICONS.empty + '<span>' + message + '</span></li>';
+  }
+
   /* ---------------- Overview ---------------- */
 
   async function loadOverview() {
-    const [students, staff, admins, anns, tt, inactive, recent] = await Promise.all([
+    const [students, staff, admins, anns, tt, res, inactive, recent] = await Promise.all([
       supabaseClient.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'student'),
       supabaseClient.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'staff'),
       supabaseClient.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'admin'),
       supabaseClient.from('announcements').select('id', { count: 'exact', head: true }),
       supabaseClient.from('timetable').select('id', { count: 'exact', head: true }),
+      supabaseClient.from('resources').select('id', { count: 'exact', head: true }),
       supabaseClient.from('profiles').select('id', { count: 'exact', head: true }).not('deactivated_at', 'is', null),
       supabaseClient.from('profiles').select('full_name, email, created_at').order('created_at', { ascending: false }).limit(5),
     ]);
@@ -132,6 +159,7 @@
     document.getElementById('statAdmins').textContent = admins.count ?? '—';
     document.getElementById('statAnnouncements').textContent = anns.count ?? '—';
     document.getElementById('statTimetable').textContent = tt.count ?? '—';
+    document.getElementById('statResources').textContent = res.count ?? '—';
     document.getElementById('statInactive').textContent = inactive.count ?? '—';
 
     if (students.error) console.error('Overview stat query failed (students):', students.error);
@@ -139,6 +167,7 @@
     if (admins.error) console.error('Overview stat query failed (admins):', admins.error);
     if (anns.error) console.error('Overview stat query failed (announcements):', anns.error);
     if (tt.error) console.error('Overview stat query failed (timetable):', tt.error);
+    if (res.error) console.error('Overview stat query failed (resources):', res.error);
     if (inactive.error) console.error('Overview stat query failed (inactive):', inactive.error);
     if (recent.error) console.error('Overview stat query failed (recent):', recent.error);
 
@@ -146,19 +175,31 @@
     list.innerHTML = '';
     const rows = recent.data || [];
     if (!rows.length) {
-      list.innerHTML = '<li class="empty-state">No one has signed up yet.</li>';
+      list.innerHTML = emptyState('No one has signed up yet.');
       return;
     }
     rows.forEach((p) => {
       const li = document.createElement('li');
       li.className = 'record';
+
+      const head = document.createElement('div');
+      head.className = 'record-head';
+      const headMain = document.createElement('div');
+      headMain.className = 'record-head-main';
+      const headText = document.createElement('div');
+      headText.className = 'record-head-text';
+
       const title = document.createElement('div');
       title.className = 'record-title';
       title.textContent = p.full_name || p.email || 'Unnamed';
       const meta = document.createElement('div');
       meta.className = 'record-meta';
       meta.textContent = fmtDate(p.created_at);
-      li.append(title, meta);
+      headText.append(title, meta);
+
+      headMain.append(recordIcon('person'), headText);
+      head.appendChild(headMain);
+      li.appendChild(head);
       list.appendChild(li);
     });
   }
@@ -543,13 +584,22 @@
       .limit(50);
 
     list.innerHTML = '';
-    if (error) { console.error('Loading announcements failed:', error); list.innerHTML = '<li class="empty-state">Could not load announcements.</li>'; return; }
+    if (error) { console.error('Loading announcements failed:', error); list.innerHTML = emptyState('Could not load announcements.'); return; }
     const rows = data || [];
-    if (!rows.length) { list.innerHTML = '<li class="empty-state">No announcements yet.</li>'; return; }
+    if (!rows.length) { list.innerHTML = emptyState('No announcements yet.'); return; }
+
+    const ACCENT_FOR_AUDIENCE = { everyone: 'accent-danger', all_students: 'accent-brass', staff: 'accent-ink' };
 
     rows.forEach((a) => {
       const item = document.createElement('li');
-      item.className = 'record';
+      item.className = 'record' + (ACCENT_FOR_AUDIENCE[a.audience] ? ' ' + ACCENT_FOR_AUDIENCE[a.audience] : '');
+
+      const head = document.createElement('div');
+      head.className = 'record-head';
+      const headMain = document.createElement('div');
+      headMain.className = 'record-head-main';
+      const headText = document.createElement('div');
+      headText.className = 'record-head-text';
 
       const title = document.createElement('div');
       title.className = 'record-title';
@@ -570,6 +620,10 @@
       const dateSpan = document.createElement('span');
       dateSpan.textContent = new Date(a.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
       meta.append(badge, dateSpan);
+
+      headText.append(title, meta);
+      headMain.append(recordIcon('bell'), headText);
+      head.appendChild(headMain);
 
       const body = document.createElement('div');
       body.className = 'record-body';
@@ -594,7 +648,7 @@
       });
       actions.append(editBtn, deleteBtn);
 
-      item.append(title, meta, body, actions);
+      item.append(head, body, actions);
       list.appendChild(item);
     });
   }
@@ -761,6 +815,192 @@
       opt.textContent = uploaded.has(opt.value) ? `✓ ${label}` : label;
     });
     syncCourseSelectDisplay(sel); // the ✓ above may have just changed the currently-selected option's text
+  }
+
+  /* ---------------- Resources ----------------
+     Same table (`resources`) and storage bucket (`resource-files`) as
+     admin.html's Resources tab — this just brings the same management
+     UI to plain staff accounts, matching how Announcements and
+     Timetable already work here without needing full admin access.
+     Unlike timetable (one row per course), resources are a plain list:
+     several textbooks/links can exist for the same course. */
+  let currentResourceFilter = '';
+  const resourceModal = document.getElementById('resourceModal');
+  const resourceForm = document.getElementById('resourceForm');
+
+  function openResourceModal(existing) {
+    resourceForm.reset();
+    document.getElementById('resourceId').value = existing ? existing.id : '';
+    document.getElementById('resourceModalTitle').textContent = existing ? 'Edit resource' : 'New resource';
+    if (existing) {
+      document.getElementById('resourceCourse').value = existing.course_code;
+      document.getElementById('resourceTitle').value = existing.title;
+      document.getElementById('resourceAuthor').value = existing.author || '';
+      document.getElementById('resourceFileUrl').value = existing.file_url || '';
+    } else if (currentResourceFilter) {
+      document.getElementById('resourceCourse').value = currentResourceFilter;
+    }
+    syncCourseSelectDisplay(document.getElementById('resourceCourse'));
+    document.getElementById('resourceUploadStatus').textContent = '';
+    setStatus(document.getElementById('resourceFormStatus'), '', null);
+    resourceModal.hidden = false;
+  }
+  document.getElementById('newResourceBtn').addEventListener('click', () => openResourceModal(null));
+  document.getElementById('resourceModalClose').addEventListener('click', () => resourceModal.hidden = true);
+
+  resourceForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const status = document.getElementById('resourceFormStatus');
+    const submitBtn = document.getElementById('resourceSubmit');
+
+    const id = document.getElementById('resourceId').value;
+    const courseCode = document.getElementById('resourceCourse').value;
+    const title = document.getElementById('resourceTitle').value.trim();
+    const author = document.getElementById('resourceAuthor').value.trim() || null;
+    let fileUrl = document.getElementById('resourceFileUrl').value.trim() || null;
+
+    const uploadInput = document.getElementById('resourceFileUpload');
+    const uploadStatus = document.getElementById('resourceUploadStatus');
+    const chosenFile = uploadInput.files && uploadInput.files[0];
+
+    if (!courseCode) {
+      setStatus(status, 'Choose a course.', 'error');
+      return;
+    }
+    if (!fileUrl && !chosenFile) {
+      setStatus(status, 'Provide a link or upload a file.', 'error');
+      return;
+    }
+
+    submitBtn.disabled = true;
+
+    if (chosenFile) {
+      uploadStatus.textContent = 'Uploading…';
+      const path = `${courseCode}/${Date.now()}-${chosenFile.name}`;
+      const { error: uploadError } = await supabaseClient.storage
+        .from('resource-files')
+        .upload(path, chosenFile, { upsert: false });
+
+      if (uploadError) {
+        console.error('Resource file upload failed:', uploadError);
+        uploadStatus.textContent = '';
+        submitBtn.disabled = false;
+        setStatus(status, 'Could not upload the file.', 'error');
+        return;
+      }
+
+      const { data: publicUrlData } = supabaseClient.storage.from('resource-files').getPublicUrl(path);
+      fileUrl = publicUrlData.publicUrl;
+      uploadStatus.textContent = 'Uploaded.';
+    }
+
+    const payload = { course_code: courseCode, title, author, file_url: fileUrl };
+    if (!id) payload.created_by = currentUserId;
+
+    const { error } = id
+      ? await supabaseClient.from('resources').update(payload).eq('id', id).select().single()
+      : await supabaseClient.from('resources').insert(payload).select().single();
+
+    submitBtn.disabled = false;
+
+    if (error) { setStatus(status, 'Could not save resource. Please try again.', 'error'); console.error('Saving resource failed:', error); return; }
+
+    uploadInput.value = '';
+    uploadStatus.textContent = '';
+    resourceModal.hidden = true;
+    toast('Resource saved.', 'success');
+    loadResources(currentResourceFilter);
+    loadOverview();
+  });
+
+  async function loadResources(courseCode) {
+    currentResourceFilter = courseCode || '';
+    const list = document.getElementById('resourcesList');
+    list.innerHTML = '';
+
+    let query = supabaseClient
+      .from('resources')
+      .select('id, course_code, title, author, file_url, created_at')
+      .order('course_code')
+      .order('title');
+    if (courseCode) query = query.eq('course_code', courseCode);
+
+    const { data, error } = await query;
+
+    if (error) { console.error('Loading resources failed:', error); list.innerHTML = emptyState('Could not load resources.'); return; }
+    const rows = data || [];
+    if (!rows.length) { list.innerHTML = emptyState('No resources uploaded yet.'); return; }
+
+    rows.forEach((r) => {
+      const item = document.createElement('li');
+      item.className = 'record';
+
+      const head = document.createElement('div');
+      head.className = 'record-head';
+      const headMain = document.createElement('div');
+      headMain.className = 'record-head-main';
+      const headText = document.createElement('div');
+      headText.className = 'record-head-text';
+
+      const title = document.createElement('div');
+      title.className = 'record-title';
+      title.textContent = r.title;
+
+      const meta = document.createElement('div');
+      meta.className = 'record-meta';
+      const courseBadge = document.createElement('span');
+      courseBadge.className = 'badge badge-course';
+      courseBadge.textContent = courseNameFor(r.course_code);
+      meta.appendChild(courseBadge);
+      if (r.author) {
+        const authorSpan = document.createElement('span');
+        authorSpan.textContent = r.author;
+        meta.appendChild(authorSpan);
+      }
+      if (r.created_at) {
+        const dateSpan = document.createElement('span');
+        dateSpan.textContent = 'Added ' + fmtDate(r.created_at);
+        meta.appendChild(dateSpan);
+      }
+
+      headText.append(title, meta);
+      headMain.append(recordIcon('resource'), headText);
+      head.appendChild(headMain);
+
+      if (r.file_url) {
+        const fileLink = document.createElement('a');
+        fileLink.className = 'record-action';
+        fileLink.href = r.file_url;
+        fileLink.target = '_blank';
+        fileLink.rel = 'noopener noreferrer';
+        fileLink.textContent = 'Open ↗';
+        head.appendChild(fileLink);
+      }
+
+      item.appendChild(head);
+
+      const actions = document.createElement('div');
+      actions.className = 'record-actions';
+      const editBtn = document.createElement('button');
+      editBtn.className = 'btn btn-secondary btn-sm';
+      editBtn.textContent = 'Edit';
+      editBtn.addEventListener('click', () => openResourceModal(r));
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'btn btn-danger btn-sm';
+      deleteBtn.textContent = 'Remove';
+      deleteBtn.addEventListener('click', async () => {
+        if (!confirm(`Remove "${r.title}"?`)) return;
+        const { error: delError } = await supabaseClient.from('resources').delete().eq('id', r.id);
+        if (delError) { toast('Could not remove resource.', 'error'); return; }
+        toast('Resource removed.', 'success');
+        loadResources(currentResourceFilter);
+        loadOverview();
+      });
+      actions.append(editBtn, deleteBtn);
+      item.appendChild(actions);
+
+      list.appendChild(item);
+    });
   }
 
   /* ---------------- Grades ---------------- */
@@ -1350,6 +1590,7 @@
     populateCourseSelects();
     populateStudentCourseFilter();
     document.getElementById('timetableCourseSelect').addEventListener('change', (e) => loadTimetable(e.target.value));
+    document.getElementById('resourceCourseFilter').addEventListener('change', (e) => loadResources(e.target.value));
     markUploadedTimetableCourses();
 
     loadingMessage.hidden = true;
@@ -1361,6 +1602,7 @@
       loadStudents(),
       loadAnnouncements(),
       loadTimetable(document.getElementById('timetableCourseSelect').value),
+      loadResources(document.getElementById('resourceCourseFilter').value),
       loadMaintenanceCard(),
       loadSupportTab(),
       loadAllTickets(),

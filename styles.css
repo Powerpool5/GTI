@@ -898,17 +898,17 @@ button.btn-link { background: none; border: none; color: var(--blueprint); paddi
    match the rest of the student dashboard (hero banner, auth screens):
    each record becomes its own rounded, elevated card with a type
    colored left edge and icon, echoing the registration-tick/instrument
-   language above. Scoped to home.html only, same as .portal-home .card
-   — admin.html/lecturer-home.html keep the plain shared version.
+   language above. Scoped to home.html and lecturer-home.html (see the .staff-dashboard
+   body class there) — admin.html keeps the plain shared version.
    ========================= */
 
-.portal-home ul.record-list {
+.portal-home ul.record-list, .staff-dashboard ul.record-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.portal-home .record {
+.portal-home .record, .staff-dashboard .record {
   position: relative;
   background: var(--surface);
   border: 1px solid var(--paper-line);
@@ -918,28 +918,29 @@ button.btn-link { background: none; border: none; color: var(--blueprint); paddi
   box-shadow: var(--shadow-sm);
   transition: box-shadow 0.2s var(--ease), transform 0.2s var(--ease), background 0.2s var(--ease);
 }
-.portal-home .record:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+.portal-home .record:hover, .staff-dashboard .record:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
 
 /* Accent variants, set by home.js from the record's own data (an
    announcement's audience, a grade's letter) rather than a fixed color
    per tab — reuses the same semantics as the existing .badge-* colors. */
-.portal-home .record.accent-brass { border-left-color: var(--brass); }
-.portal-home .record.accent-success { border-left-color: var(--success); }
-.portal-home .record.accent-danger { border-left-color: var(--danger); }
+.portal-home .record.accent-brass, .staff-dashboard .record.accent-brass { border-left-color: var(--brass); }
+.portal-home .record.accent-success, .staff-dashboard .record.accent-success { border-left-color: var(--success); }
+.portal-home .record.accent-danger, .staff-dashboard .record.accent-danger { border-left-color: var(--danger); }
+.portal-home .record.accent-ink, .staff-dashboard .record.accent-ink { border-left-color: var(--ink-navy); }
 
-.portal-home .record-head {
+.portal-home .record-head, .staff-dashboard .record-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
 }
-.portal-home .record-head-main { display: flex; align-items: flex-start; min-width: 0; }
-.portal-home .record-head-text { min-width: 0; }
-.portal-home .record-title { margin-bottom: 2px; }
-.portal-home .record-meta { margin-bottom: 0; }
-.portal-home .record-body { margin-top: 8px; }
+.portal-home .record-head-main, .staff-dashboard .record-head-main { display: flex; align-items: flex-start; min-width: 0; }
+.portal-home .record-head-text, .staff-dashboard .record-head-text { min-width: 0; }
+.portal-home .record-title, .staff-dashboard .record-title { margin-bottom: 2px; }
+.portal-home .record-meta, .staff-dashboard .record-meta { margin-bottom: 0; }
+.portal-home .record-body, .staff-dashboard .record-body { margin-top: 8px; }
 
-.portal-home .record-icon {
+.portal-home .record-icon, .staff-dashboard .record-icon {
   width: 30px; height: 30px;
   border-radius: 50%;
   background: var(--blueprint-soft);
@@ -947,17 +948,18 @@ button.btn-link { background: none; border: none; color: var(--blueprint); paddi
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
   margin-right: 10px;
+  overflow: hidden;
 }
-.portal-home .record-icon svg { width: 15px; height: 15px; }
-[data-theme="dark"] .portal-home .record-icon { color: var(--ink); }
-.portal-home .record.accent-brass .record-icon { background: #EFE6D4; color: var(--brass-dark); }
-.portal-home .record.accent-success .record-icon { background: var(--success-bg); color: var(--success); }
-.portal-home .record.accent-danger .record-icon { background: var(--danger-bg); color: var(--danger); }
+.portal-home .record-icon svg, .staff-dashboard .record-icon svg { width: 15px; height: 15px; }
+[data-theme="dark"] .portal-home .record-icon, [data-theme="dark"] .staff-dashboard .record-icon { color: var(--ink); }
+.portal-home .record.accent-brass .record-icon, .staff-dashboard .record.accent-brass .record-icon { background: #EFE6D4; color: var(--brass-dark); }
+.portal-home .record.accent-success .record-icon, .staff-dashboard .record.accent-success .record-icon { background: var(--success-bg); color: var(--success); }
+.portal-home .record.accent-danger .record-icon, .staff-dashboard .record.accent-danger .record-icon { background: var(--danger-bg); color: var(--danger); }
 
 /* Small pill action in the card header — a clearer call to action for
    "open this file" than the old dashed-underline text link buried
    after the body copy. */
-.portal-home a.record-action {
+.portal-home a.record-action, .staff-dashboard a.record-action {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
@@ -973,41 +975,41 @@ button.btn-link { background: none; border: none; color: var(--blueprint); paddi
   white-space: nowrap;
   transition: background 0.15s var(--ease), color 0.15s var(--ease), transform 0.1s var(--ease);
 }
-[data-theme="dark"] .portal-home a.record-action { color: var(--ink); }
-.portal-home a.record-action:hover { background: var(--brass); color: #fff; }
-.portal-home a.record-action:active { transform: translateY(1px); }
+[data-theme="dark"] .portal-home a.record-action, [data-theme="dark"] .staff-dashboard a.record-action { color: var(--ink); }
+.portal-home a.record-action:hover, .staff-dashboard a.record-action:hover { background: var(--brass); color: #fff; }
+.portal-home a.record-action:active, .staff-dashboard a.record-action:active { transform: translateY(1px); }
 
 /* Grade breakdown becomes progressive disclosure — the header already
    carries course, letter grade and the two headline numbers (Grade,
    GPA) at a glance, so the four component scores are worth a click
    rather than always-on clutter. Same <details> pattern already used
    for closed tickets elsewhere in the product. */
-.portal-home .grade-details { margin-top: 10px; }
-.portal-home .grade-details summary {
+.portal-home .grade-details, .staff-dashboard .grade-details { margin-top: 10px; }
+.portal-home .grade-details summary, .staff-dashboard .grade-details summary {
   cursor: pointer;
   list-style: none;
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--blueprint);
 }
-.portal-home .grade-details summary::-webkit-details-marker { display: none; }
-.portal-home .grade-details summary::before { content: "Show component scores ▾"; }
-.portal-home .grade-details[open] summary::before { content: "Hide component scores ▴"; }
-.portal-home .grade-details .grade-breakdown { margin-top: 8px; }
-.portal-home .record .headline-row {
+.portal-home .grade-details summary::-webkit-details-marker, .staff-dashboard .grade-details summary::-webkit-details-marker { display: none; }
+.portal-home .grade-details summary::before, .staff-dashboard .grade-details summary::before { content: "Show component scores ▾"; }
+.portal-home .grade-details[open] summary::before, .staff-dashboard .grade-details[open] summary::before { content: "Hide component scores ▴"; }
+.portal-home .grade-details .grade-breakdown, .staff-dashboard .grade-details .grade-breakdown { margin-top: 8px; }
+.portal-home .record .headline-row, .staff-dashboard .record .headline-row {
   display: flex; flex-wrap: wrap; gap: 18px;
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--paper-line);
 }
-.portal-home .record .headline-stat { display: flex; flex-direction: column; gap: 2px; }
-.portal-home .record .headline-stat .label { font-size: 0.72rem; color: var(--slate); }
-.portal-home .record .headline-stat .value { font-family: var(--font-mono); font-weight: 600; font-size: 1rem; color: var(--ink-navy); }
-[data-theme="dark"] .portal-home .record .headline-stat .value { color: var(--ink); }
+.portal-home .record .headline-stat, .staff-dashboard .record .headline-stat { display: flex; flex-direction: column; gap: 2px; }
+.portal-home .record .headline-stat .label, .staff-dashboard .record .headline-stat .label { font-size: 0.72rem; color: var(--slate); }
+.portal-home .record .headline-stat .value, .staff-dashboard .record .headline-stat .value { font-family: var(--font-mono); font-weight: 600; font-size: 1rem; color: var(--ink-navy); }
+[data-theme="dark"] .portal-home .record .headline-stat .value, [data-theme="dark"] .staff-dashboard .record .headline-stat .value { color: var(--ink); }
 
 /* Small dot marker for announcements posted in the last few days —
    quieter than another text badge crowding the meta row. */
-.portal-home .record.is-new::after {
+.portal-home .record.is-new::after, .staff-dashboard .record.is-new::after {
   content: "";
   position: absolute;
   top: 16px; right: 16px;
@@ -1016,11 +1018,11 @@ button.btn-link { background: none; border: none; color: var(--blueprint); paddi
   background: var(--brass);
   box-shadow: 0 0 0 3px var(--blueprint-soft);
 }
-[data-theme="dark"] .portal-home .record.is-new::after { box-shadow: 0 0 0 3px rgba(184,134,59,0.3); }
+[data-theme="dark"] .portal-home .record.is-new::after, [data-theme="dark"] .staff-dashboard .record.is-new::after { box-shadow: 0 0 0 3px rgba(184,134,59,0.3); }
 
 /* Empty states get their own dashed placeholder card instead of a
    bare line of text, matching the elevated-card treatment above. */
-.portal-home .card .empty-state {
+.portal-home .card .empty-state, .staff-dashboard .card .empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1031,11 +1033,11 @@ button.btn-link { background: none; border: none; color: var(--blueprint); paddi
   border-radius: 14px;
   color: var(--slate);
 }
-.portal-home .card .empty-state svg { opacity: 0.45; }
+.portal-home .card .empty-state svg, .staff-dashboard .card .empty-state svg { opacity: 0.45; }
 
 @media (max-width: 760px) {
-  .portal-home .record-head { flex-wrap: wrap; }
-  .portal-home a.record-action { margin-top: 4px; }
+  .portal-home .record-head, .staff-dashboard .record-head { flex-wrap: wrap; }
+  .portal-home a.record-action, .staff-dashboard a.record-action { margin-top: 4px; }
 }
 
 /* =========================

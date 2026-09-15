@@ -9,11 +9,11 @@
 <title>Staff Dashboard - GTI Staff Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=3">
+<link rel="stylesheet" href="styles.css?v=4">
 <script src="theme.js"></script>
 <link rel="icon" type="image/x-icon" href="gti.png">
 </head>
-<body>
+<body class="staff-dashboard">
 
 <header class="app-header">
   <div class="brand">
@@ -48,6 +48,10 @@
       <span class="nav-icon" aria-hidden="true"></span> Timetable
     </button>
 
+    <button class="nav-item" role="tab" aria-selected="false" aria-controls="resources" data-tab="resources">
+      <span class="nav-icon" aria-hidden="true"></span> Resources
+    </button>
+
      <button class="nav-item" role="tab" aria-selected="false" aria-controls="grades"
       data-tab="grades">
       <span class="nav-icon" aria-hidden="true"></span> Input Grades
@@ -79,6 +83,7 @@
         <div class="stat-card"><div class="stat-value" id="statAdmins">—</div><div class="stat-label">Admins</div></div>
         <div class="stat-card"><div class="stat-value" id="statAnnouncements">—</div><div class="stat-label">Announcements</div></div>
         <div class="stat-card"><div class="stat-value" id="statTimetable">—</div><div class="stat-label">Timetable entries</div></div>
+        <div class="stat-card"><div class="stat-value" id="statResources">—</div><div class="stat-label">Resources</div></div>
         <div class="stat-card"><div class="stat-value" id="statInactive">—</div><div class="stat-label">Pending reactivation</div></div>
       </div>
       <h2>Recently joined</h2>
@@ -196,6 +201,19 @@
     </section>
 
 
+    <!-- RESOURCES -->
+    <section id="resources" class="tab-content">
+      <div class="card-row-between">
+        <h2 style="margin:0;">Resources</h2>
+        <button class="btn btn-sm" id="newResourceBtn">+ Add resource</button>
+      </div>
+      <div class="card">
+        <label for="resourceCourseFilter">Filter by course</label>
+        <select id="resourceCourseFilter" class="course-select-target"><option value="">All courses</option></select>
+      </div>
+      <div class="card"><ul class="record-list" id="resourcesList"></ul></div>
+    </section>
+
     <!-- GRADES  -->
     <section id="grades" class="tab-content">
       <h2>Input Grades</h2>
@@ -275,7 +293,7 @@
         <option value="staff">Staff</option>
         <option value="admin">Admin</option>
       </select>
-      <p class="field-hint" id="roleFieldHint">Admins can sign in to this dashboard and manage everything here, including other people's roles. Staff can sign in too, and can verify students, post announcements, and manage the timetable — but can't change anyone's role.</p>
+      <p class="field-hint" id="roleFieldHint">Admins can sign in to this dashboard and manage everything here, including other people's roles. Staff can sign in too, and can verify students, post announcements, and manage the timetable and resources — but can't change anyone's role.</p>
 
       <label style="display:flex;align-items:center;gap:6px;font-weight:400;">
         <input type="checkbox" id="studentVerifiedCheckbox" style="width:auto;margin:0;"> Verified (admin has confirmed this is a real enrolled student)
@@ -353,9 +371,42 @@
   </div>
 </div>
 
+<!-- RESOURCE MODAL -->
+<div class="modal-backdrop" id="resourceModal" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="resourceModalTitle" style="margin:0;">New resource</h2>
+      <button class="modal-close" id="resourceModalClose" aria-label="Close">×</button>
+    </div>
+    <form id="resourceForm" novalidate>
+      <input type="hidden" id="resourceId">
+      <label for="resourceCourse">Course</label>
+      <select id="resourceCourse" class="course-select-target" required>
+        <option value="" disabled selected>-- Select a course --</option>
+      </select>
+
+      <label for="resourceTitle">Title</label>
+      <input type="text" id="resourceTitle" maxlength="200" required placeholder="e.g., Engineering Mathematics, 5th Edition">
+
+      <label for="resourceAuthor">Author (optional)</label>
+      <input type="text" id="resourceAuthor" maxlength="150" placeholder="e.g., K.A. Stroud">
+
+      <label for="resourceFileUrl">Link to the resource (optional)</label>
+      <input type="text" id="resourceFileUrl" maxlength="500" placeholder="https://…">
+      <label for="resourceFileUpload">Or upload a file (PDF, EPUB, DOC)</label>
+      <input type="file" id="resourceFileUpload" accept=".pdf,.epub,.doc,.docx">
+      <p class="field-hint" id="resourceUploadStatus"></p>
+      <p class="field-hint">Provide a link or upload a file - at least one is required.</p>
+
+      <p class="status-message" id="resourceFormStatus" role="alert"></p>
+      <button type="submit" class="btn btn-block" id="resourceSubmit">Save resource</button>
+    </form>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="app.js"></script>
 <script src="courses-data.js"></script>
-<script src="lecturer-home.js"></script>
+<script src="lecturer-home.js?v=2"></script>
 </body>
 </html>
