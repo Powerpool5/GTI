@@ -63,7 +63,7 @@
       // group, including Staff, since those really do apply to staff
       // accounts (assigning "Staff" as someone's course, or posting a
       // course-scoped announcement).
-      const NO_STAFF_GROUP_SELECTS = ['gradesCourseSelect', 'resourceCourse', 'resourceCourseFilter'];
+      const NO_STAFF_GROUP_SELECTS = ['gradesCourseSelect', 'resourceCourse', 'resourceCourseFilter', 'attendanceCourseSelect'];
       const groups = NO_STAFF_GROUP_SELECTS.includes(select.id) ? COURSES.filter((g) => g.label !== 'Staff') : COURSES;
       groups.forEach((group) => {
         const optgroup = document.createElement('optgroup');
@@ -213,10 +213,35 @@
   let currentUserIsSuperAdmin = false;
   let editingStudentId = null;
 
+  /* ---------------- My Classes (weekly schedule) ----------------
+     staff_class_schedule holds at most one row per (staff_id,
+     day_of_week), day_of_week using JS's Date#getDay() numbering
+     (0 = Sunday … 6 = Saturday) so "today" is a direct lookup with
+     no remapping. This never restricts anything a staff account can
+     see or do — has_staff_access() already covers all of that — it
+     only feeds a "your classes" priority sort/quick-pick layered on
+     top in a few places (Students search, Timetable, Attendance). */
+  const WEEKDAYS = [
+    { day: 1, label: 'Monday' },
+    { day: 2, label: 'Tuesday' },
+    { day: 3, label: 'Wednesday' },
+    { day: 4, label: 'Thursday' },
+    { day: 5, label: 'Friday' },
+    { day: 6, label: 'Saturday' },
+    { day: 0, label: 'Sunday' },
+  ];
+  let mySchedule = new Map(); // day_of_week -> array of course_codes
+  let myPriorityCourses = new Set(); // every distinct course_code across mySchedule
+
+  function todaysScheduledCourse() {
+    const list = mySchedule.get(new Date().getDay());
+    return (list && list[0]) || '';
+  }
+
   async function loadStudents() {
     const { data, error } = await supabaseClient
       .from('profiles')
-      .select('id, full_name, student_id, email, course_code, course_name, role, verified, last_active_at, deactivated_at, created_at, is_super_admin')
+      .select('id, full_name, student_id, email, course_code, course_name, role, job_title, verified, last_active_at, deactivated_at, created_at, is_super_admin')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -254,7 +279,9 @@
       const roleTd = document.createElement('td');
       const roleBadge = document.createElement('span');
       roleBadge.className = 'badge ' + (p.role === 'admin' ? 'badge-admin' : p.role === 'staff' ? 'badge-staff' : 'badge-student');
-      roleBadge.textContent = p.role;
+      // Admins/technicians with a job_title show that (e.g. "Principal")
+      // instead of the generic role name — see displayRoleLabel() in app.js.
+      roleBadge.textContent = displayRoleLabel(p);
       roleTd.appendChild(roleBadge);
       tr.appendChild(roleTd);
 
@@ -331,6 +358,20 @@
       return;
     }
 
+    // Students on one of this staff account's own classes (see "My
+    // Classes") float to the top of whatever search/filter is
+    // already applied — nothing is hidden or excluded, just
+    // reordered, and admins (who never set up a schedule) see the
+    // list in its normal order since myPriorityCourses is empty for
+    // them.
+    if (myPriorityCourses.size) {
+      rows.sort((a, b) => {
+        const aPriority = myPriorityCourses.has(a.course_code) ? 0 : 1;
+        const bPriority = myPriorityCourses.has(b.course_code) ? 0 : 1;
+        return aPriority - bPriority;
+      });
+    }
+
     rows.forEach((p) => tbody.appendChild(buildProfileRow(p)));
   }
 
@@ -383,9 +424,11 @@
     syncCourseSelectDisplay(document.getElementById('studentCourseSelect'));
     document.getElementById('studentRoleSelect').value = p.role;
     document.getElementById('studentVerifiedCheckbox').checked = !!p.verified;
+    document.getElementById('studentJobTitleSelect').value = p.job_title || '';
 
     const roleSelect = document.getElementById('studentRoleSelect');
     const roleHint = document.getElementById('roleFieldHint');
+    const jobTitleWrap = document.getElementById('jobTitleWrap');
     if (!currentUserIsAdmin) {
       roleSelect.disabled = true;
       roleHint.textContent = "Only an admin can change roles. You can still update course, verification, and other details.";
@@ -393,6 +436,10 @@
       roleSelect.disabled = false;
       roleHint.textContent = "Admins can sign in to this dashboard and manage everything here, including other people's roles. Staff can sign in too, and can verify students, post announcements, and manage the timetable — but can't change anyone's role.";
     }
+    // Job title only means anything for admin-tier accounts — hide it
+    // entirely for student/staff rows rather than show a field that
+    // does nothing.
+    jobTitleWrap.hidden = roleSelect.value !== 'admin';
 
     const reactivateWrap = document.getElementById('studentReactivateWrap');
     if (p.deactivated_at) {
@@ -408,6 +455,10 @@
     setStatus(document.getElementById('studentEditStatus'), '', null);
     openModal('studentModalBackdrop');
   }
+
+  document.getElementById('studentRoleSelect').addEventListener('change', (e) => {
+    document.getElementById('jobTitleWrap').hidden = e.target.value !== 'admin';
+  });
 
   function closeStudentEdit() {
     editingStudentId = null;
@@ -453,6 +504,9 @@
       course_code: courseSelect.value || null,
       course_name: courseSelect.value ? courseNameFor(courseSelect.value) : null,
       role: newRole,
+      // Only meaningful for admin-tier accounts — cleared for anyone
+      // else so a title can't linger on a demoted account.
+      job_title: newRole === 'admin' ? (document.getElementById('studentJobTitleSelect').value || null) : null,
       verified: document.getElementById('studentVerifiedCheckbox').checked,
     };
 
@@ -485,6 +539,236 @@
     }
   });
 
+  /* ---------------- My Classes (weekly schedule) ---------------- */
+
+  async function loadMySchedule() {
+    const { data, error } = await supabaseClient
+      .from('staff_class_schedule')
+      .select('day_of_week, course_code')
+      .eq('staff_id', currentUserId);
+
+    mySchedule = new Map();
+    myPriorityCourses = new Set();
+    if (error) {
+      console.error('Loading your class schedule failed:', error);
+    } else {
+      (data || []).forEach((row) => {
+        if (row.course_code) {
+          const list = mySchedule.get(row.day_of_week) || [];
+          list.push(row.course_code);
+          mySchedule.set(row.day_of_week, list);
+          myPriorityCourses.add(row.course_code);
+        }
+      });
+    }
+
+    renderMyClassesForm();
+    renderScheduleQuickPicks('timetableQuickPicks', 'timetableQuickPicksCard', (courseCode) => {
+      const select = document.getElementById('timetableCourseSelect');
+      select.value = courseCode;
+      syncCourseSelectDisplay(select);
+      loadTimetable(courseCode);
+    });
+    renderScheduleQuickPicks('attendanceQuickPicks', null, (courseCode) => {
+      const select = document.getElementById('attendanceCourseSelect');
+      select.value = courseCode;
+      syncCourseSelectDisplay(select);
+      loadAttendance(courseCode, document.getElementById('attendanceDate').value);
+    });
+
+    // First time the schedule loads on this page view, and nothing's
+    // been picked on the Attendance tab yet: default it to today's
+    // class so a lecturer landing there doesn't have to pick it
+    // themselves every morning. Doesn't fight with a manual choice
+    // made later in the session.
+    const attendanceSelect = document.getElementById('attendanceCourseSelect');
+    if (!attendanceSelect.value && todaysScheduledCourse()) {
+      attendanceSelect.value = todaysScheduledCourse();
+      syncCourseSelectDisplay(attendanceSelect);
+      loadAttendance(attendanceSelect.value, document.getElementById('attendanceDate').value);
+    }
+  }
+
+  // Renders one chip per distinct course in mySchedule (deduped —
+  // teaching the same course on three different days only needs one
+  // quick-pick for it, not three). `cardId`, if given, is a wrapping
+  // card that stays hidden while nobody has any classes set up yet.
+  function renderScheduleQuickPicks(containerId, cardId, onPick) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = '';
+    const card = cardId ? document.getElementById(cardId) : null;
+
+    if (!myPriorityCourses.size) {
+      if (card) { card.hidden = true; return; }
+      const empty = document.createElement('span');
+      empty.className = 'chip chip-empty';
+      empty.textContent = 'No classes set up yet — see "My Classes".';
+      container.appendChild(empty);
+      return;
+    }
+    if (card) card.hidden = false;
+
+    [...myPriorityCourses].forEach((code) => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'chip';
+      chip.textContent = courseNameFor(code);
+      chip.addEventListener('click', () => onPick(code));
+      container.appendChild(chip);
+    });
+  }
+
+  function buildDayCourseSelect(value) {
+    const select = document.createElement('select');
+    const noClassOpt = document.createElement('option');
+    noClassOpt.value = '';
+    noClassOpt.textContent = '-- No class --';
+    select.appendChild(noClassOpt);
+    // Staff isn't a real course with a schedule of its own, same
+    // reasoning as gradesCourseSelect/timetableCourseSelect above.
+    COURSES.filter((g) => g.label !== 'Staff').forEach((group) => {
+      const optgroup = document.createElement('optgroup');
+      optgroup.label = group.label;
+      group.options.forEach((opt) => {
+        const option = document.createElement('option');
+        option.value = opt.value;
+        option.textContent = opt.label;
+        optgroup.appendChild(option);
+      });
+      select.appendChild(optgroup);
+    });
+    select.value = value || '';
+    return select;
+  }
+
+  // Adds one class pick (select + remove button) to a day's list,
+  // inserted just before that day's "+ Add class" button. Removing the
+  // last remaining pick on a day just clears it instead of deleting the
+  // row, so every day always has at least one (possibly empty) pick to
+  // choose a class in.
+  function addClassPick(picksWrap, addBtn, value) {
+    const pick = document.createElement('div');
+    pick.className = 'day-schedule-pick';
+
+    const select = buildDayCourseSelect(value);
+    pick.appendChild(select);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'day-schedule-remove';
+    removeBtn.setAttribute('aria-label', 'Remove this class');
+    removeBtn.textContent = '×';
+    removeBtn.addEventListener('click', () => {
+      if (picksWrap.querySelectorAll('.day-schedule-pick').length > 1) {
+        pick.remove();
+      } else {
+        select.value = '';
+      }
+    });
+    pick.appendChild(removeBtn);
+
+    picksWrap.insertBefore(pick, addBtn);
+  }
+
+  function renderMyClassesForm() {
+    const wrap = document.getElementById('myClassesRows');
+    wrap.innerHTML = '';
+
+    WEEKDAYS.forEach(({ day, label }) => {
+      const row = document.createElement('div');
+      row.className = 'day-schedule-row';
+      row.dataset.day = String(day);
+
+      const dayLabel = document.createElement('span');
+      dayLabel.className = 'day-label';
+      dayLabel.textContent = label;
+      row.appendChild(dayLabel);
+
+      const picksWrap = document.createElement('div');
+      picksWrap.className = 'day-schedule-picks';
+
+      const addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'day-schedule-add';
+      addBtn.textContent = '+ Add class';
+      addBtn.addEventListener('click', () => addClassPick(picksWrap, addBtn, ''));
+      picksWrap.appendChild(addBtn);
+
+      const existing = mySchedule.get(day) || [];
+      if (existing.length) {
+        existing.forEach((code) => addClassPick(picksWrap, addBtn, code));
+      } else {
+        addClassPick(picksWrap, addBtn, '');
+      }
+
+      row.appendChild(picksWrap);
+      wrap.appendChild(row);
+    });
+  }
+
+  document.getElementById('myClassesSaveBtn').addEventListener('click', async () => {
+    const status = document.getElementById('myClassesStatus');
+    const btn = document.getElementById('myClassesSaveBtn');
+
+    // One row per distinct (day, course) pick — a day can now have more
+    // than one, so duplicate picks on the same day are deduped rather
+    // than saved twice.
+    const rows = [];
+    document.querySelectorAll('#myClassesRows .day-schedule-row').forEach((row) => {
+      const day = Number(row.dataset.day);
+      const codes = new Set();
+      row.querySelectorAll('select').forEach((select) => {
+        if (select.value) codes.add(select.value);
+      });
+      codes.forEach((code) => rows.push({ staff_id: currentUserId, day_of_week: day, course_code: code }));
+    });
+
+    btn.disabled = true;
+    setStatus(status, '', null);
+
+    // A day can now hold several rows, so a plain upsert keyed on
+    // (staff_id, day_of_week) can no longer tell "replace this day's
+    // class" from "add another one alongside it" — replace the whole
+    // set in one delete-then-insert instead. This requires the
+    // staff_class_schedule table's unique constraint to be on
+    // (staff_id, day_of_week, course_code) rather than just
+    // (staff_id, day_of_week) — update that in Supabase if it hasn't
+    // been already, or inserts here will fail.
+    const { error: deleteError } = await supabaseClient
+      .from('staff_class_schedule')
+      .delete()
+      .eq('staff_id', currentUserId);
+
+    if (deleteError) {
+      console.error('Clearing old class schedule failed:', deleteError);
+      setStatus(status, 'Could not save your classes. Please try again.', 'error');
+      btn.disabled = false;
+      return;
+    }
+
+    if (rows.length) {
+      const { error: insertError } = await supabaseClient
+        .from('staff_class_schedule')
+        .insert(rows);
+
+      if (insertError) {
+        console.error('Saving class schedule failed:', insertError);
+        setStatus(status, 'Could not save your classes. Please try again.', 'error');
+        btn.disabled = false;
+        return;
+      }
+    }
+
+    btn.disabled = false;
+    setStatus(status, 'Saved.', 'success');
+    toast('Your classes have been saved.', 'success');
+    await loadMySchedule();
+    // Both feed off myPriorityCourses/mySchedule, so refresh right
+    // away rather than waiting for the next search keystroke.
+    renderStudents();
+  });
+
   /* ---------------- Announcements ---------------- */
   const announcementModal = document.getElementById('announcementModal');
   const announcementForm = document.getElementById('announcementForm');
@@ -496,7 +780,22 @@
   }
   announcementAudience.addEventListener('change', toggleAnnouncementCourseField);
 
+  // Lecturers (staff, not admin) can only post to a single course/class —
+  // everything wider (all students, staff only, everyone) stays
+  // admin/root territory. A UX-layer lock like the role select above;
+  // the real gate is the announcements RLS policy.
+  function restrictAnnouncementAudienceForStaff() {
+    if (currentUserIsAdmin) return;
+    [...announcementAudience.options].forEach((opt) => {
+      if (opt.value !== 'course') opt.hidden = true;
+    });
+    announcementAudience.value = 'course';
+    announcementAudience.disabled = true;
+    document.getElementById('announcementAudienceHint').hidden = false;
+  }
+
   function openAnnouncementModal(existing) {
+    if (existing && !currentUserIsAdmin && existing.audience !== 'course') return; // see canManage above
     announcementForm.reset();
     document.getElementById('announcementId').value = existing ? existing.id : '';
     document.getElementById('announcementModalTitle').textContent = existing ? 'Edit announcement' : 'New announcement';
@@ -505,7 +804,14 @@
       document.getElementById('announcementCourse').value = existing.course_code || '';
       document.getElementById('announcementTitle').value = existing.title;
       document.getElementById('announcementMessage').value = existing.message;
+    } else if (!currentUserIsAdmin && todaysScheduledCourse()) {
+      // Default to today's class, if this lecturer has one set up —
+      // they can still pick a different one of their classes from the
+      // course picker either way.
+      document.getElementById('announcementCourse').value = todaysScheduledCourse();
     }
+    restrictAnnouncementAudienceForStaff();
+    syncCourseSelectDisplay(document.getElementById('announcementCourse'));
     toggleAnnouncementCourseField();
     setStatus(document.getElementById('announcementStatus'), '', null);
     announcementModal.hidden = false;
@@ -579,7 +885,7 @@
     const list = document.getElementById('adminAnnouncementsList');
     const { data, error } = await supabaseClient
       .from('announcements')
-      .select('id, title, message, audience, course_code, created_at')
+      .select('id, title, message, audience, course_code, created_at, created_by')
       .order('created_at', { ascending: false })
       .limit(50);
 
@@ -587,6 +893,8 @@
     if (error) { console.error('Loading announcements failed:', error); list.innerHTML = emptyState('Could not load announcements.'); return; }
     const rows = data || [];
     if (!rows.length) { list.innerHTML = emptyState('No announcements yet.'); return; }
+
+    const posterLabels = await fetchPosterLabels(rows.map((a) => a.created_by));
 
     const ACCENT_FOR_AUDIENCE = { everyone: 'accent-danger', all_students: 'accent-brass', staff: 'accent-ink' };
 
@@ -621,6 +929,14 @@
       dateSpan.textContent = new Date(a.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
       meta.append(badge, dateSpan);
 
+      const posterLabel = posterLabels.get(a.created_by);
+      if (posterLabel) {
+        const posterSpan = document.createElement('span');
+        posterSpan.className = 'badge badge-admin';
+        posterSpan.textContent = posterLabel;
+        meta.appendChild(posterSpan);
+      }
+
       headText.append(title, meta);
       headMain.append(recordIcon('bell'), headText);
       head.appendChild(headMain);
@@ -629,26 +945,35 @@
       body.className = 'record-body';
       body.textContent = a.message;
 
-      const actions = document.createElement('div');
-      actions.className = 'record-actions';
-      const editBtn = document.createElement('button');
-      editBtn.className = 'btn btn-secondary btn-sm';
-      editBtn.textContent = 'Edit';
-      editBtn.addEventListener('click', () => openAnnouncementModal(a));
-      const deleteBtn = document.createElement('button');
-      deleteBtn.className = 'btn btn-danger btn-sm';
-      deleteBtn.textContent = 'Delete';
-      deleteBtn.addEventListener('click', async () => {
-        if (!confirm('Delete this announcement?')) return;
-        const { error: delError } = await supabaseClient.from('announcements').delete().eq('id', a.id);
-        if (delError) { toast('Could not delete announcement.', 'error'); return; }
-        toast('Announcement deleted.', 'success');
-        loadAnnouncements();
-        loadOverview();
-      });
-      actions.append(editBtn, deleteBtn);
+      item.append(head, body);
 
-      item.append(head, body, actions);
+      // Lecturers can only manage 'course' audience announcements
+      // (the RLS policy enforces this too) — for anything wider,
+      // show it read-only rather than an Edit/Delete that would
+      // just fail server-side.
+      const canManage = currentUserIsAdmin || a.audience === 'course';
+      if (canManage) {
+        const actions = document.createElement('div');
+        actions.className = 'record-actions';
+        const editBtn = document.createElement('button');
+        editBtn.className = 'btn btn-secondary btn-sm';
+        editBtn.textContent = 'Edit';
+        editBtn.addEventListener('click', () => openAnnouncementModal(a));
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'btn btn-danger btn-sm';
+        deleteBtn.textContent = 'Delete';
+        deleteBtn.addEventListener('click', async () => {
+          if (!confirm('Delete this announcement?')) return;
+          const { error: delError } = await supabaseClient.from('announcements').delete().eq('id', a.id);
+          if (delError) { toast('Could not delete announcement.', 'error'); return; }
+          toast('Announcement deleted.', 'success');
+          loadAnnouncements();
+          loadOverview();
+        });
+        actions.append(editBtn, deleteBtn);
+        item.appendChild(actions);
+      }
+
       list.appendChild(item);
     });
   }
@@ -825,6 +1150,7 @@
      Unlike timetable (one row per course), resources are a plain list:
      several textbooks/links can exist for the same course. */
   let currentResourceFilter = '';
+  let currentAllResources = [];
   const resourceModal = document.getElementById('resourceModal');
   const resourceForm = document.getElementById('resourceForm');
 
@@ -928,8 +1254,19 @@
     const { data, error } = await query;
 
     if (error) { console.error('Loading resources failed:', error); list.innerHTML = emptyState('Could not load resources.'); return; }
-    const rows = data || [];
-    if (!rows.length) { list.innerHTML = emptyState('No resources uploaded yet.'); return; }
+    currentAllResources = data || [];
+    renderResourcesList();
+  }
+
+  function renderResourcesList() {
+    const list = document.getElementById('resourcesList');
+    const q = document.getElementById('resourceSearch').value.trim().toLowerCase();
+    const rows = q
+      ? currentAllResources.filter((r) => (r.title || '').toLowerCase().includes(q) || (r.author || '').toLowerCase().includes(q))
+      : currentAllResources;
+
+    list.innerHTML = '';
+    if (!rows.length) { list.innerHTML = emptyState(currentAllResources.length ? 'No matching resources.' : 'No resources uploaded yet.'); return; }
 
     rows.forEach((r) => {
       const item = document.createElement('li');
@@ -1311,6 +1648,214 @@
   document.getElementById('gradesCourseSelect').addEventListener('change', (e) => loadGrades(e.target.value));
   document.getElementById('gradesRefresh').addEventListener('click', () => loadGrades(currentGradesCourse));
   document.getElementById('gradesSearch').addEventListener('input', renderGradesTable);
+
+  /* ---------------- Attendance ----------------
+     A real day-by-day present/absent/late tracker — separate from the
+     Attendance *number* on the Input Grades tab (that one's a
+     per-subject score staff type in themselves; this one is a daily
+     mark per student, one row per (student, course, date)). */
+
+  const ATTENDANCE_STATUSES = [
+    { value: 'present', label: 'Present' },
+    { value: 'absent', label: 'Absent' },
+    { value: 'late', label: 'Late' },
+  ];
+
+  let currentAttendanceCourse = '';
+  let currentAttendanceDate = '';
+  let currentAttendanceStudents = [];
+  let currentAttendanceMarks = new Map(); // student_id -> status
+
+  function todayIso() {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+  document.getElementById('attendanceDate').value = todayIso();
+
+  async function loadAttendance(courseCode, dateStr) {
+    currentAttendanceCourse = courseCode || '';
+    currentAttendanceDate = dateStr || todayIso();
+    document.getElementById('attendanceDate').value = currentAttendanceDate;
+
+    const tbody = document.getElementById('attendanceTbody');
+    const summary = document.getElementById('attendanceSummary');
+    currentAttendanceStudents = [];
+    currentAttendanceMarks = new Map();
+
+    if (!currentAttendanceCourse) {
+      tbody.innerHTML = '<tr><td colspan="3" class="empty-state">Select a course to take attendance.</td></tr>';
+      summary.hidden = true;
+      summary.innerHTML = '';
+      return;
+    }
+    tbody.innerHTML = '<tr><td colspan="3"><div class="skeleton skeleton-line"></div></td></tr>';
+
+    const [studentsRes, attendanceRes] = await Promise.all([
+      supabaseClient
+        .from('profiles')
+        .select('id, full_name, student_id')
+        .eq('course_code', currentAttendanceCourse)
+        .eq('role', 'student')
+        .order('full_name'),
+      supabaseClient
+        .from('attendance')
+        .select('student_id, status')
+        .eq('course_code', currentAttendanceCourse)
+        .eq('class_date', currentAttendanceDate),
+    ]);
+
+    if (studentsRes.error) {
+      console.error('Loading students for attendance failed:', studentsRes.error);
+      tbody.innerHTML = '<tr><td colspan="3" class="empty-state">Could not load students.</td></tr>';
+      return;
+    }
+    if (attendanceRes.error) console.error('Loading existing attendance failed:', attendanceRes.error);
+
+    currentAttendanceStudents = studentsRes.data || [];
+    (attendanceRes.data || []).forEach((row) => currentAttendanceMarks.set(row.student_id, row.status));
+
+    renderAttendanceTable();
+  }
+
+  function updateAttendanceSummary() {
+    const summary = document.getElementById('attendanceSummary');
+    const total = currentAttendanceStudents.length;
+
+    if (!total) {
+      summary.hidden = true;
+      summary.innerHTML = '';
+      return;
+    }
+
+    const marked = currentAttendanceMarks.size;
+    const present = [...currentAttendanceMarks.values()].filter((s) => s === 'present').length;
+    const absent = [...currentAttendanceMarks.values()].filter((s) => s === 'absent').length;
+    const late = [...currentAttendanceMarks.values()].filter((s) => s === 'late').length;
+
+    const courseSelect = document.getElementById('attendanceCourseSelect');
+    const courseLabel = courseSelect.selectedIndex >= 0
+      ? (courseSelect.options[courseSelect.selectedIndex].textContent || '').trim()
+      : '';
+
+    summary.innerHTML = '';
+
+    const left = document.createElement('div');
+    const title = document.createElement('span');
+    title.className = 'attendance-summary-title';
+    title.textContent = courseLabel || 'Attendance';
+    const markedNote = document.createElement('span');
+    markedNote.className = 'attendance-summary-marked';
+    markedNote.textContent = `${marked} of ${total} marked`;
+    left.append(title, markedNote);
+
+    const counts = document.createElement('div');
+    counts.className = 'attendance-summary-counts';
+    [
+      ['badge-verified', `${present} present`],
+      ['badge-inactive', `${absent} absent`],
+      ['badge-grade-c', `${late} late`],
+    ].forEach(([cls, text]) => {
+      const badge = document.createElement('span');
+      badge.className = `badge ${cls}`;
+      badge.textContent = text;
+      counts.appendChild(badge);
+    });
+
+    summary.append(left, counts);
+    summary.hidden = false;
+  }
+
+  function renderAttendanceTable() {
+    const tbody = document.getElementById('attendanceTbody');
+    tbody.innerHTML = '';
+
+    if (!currentAttendanceStudents.length) {
+      tbody.innerHTML = '<tr><td colspan="3" class="empty-state">No students are on this course yet.</td></tr>';
+      updateAttendanceSummary();
+      return;
+    }
+
+    currentAttendanceStudents.forEach((student) => {
+      const tr = document.createElement('tr');
+
+      const nameTd = document.createElement('td');
+      nameTd.textContent = student.full_name || '—';
+      tr.appendChild(nameTd);
+
+      const idTd = document.createElement('td');
+      idTd.textContent = student.student_id || '—';
+      tr.appendChild(idTd);
+
+      const statusTd = document.createElement('td');
+      const group = document.createElement('div');
+      group.className = 'attendance-status-group';
+
+      ATTENDANCE_STATUSES.forEach(({ value, label }) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `attendance-status-btn ${value}` + (currentAttendanceMarks.get(student.id) === value ? ' active' : '');
+        btn.textContent = label;
+        btn.addEventListener('click', () => {
+          currentAttendanceMarks.set(student.id, value);
+          group.querySelectorAll('.attendance-status-btn').forEach((b) => b.classList.remove('active'));
+          btn.classList.add('active');
+          updateAttendanceSummary();
+        });
+        group.appendChild(btn);
+      });
+
+      statusTd.appendChild(group);
+      tr.appendChild(statusTd);
+      tbody.appendChild(tr);
+    });
+
+    updateAttendanceSummary();
+  }
+
+  document.getElementById('attendanceCourseSelect').addEventListener('change', (e) =>
+    loadAttendance(e.target.value, document.getElementById('attendanceDate').value)
+  );
+  document.getElementById('attendanceDate').addEventListener('change', (e) =>
+    loadAttendance(currentAttendanceCourse, e.target.value)
+  );
+  document.getElementById('attendanceRefresh').addEventListener('click', () =>
+    loadAttendance(document.getElementById('attendanceCourseSelect').value, document.getElementById('attendanceDate').value)
+  );
+
+  document.getElementById('attendanceSaveAll').addEventListener('click', async () => {
+    const status = document.getElementById('attendanceStatus');
+    const btn = document.getElementById('attendanceSaveAll');
+
+    if (!currentAttendanceCourse) { setStatus(status, 'Select a course first.', 'error'); return; }
+    if (!currentAttendanceMarks.size) { setStatus(status, 'Mark at least one student before saving.', 'error'); return; }
+
+    const rows = [...currentAttendanceMarks.entries()].map(([studentId, markStatus]) => ({
+      student_id: studentId,
+      course_code: currentAttendanceCourse,
+      class_date: currentAttendanceDate,
+      status: markStatus,
+      marked_by: currentUserId,
+    }));
+
+    btn.disabled = true;
+    setStatus(status, '', null);
+
+    const { error } = await supabaseClient
+      .from('attendance')
+      .upsert(rows, { onConflict: 'student_id,course_code,class_date' });
+
+    btn.disabled = false;
+
+    if (error) {
+      console.error('Saving attendance failed:', error);
+      setStatus(status, 'Could not save attendance. Please try again.', 'error');
+      return;
+    }
+
+    setStatus(status, 'Attendance saved.', 'success');
+    toast(`Attendance saved for ${fmtDate(currentAttendanceDate)}.`, 'success');
+  });
 
   /* ---------------- Maintenance banner (admin only) ---------------- */
 
@@ -1696,6 +2241,87 @@
     loadMyTickets();
   });
 
+  /* ---------------- Activity Log (admin only) ----------------
+     Reads profile_change_log, which is written automatically by a
+     database trigger whenever a profiles row changes (full name,
+     student ID, course, verified status, role, job title) — not by
+     this page. That's what lets it capture edits made by any staff
+     account, not just the ones made through this dashboard, and why
+     there's no client-side insert here. See the schema migration for
+     the trigger and the admin-only RLS policy that gates SELECT. */
+  async function loadActivityLog() {
+    const list = document.getElementById('activityLogList');
+    if (!currentUserIsAdmin) return;
+    list.innerHTML = '<li class="empty-state">Loading…</li>';
+
+    const { data, error } = await supabaseClient
+      .from('profile_change_log')
+      .select('id, target_id, changed_by, field, old_value, new_value, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (error) {
+      console.error('Loading activity log failed:', error);
+      list.innerHTML = emptyState('Could not load the activity log.');
+      return;
+    }
+
+    const rows = data || [];
+    if (!rows.length) { list.innerHTML = emptyState('No changes logged yet.'); return; }
+
+    const ids = [...new Set(rows.flatMap((r) => [r.target_id, r.changed_by]).filter(Boolean))];
+    const names = new Map();
+    if (ids.length) {
+      const { data: people } = await supabaseClient.from('profiles').select('id, full_name, email').in('id', ids);
+      (people || []).forEach((p) => names.set(p.id, p.full_name || p.email || 'Unknown'));
+    }
+
+    const FIELD_LABELS = {
+      full_name: 'name', student_id: 'student ID', course_code: 'course',
+      verified: 'verified status', role: 'role', job_title: 'job title',
+    };
+
+    list.innerHTML = '';
+    rows.forEach((r) => {
+      const item = document.createElement('li');
+      item.className = 'record';
+
+      const head = document.createElement('div');
+      head.className = 'record-head';
+      const headMain = document.createElement('div');
+      headMain.className = 'record-head-main';
+      const headText = document.createElement('div');
+      headText.className = 'record-head-text';
+
+      const title = document.createElement('div');
+      title.className = 'record-title';
+      const changerName = names.get(r.changed_by) || 'Someone';
+      const targetName = names.get(r.target_id) || 'this account';
+      const fieldLabel = FIELD_LABELS[r.field] || r.field;
+      title.textContent = `${changerName} changed ${targetName}'s ${fieldLabel}`;
+
+      const meta = document.createElement('div');
+      meta.className = 'record-meta';
+      const dateSpan = document.createElement('span');
+      dateSpan.textContent = new Date(r.created_at).toLocaleString();
+      meta.appendChild(dateSpan);
+
+      headText.append(title, meta);
+      headMain.append(recordIcon('person'), headText);
+      head.appendChild(headMain);
+
+      const body = document.createElement('div');
+      body.className = 'record-body';
+      const fmt = (v) => (v === null || v === undefined || v === '' ? '(empty)' : String(v));
+      body.textContent = `${fmt(r.old_value)} → ${fmt(r.new_value)}`;
+
+      item.append(head, body);
+      list.appendChild(item);
+    });
+  }
+
+  document.getElementById('activityLogRefresh').addEventListener('click', loadActivityLog);
+
   /* ---------------- Boot ---------------- */
 
   async function init() {
@@ -1708,6 +2334,20 @@
     currentUserIsSuperAdmin = admin.isSuperAdmin;
     document.getElementById('headerName').textContent = admin.profile.full_name || admin.session.user.email || '';
     renderAvatar(document.getElementById('avatarSlot'), admin.profile.full_name || admin.session.user.email, admin.profile.avatar_url);
+
+    // Hero banner (Overview tab, admin/root only) — same pattern as the
+    // student portal's hero in home.js: greeting + key account facts up
+    // top instead of a bare "Overview" heading.
+    const firstName = admin.profile.full_name ? admin.profile.full_name.split(' ')[0] : '';
+    document.getElementById('heroGreeting').textContent = 'Welcome back' + (firstName ? ', ' + firstName : '');
+    document.getElementById('heroSub').textContent = currentUserEmail || '';
+    document.getElementById('heroRoleTag').textContent = displayRoleLabel(admin.profile);
+    const heroAccessTag = document.getElementById('heroAccessTag');
+    const hasElevatedAccess = currentUserIsSuperAdmin || currentUserIsAdmin;
+    heroAccessTag.textContent = currentUserIsSuperAdmin ? 'Root access' : (currentUserIsAdmin ? 'Admin access' : 'Staff access');
+    heroAccessTag.classList.toggle('tag-verified', hasElevatedAccess);
+    heroAccessTag.classList.toggle('tag-pending', !hasElevatedAccess);
+
     document.getElementById('adminTicketsSection').hidden = !currentUserIsAdmin;
     // Root/super admin only — being a plain "admin" is no longer
     // enough to see this link. (admin.js enforces the same rule on
@@ -1715,27 +2355,54 @@
     // directly instead of clicking this link.)
     document.getElementById('adminPanelLink').hidden = !currentUserIsSuperAdmin;
 
+    // Lecturers (role "staff", not "admin") get Students, Announcements
+    // (course-scoped only), Resources, Attendance, Timetable, Grades,
+    // My Classes, and their own Support tickets. Overview, the Staff
+    // list, and the Activity Log stay admin/root territory. This is a
+    // UX-layer restriction like the others in this file; RLS on the
+    // underlying tables is the real gate (see SECURITY.md).
+    if (!currentUserIsAdmin) {
+      document.querySelectorAll('[data-admin-only]').forEach((el) => {
+        el.hidden = true;
+        el.setAttribute('aria-hidden', 'true');
+      });
+      // Overview (the default active tab) is one of the hidden ones,
+      // so land lecturers on Students instead.
+      const studentsNav = document.querySelector('.nav-item[data-tab="students"]');
+      switchTab('students', studentsNav);
+    }
+
     populateCourseSelects();
     populateStudentCourseFilter();
     document.getElementById('timetableCourseSelect').addEventListener('change', (e) => loadTimetable(e.target.value));
     document.getElementById('resourceCourseFilter').addEventListener('change', (e) => loadResources(e.target.value));
+    document.getElementById('resourceSearch').addEventListener('input', renderResourcesList);
     markUploadedTimetableCourses();
 
     loadingMessage.hidden = true;
     appShell.hidden = false;
     signOutButton.hidden = false;
 
-    await Promise.all([
-      loadOverview(),
+    const loaders = [
+      loadTimetable(document.getElementById('timetableCourseSelect').value),
+      loadSupportTab(),
+      loadGrades(document.getElementById('gradesCourseSelect').value),
       loadStudents(),
       loadAnnouncements(),
-      loadTimetable(document.getElementById('timetableCourseSelect').value),
       loadResources(document.getElementById('resourceCourseFilter').value),
-      loadMaintenanceCard(),
-      loadSupportTab(),
-      loadAllTickets(),
-      loadGrades(document.getElementById('gradesCourseSelect').value),
-    ]);
+      loadMySchedule(),
+    ];
+    // Everything else here backs an admin-only tab — skip fetching it
+    // for lecturers rather than firing requests RLS will just reject.
+    if (currentUserIsAdmin) {
+      loaders.push(
+        loadOverview(),
+        loadMaintenanceCard(),
+        loadAllTickets(),
+        loadActivityLog(),
+      );
+    }
+    await Promise.all(loaders);
   }
 
   signOutButton.addEventListener('click', async () => {

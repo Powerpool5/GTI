@@ -335,12 +335,9 @@
 
   /* ---------------- Grades ---------------- */
 
-  // Grade (100%) is entered directly by staff (lecturer-home.js) rather
-  // than derived from Attendance/Class work/Home work/Examination —
-  // this just displays whatever was saved. Each row is now one subject
-  // (a course has several); GPA is derived from the letter grade on
-  // save and averaged across every subject into the gauge below,
-  // rather than shown again on each subject's own row.
+  // Grade (100%) and GPA are entered directly by staff (lecturer-home.js)
+  // rather than derived from Attendance/Class work/Home work/Examination —
+  // this just displays whatever was saved.
   const LETTER_LABEL = { A: 'A', B: 'B', C: 'C', F: 'F' };
 
   async function loadGrades() {
@@ -349,9 +346,9 @@
 
     const { data, error } = await supabaseClient
       .from('grades')
-      .select('course_code, course_name, subject, attendance, class_work, home_work, examination, total_grade, gpa, letter_grade, updated_at')
+      .select('course_code, course_name, attendance, class_work, home_work, examination, total_grade, gpa, letter_grade, updated_at')
       .eq('student_id', currentUserId)
-      .order('subject', { ascending: true });
+      .order('updated_at', { ascending: false });
 
     list.innerHTML = '';
     if (error) {
@@ -383,7 +380,7 @@
       headText.className = 'record-head-text';
       const title = document.createElement('div');
       title.className = 'record-title';
-      title.textContent = r.subject || r.course_name || r.course_code;
+      title.textContent = r.course_name || r.course_code;
       headText.appendChild(title);
 
       const meta = document.createElement('div');
@@ -407,19 +404,28 @@
 
       item.appendChild(head);
 
-      // Grade (100%) is the headline number — always visible in its
-      // own row rather than buried among the four component scores
-      // below. GPA isn't repeated here per subject; it's averaged
-      // across every subject into the single gauge above the list.
-      if (r.total_grade != null) {
+      // Grade (100%) and GPA are the headline numbers — always visible
+      // in their own row rather than buried among the four component
+      // scores below.
+      if (r.total_grade != null || r.gpa != null) {
         const headlineRow = document.createElement('div');
         headlineRow.className = 'headline-row';
-        const stat = document.createElement('div');
-        stat.className = 'headline-stat';
-        stat.innerHTML = '<span class="label">Grade (100%)</span>';
-        const v = document.createElement('span'); v.className = 'value'; v.textContent = r.total_grade;
-        stat.appendChild(v);
-        headlineRow.appendChild(stat);
+        if (r.total_grade != null) {
+          const stat = document.createElement('div');
+          stat.className = 'headline-stat';
+          stat.innerHTML = '<span class="label">Grade (100%)</span>';
+          const v = document.createElement('span'); v.className = 'value'; v.textContent = r.total_grade;
+          stat.appendChild(v);
+          headlineRow.appendChild(stat);
+        }
+        if (r.gpa != null) {
+          const stat = document.createElement('div');
+          stat.className = 'headline-stat';
+          stat.innerHTML = '<span class="label">GPA</span>';
+          const v = document.createElement('span'); v.className = 'value'; v.textContent = r.gpa;
+          stat.appendChild(v);
+          headlineRow.appendChild(stat);
+        }
         item.appendChild(headlineRow);
       }
 

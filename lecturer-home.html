@@ -15,7 +15,7 @@
 </head>
 <body class="staff-dashboard">
 
-<header class="app-header">
+<header class="app-header grid-texture">
   <div class="brand">
     <span class="brand-mark">GTI STAFF</span>
     <h1>Staff Dashboard</h1>
@@ -27,39 +27,54 @@
   </div>
 </header>
 
-<p id="loadingMessage" class="loading-state">Checking staff access…</p>
+<div id="loadingMessage" class="loading-state">
+  <div class="skeleton skeleton-line" style="width:220px;"></div>
+  <div class="skeleton skeleton-line" style="width:160px;"></div>
+</div>
 
 <div class="app-shell" id="appShell" hidden>
   <nav class="app-nav" role="tablist" aria-label="Staff sections">
     <div class="nav-logo"><img src="gti.png" alt="GTI logo"></div>
-    <button class="nav-item active" role="tab" aria-selected="true" aria-controls="overview" data-tab="overview">
-      <span class="nav-icon" aria-hidden="true"></span> Overview
+    <button class="nav-item active" role="tab" aria-selected="true" aria-controls="overview" data-tab="overview" data-admin-only="true">
+      <svg class="nav-icon" viewBox="0 0 18 18" fill="none" aria-hidden="true"><rect x="2.5" y="2.5" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.4"/><rect x="10" y="2.5" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.4"/><rect x="2.5" y="10" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.4"/><rect x="10" y="10" width="5.5" height="5.5" rx="1" stroke="currentColor" stroke-width="1.4"/></svg> Overview
     </button>
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="students" data-tab="students">
-      <span class="nav-icon" aria-hidden="true"></span> Students
+      <svg class="nav-icon" viewBox="0 0 18 18" fill="none" aria-hidden="true"><circle cx="9" cy="6" r="3" stroke="currentColor" stroke-width="1.4"/><path d="M3.5 15C3.5 11.9624 5.96243 9.5 9 9.5C12.0376 9.5 14.5 11.9624 14.5 15" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg> Students
     </button>
-    <button class="nav-item" role="tab" aria-selected="false" aria-controls="staff" data-tab="staff">
-      <span class="nav-icon" aria-hidden="true"></span> Staff
+    <button class="nav-item" role="tab" aria-selected="false" aria-controls="staff" data-tab="staff" data-admin-only="true">
+      <svg class="nav-icon" viewBox="0 0 18 18" fill="none" aria-hidden="true"><circle cx="6.7" cy="6" r="2.4" stroke="currentColor" stroke-width="1.3"/><circle cx="12.3" cy="6.6" r="1.9" stroke="currentColor" stroke-width="1.3"/><path d="M2.7 15C2.7 12.1 4.6 10 6.9 10C9.2 10 10.7 11.6 11.1 13.7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M11 15C11 12.7 12.1 11.1 14 11.1C15.4 11.1 15.5 12.9 15.5 14.6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg> Staff
     </button>
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="announcements" data-tab="announcements">
-      <span class="nav-icon" aria-hidden="true"></span> Announcements
+      <svg class="nav-icon" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M2.5 7.5V10.5C2.5 11.05 2.95 11.5 3.5 11.5H4.5L6 15L7 14.5L5.8 11.5H7L13.5 14V4L7 6.5H3.5C2.95 6.5 2.5 6.95 2.5 7.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M13.5 7.5H15.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg> Announcements
     </button>
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="timetable" data-tab="timetable">
-      <span class="nav-icon" aria-hidden="true"></span> Timetable
+      <svg class="nav-icon" viewBox="0 0 18 18" fill="none" aria-hidden="true"><rect x="2.5" y="3.5" width="13" height="12" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 7H15.5" stroke="currentColor" stroke-width="1.4"/><path d="M6 2V5M12 2V5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg> Timetable
+    </button>
+
+    <button class="nav-item" role="tab" aria-selected="false" aria-controls="attendance" data-tab="attendance">
+      <svg class="nav-icon" viewBox="0 0 18 18" fill="none" aria-hidden="true"><rect x="4" y="3" width="10" height="13" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M6.8 2.5H11.2C11.5 2.5 11.7 2.7 11.7 3V3.7C11.7 4 11.5 4.2 11.2 4.2H6.8C6.5 4.2 6.3 4 6.3 3.7V3C6.3 2.7 6.5 2.5 6.8 2.5Z" stroke="currentColor" stroke-width="1.3"/><path d="M6.3 9.5L8 11L11.7 7.3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg> Attendance
     </button>
 
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="resources" data-tab="resources">
-      <span class="nav-icon" aria-hidden="true"></span> Resources
+      <svg class="nav-icon" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M3.5 3.5H10.5C11.6 3.5 12.5 4.4 12.5 5.5V14.5H5.5C4.4 14.5 3.5 13.6 3.5 12.5V3.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M12.5 5.5H13.5C13.5 5.5 14.5 5.5 14.5 6.5V13.5C14.5 13.5 14.5 14.5 13.5 14.5H5.5" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M6 6.5H10M6 9H10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg> Resources
     </button>
 
      <button class="nav-item" role="tab" aria-selected="false" aria-controls="grades"
       data-tab="grades">
-      <span class="nav-icon" aria-hidden="true"></span> Input Grades
+      <svg class="nav-icon" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M4 14.5V10M9 14.5V6M14 14.5V3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg> Input Grades
+    </button>
+
+    <button class="nav-item" role="tab" aria-selected="false" aria-controls="myClasses" data-tab="myClasses">
+      <svg class="nav-icon" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M9 2.5L15.5 6L9 9.5L2.5 6L9 2.5Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M2.5 9.5L9 13L15.5 9.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M2.5 12.8L9 16.2L15.5 12.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg> My Classes
+    </button>
+
+    <button class="nav-item" role="tab" aria-selected="false" aria-controls="activityLog" data-tab="activityLog" data-admin-only="true">
+      <svg class="nav-icon" viewBox="0 0 18 18" fill="none" aria-hidden="true"><circle cx="9" cy="9.3" r="6" stroke="currentColor" stroke-width="1.4"/><path d="M9 6V9.3L11.3 10.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 2.3H11" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg> Activity Log
     </button>
 
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="support"
       data-tab="support">
-      <span class="nav-icon" aria-hidden="true"></span> Support
+      <svg class="nav-icon" viewBox="0 0 18 18" fill="none" aria-hidden="true"><circle cx="9" cy="9" r="6.25" stroke="currentColor" stroke-width="1.4"/><path d="M6.9 7C6.9 5.9 7.8 5.2 9 5.2C10.1 5.2 11 5.9 11 6.9C11 8.4 9.1 8.2 9.1 10" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="9.05" cy="12.3" r="0.6" fill="currentColor"/></svg> Support
       <span class="nav-badge" id="supportNavBadge" hidden></span>
     </button>
 
@@ -67,7 +82,7 @@
          (see init() in lecturer-home.js); this is what used to be the
          "Admin panel →" link on the student home page. -->
     <a class="nav-item" id="adminPanelLink" href="admin.html" hidden>
-      <span class="nav-icon" aria-hidden="true"></span> Admin panel
+      <svg class="nav-icon" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M9 2.5L14.5 4.5V8.5C14.5 12 12.2 14.5 9 15.5C5.8 14.5 3.5 12 3.5 8.5V4.5L9 2.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M6.5 9L8.2 10.7L11.5 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg> Admin panel
     </a>
 
   </nav>
@@ -76,7 +91,26 @@
 
     <!-- OVERVIEW -->
     <section id="overview" class="tab-content active">
-      <h2>Overview</h2>
+
+      <div class="hero-banner">
+        <img class="hero-crest" src="gti.png" alt="" aria-hidden="true">
+        <span class="hero-tick hero-tick-tl" aria-hidden="true"></span>
+        <span class="hero-tick hero-tick-br" aria-hidden="true"></span>
+        <h2 id="heroGreeting">Welcome back</h2>
+        <p class="hero-sub" id="heroSub">Loading your account…</p>
+        <div class="hero-stats">
+          <div class="hero-stat">
+            <span class="hero-stat-label">Role</span>
+            <span class="hero-stat-value" id="heroRoleTag">—</span>
+          </div>
+          <div class="hero-stat">
+            <span class="hero-stat-label">Access</span>
+            <span class="hero-stat-value" id="heroAccessTag">—</span>
+          </div>
+        </div>
+      </div>
+
+      <h2>At a glance</h2>
       <div class="stat-row">
         <div class="stat-card"><div class="stat-value" id="statStudents">—</div><div class="stat-label">Students</div></div>
         <div class="stat-card"><div class="stat-value" id="statStaff">—</div><div class="stat-label">Staff</div></div>
@@ -208,8 +242,11 @@
         <button class="btn btn-sm" id="newResourceBtn">+ Add resource</button>
       </div>
       <div class="card">
-        <label for="resourceCourseFilter">Filter by course</label>
-        <select id="resourceCourseFilter" class="course-select-target"><option value="">All courses</option></select>
+        <div class="search-row">
+          <input type="search" id="resourceSearch" placeholder="Search resources by name…">
+          <select id="resourceCourseFilter" class="course-select-target"><option value="">All courses</option></select>
+        </div>
+        <p class="field-hint" style="margin:0;">Every resource is visible here regardless of course — filter and search are just to help you find one.</p>
       </div>
       <div class="card"><ul class="record-list" id="resourcesList"></ul></div>
     </section>
@@ -246,6 +283,10 @@
     <!-- TIMETABLE -->
     <section id="timetable" class="tab-content">
       <h2>Timetable</h2>
+      <div class="card" id="timetableQuickPicksCard" hidden>
+        <span style="font-size:0.85rem; color:var(--slate);">Your classes</span>
+        <div class="chip-row" id="timetableQuickPicks"></div>
+      </div>
       <div class="card">
         <label for="timetableCourseSelect">Course</label>
         <select id="timetableCourseSelect"></select>
@@ -260,6 +301,62 @@
           <tbody id="timetableTableBody"></tbody>
         </table>
       </div>
+    </section>
+
+    <!-- ATTENDANCE -->
+    <section id="attendance" class="tab-content">
+      <h2>Attendance</h2>
+      <div class="card">
+        <div class="search-row">
+          <select id="attendanceCourseSelect" class="course-select-target" style="max-width:320px;">
+            <option value="" disabled selected>-- Select a course --</option>
+          </select>
+          <input type="date" id="attendanceDate">
+          <button type="button" class="btn btn-secondary btn-sm" id="attendanceRefresh">Load</button>
+        </div>
+        <div class="chip-row" id="attendanceQuickPicks"></div>
+        <div class="attendance-summary-card" id="attendanceSummary" hidden></div>
+      </div>
+      <div class="card table-wrap">
+        <table class="admin-table" id="attendanceTable">
+          <thead><tr><th>Name</th><th>Student ID</th><th>Status</th></tr></thead>
+          <tbody id="attendanceTbody"></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <button type="button" class="btn" id="attendanceSaveAll">Save attendance</button>
+        <p class="status-message" id="attendanceStatus" role="alert"></p>
+      </div>
+    </section>
+
+    <!-- MY CLASSES -->
+    <section id="myClasses" class="tab-content">
+      <h2>My Classes</h2>
+      <div class="card">
+        <p style="margin:0 0 14px; color:var(--slate); font-size:0.9rem;">
+          Set which class or classes you teach on each day of the week — add as many as you
+          need per day. This doesn't restrict what you can see or do anywhere else — it just
+          puts your own classes at the top when you're searching students, and quick-picks
+          them on the Timetable and Attendance tabs.
+        </p>
+        <div id="myClassesRows"></div>
+        <p class="status-message" id="myClassesStatus" role="alert"></p>
+        <button type="button" class="btn btn-sm" id="myClassesSaveBtn">Save my classes</button>
+      </div>
+    </section>
+
+    <!-- ACTIVITY LOG (admin only) -->
+    <section id="activityLog" class="tab-content">
+      <div class="card-row-between">
+        <h2 style="margin:0;">Activity Log</h2>
+        <button type="button" class="btn btn-secondary btn-sm" id="activityLogRefresh">Refresh</button>
+      </div>
+      <div class="card">
+        <p style="margin:0; color:var(--slate); font-size:0.9rem;">
+          Every change made to a student or staff profile — who changed it, what changed, and who it was on.
+        </p>
+      </div>
+      <div class="card"><ul class="record-list" id="activityLogList"></ul></div>
     </section>
 
   </main>
@@ -295,6 +392,19 @@
       </select>
       <p class="field-hint" id="roleFieldHint">Admins can sign in to this dashboard and manage everything here, including other people's roles. Staff can sign in too, and can verify students, post announcements, and manage the timetable and resources — but can't change anyone's role.</p>
 
+      <div id="jobTitleWrap" hidden>
+        <label for="studentJobTitleSelect">Job title</label>
+        <select id="studentJobTitleSelect">
+          <option value="">-- No title (shows as "Admin") --</option>
+          <option value="administration">Administration Team</option>
+          <option value="head_of_department">Head of Department</option>
+          <option value="principal">Principal</option>
+          <option value="deputy_principal">Deputy Principal</option>
+          <option value="technician">Technician</option>
+        </select>
+        <p class="field-hint">Shown instead of "Admin" everywhere this person's name appears — badges, announcements, ticket replies. Doesn't change what they can do.</p>
+      </div>
+
       <label style="display:flex;align-items:center;gap:6px;font-weight:400;">
         <input type="checkbox" id="studentVerifiedCheckbox" style="width:auto;margin:0;"> Verified (admin has confirmed this is a real enrolled student)
       </label>
@@ -329,6 +439,7 @@
         <option value="staff">Staff only</option>
         <option value="everyone">Everyone, including staff</option>
       </select>
+      <p class="field-hint" id="announcementAudienceHint" hidden>Lecturers can post to a single course/class at a time. Admins can also reach all students, staff only, or everyone.</p>
 
       <div id="announcementCourseWrap">
         <label for="announcementCourse">Course</label>

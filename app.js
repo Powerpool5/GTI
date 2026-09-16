@@ -301,7 +301,7 @@ async function requireAdmin() {
   // gate above, so a hiccup here can't kick a real staff/admin back out.
   const { data: profile } = await supabaseClient
     .from("profiles")
-    .select("role, full_name, avatar_url")
+    .select("role, job_title, full_name, avatar_url")
     .eq("id", session.user.id)
     .single();
 
@@ -381,6 +381,58 @@ function renderAvatar(container, name, avatarUrl) {
 }
 
 /* -------------------------------------------------------
+   Job titles — display-only labels for admin-tier accounts.
+   `role` ('student' | 'staff' | 'admin', plus is_super_admin for
+   root) is still the only thing any permission check or RLS policy
+   looks at — job_title never grants or removes access. It's purely
+   what shows on badges, announcements, and ticket replies instead
+   of the generic "Admin" label.
+
+   Requires the profiles.job_title column (see the migration SQL
+   shared alongside this) — falls back to the generic role label
+   for any account without one, so pages don't break before that
+   migration is run.
+   ------------------------------------------------------- */
+const JOB_TITLE_LABELS = {
+  administration: "Administration Team",
+  head_of_department: "Head of Department",
+  principal: "Principal",
+  deputy_principal: "Deputy Principal",
+  technician: "Technician",
+};
+
+/** profile: { role, job_title? } → the label to show for this person.
+ *  Admins/technicians with a recognized job_title show that title;
+ *  everyone else falls back to a role-based label. */
+function displayRoleLabel(profile) {
+  if (!profile) return "";
+  if (profile.job_title && JOB_TITLE_LABELS[profile.job_title]) {
+    return JOB_TITLE_LABELS[profile.job_title];
+  }
+  if (profile.role === "admin") return "Admin";
+  if (profile.role === "staff") return "Lecturer";
+  return "Student";
+}
+
+/** Batch-looks-up the display label (see displayRoleLabel above) for a
+ *  list of profile ids in one query — used wherever a list of records
+ *  (announcements, ticket replies) needs to show who posted each one
+ *  without a query per row. Returns a Map(id -> label); ids that fail
+ *  to load or don't exist are simply absent from the map. */
+async function fetchPosterLabels(ids) {
+  const unique = [...new Set((ids || []).filter(Boolean))];
+  const labels = new Map();
+  if (!unique.length) return labels;
+  const { data, error } = await supabaseClient
+    .from("profiles")
+    .select("id, role, job_title, full_name")
+    .in("id", unique);
+  if (error || !data) return labels;
+  data.forEach((p) => labels.set(p.id, displayRoleLabel(p)));
+  return labels;
+}
+
+/* -------------------------------------------------------
    Course picker — searchable combobox.
 
    The course <select> (built from COURSES in courses-data.js)
@@ -428,6 +480,33 @@ function initPasswordToggles(scope) {
       input.type = willShow ? "text" : "password";
       btn.innerHTML = willShow ? EYE_OFF_ICON : EYE_ICON;
       btn.setAttribute("aria-label", willShow ? "Hide password" : "Show password");
+    });
+  });
+}
+
+/* -------------------------------------------------------
+   Clearable search inputs — clicking/tapping into a search box
+   that already has a query in it clears it right away, instead of
+   just dropping the cursor somewhere inside the old text. Applies
+   to every <input type="search"> automatically, plus anything
+   opted in with class="search-clearable" (for the handful of
+   plain text inputs used as search boxes, like admin.html's
+   studentSearch). Re-callable for markup added after page load,
+   same pattern as initPasswordToggles() below.
+   ------------------------------------------------------- */
+function initClearableSearchInputs(scope) {
+  (scope || document).querySelectorAll('input[type="search"], input.search-clearable').forEach((input) => {
+    if (input.dataset.clearBound) return; // don't double-bind if called again later
+    input.dataset.clearBound = "1";
+    input.addEventListener("focus", () => {
+      if (!input.value) return;
+      input.value = "";
+      // Fire the same event the rest of the app already listens on
+      // (studentSearch/staffSearch/gradesSearch etc. are wired to
+      // 'input'), so clearing here re-runs whatever filter was
+      // narrowing the list, without every caller needing its own
+      // focus listener.
+      input.dispatchEvent(new Event("input", { bubbles: true }));
     });
   });
 }
@@ -944,4 +1023,5 @@ document.addEventListener("DOMContentLoaded", () => {
   checkDbHealth();
   watchSystemStatus();
   initPasswordToggles();
+  initClearableSearchInputs();
 });
