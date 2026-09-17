@@ -9,7 +9,7 @@
 <title>GTI Student Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=4">
+<link rel="stylesheet" href="styles.css?v=8">
 <script src="theme.js"></script>
 <link rel="icon" type="image/x-icon" href="gti.png">
 
@@ -56,6 +56,10 @@
 
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="course" data-tab="course">
       <svg class="nav-icon" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M3.5 6.5H12.5L10 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M14.5 11.5H5.5L8 14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg> Change course
+    </button>
+
+    <button class="nav-item" role="tab" aria-selected="false" aria-controls="feedback" data-tab="feedback">
+      <svg class="nav-icon" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M3.5 4.5H14.5C15 4.5 15.5 5 15.5 5.5V11.5C15.5 12 15 12.5 14.5 12.5H8L5 15V12.5H3.5C3 12.5 2.5 12 2.5 11.5V5.5C2.5 5 3 4.5 3.5 4.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg> Feedback
     </button>
 
     <!-- Not a tab — a real link out to lecturer-home.html. Only shown
@@ -219,12 +223,46 @@
       </div>
     </section>
 
+    <section id="feedback" class="tab-content">
+      <h2>Lecturer &amp; course feedback</h2>
+      <div class="card">
+        <p class="status-message visible info" role="note">
+          This form is always open, and your submission is anonymous — we don't record who submitted it.
+        </p>
+        <form id="courseFeedbackForm" novalidate>
+          <label for="feedbackLecturer">Lecturer</label>
+          <select id="feedbackLecturer" required>
+            <option value="">-- Select a lecturer --</option>
+          </select>
+
+          <label for="feedbackCourse">Course this relates to</label>
+          <select id="feedbackCourse" required></select>
+
+          <label for="feedbackRating">Rating</label>
+          <select id="feedbackRating" required>
+            <option value="">-- Select a rating --</option>
+            <option value="5">5 - Excellent</option>
+            <option value="4">4 - Good</option>
+            <option value="3">3 - Average</option>
+            <option value="2">2 - Below average</option>
+            <option value="1">1 - Poor</option>
+          </select>
+
+          <label for="feedbackComments">Comments (optional)</label>
+          <textarea id="feedbackComments" maxlength="2000" placeholder="What's going well? What could improve?"></textarea>
+
+          <p class="status-message" id="feedbackStatus" role="alert"></p>
+          <button type="submit" class="btn btn-block" id="feedbackSubmit">Submit feedback</button>
+        </form>
+      </div>
+    </section>
+
   </main>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="app.js?v=2"></script>
+<script src="app.js?v=3"></script>
 <script src="courses-data.js?v=2"></script>
-<script src="home.js?v=3"></script>
+<script src="home.js?v=4"></script>
 </body>
 </html>

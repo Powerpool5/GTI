@@ -9,7 +9,7 @@
 <title>Staff Dashboard - GTI Staff Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=4">
+<link rel="stylesheet" href="styles.css?v=8">
 <script src="theme.js"></script>
 <link rel="icon" type="image/x-icon" href="gti.png">
 </head>
@@ -78,6 +78,10 @@
       <span class="nav-badge" id="supportNavBadge" hidden></span>
     </button>
 
+    <button class="nav-item" role="tab" aria-selected="false" aria-controls="feedback" data-tab="feedback">
+      <svg class="nav-icon" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M3.5 4.5H14.5C15 4.5 15.5 5 15.5 5.5V11.5C15.5 12 15 12.5 14.5 12.5H8L5 15V12.5H3.5C3 12.5 2.5 12 2.5 11.5V5.5C2.5 5 3 4.5 3.5 4.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg> Feedback
+    </button>
+
     <!-- Not a tab — a real link out to admin.html. Shown only for admins
          (see init() in lecturer-home.js); this is what used to be the
          "Admin panel →" link on the student home page. -->
@@ -133,20 +137,6 @@
         </p>
       </div>
 
-      <div class="card" id="maintenanceCard" hidden>
-        <h3 style="margin-top:0;">Maintenance banner</h3>
-        <p style="margin:0 0 12px; color:var(--slate); font-size:0.9rem;">
-          Shows an amber banner on every page (student and staff) — use this to warn
-          people before planned downtime, e.g. a database reboot.
-        </p>
-        <label style="display:flex;align-items:center;gap:6px;font-weight:400;">
-          <input type="checkbox" id="maintenanceToggle" style="width:auto;margin:0;"> Maintenance mode active
-        </label>
-        <label for="maintenanceMessage">Message (optional — leave blank for the default)</label>
-        <textarea id="maintenanceMessage" maxlength="300" placeholder="The database is restarting for scheduled maintenance - please save your work."></textarea>
-        <p class="status-message" id="maintenanceStatus" role="alert"></p>
-        <button type="button" class="btn btn-sm" id="maintenanceSaveBtn">Save</button>
-      </div>
     </section>
 
     <!-- STUDENTS -->
@@ -234,6 +224,68 @@
       </div>
     </section>
 
+    <!-- FEEDBACK -->
+    <section id="feedback" class="tab-content">
+      <h2>Give feedback on a student</h2>
+      <div class="card">
+        <p class="status-message" id="studentFeedbackLockNotice" hidden></p>
+        <form id="studentFeedbackForm" novalidate>
+          <label for="studentFeedbackCourse">Course</label>
+          <select id="studentFeedbackCourse"></select>
+
+          <label for="studentFeedbackStudent">Student</label>
+          <select id="studentFeedbackStudent" required>
+            <option value="">-- Select a course first --</option>
+          </select>
+
+          <label for="studentFeedbackRating">Rating</label>
+          <select id="studentFeedbackRating" required>
+            <option value="">-- Select a rating --</option>
+            <option value="5">5 - Excellent</option>
+            <option value="4">4 - Good</option>
+            <option value="3">3 - Average</option>
+            <option value="2">2 - Below average</option>
+            <option value="1">1 - Poor</option>
+          </select>
+
+          <label for="studentFeedbackComments">Comments</label>
+          <textarea id="studentFeedbackComments" maxlength="2000" required placeholder="Specific, actionable comments help most."></textarea>
+
+          <p class="field-hint">This isn't anonymous — it's recorded against your account, and only admins can read it.</p>
+          <p class="status-message" id="studentFeedbackStatus" role="alert"></p>
+          <button type="submit" class="btn btn-block" id="studentFeedbackSubmit">Submit feedback</button>
+        </form>
+      </div>
+
+      <h2>Feedback about you</h2>
+      <p style="margin-top:-8px; color:var(--slate); font-size:0.85rem;">Submitted anonymously by students — you can't see who left it.</p>
+      <div class="card"><ul class="record-list" id="myCourseFeedbackList"></ul></div>
+
+      <div id="adminFeedbackSection" hidden>
+        <div class="card">
+          <h3 style="margin-top:0;">Lock the student feedback form <span class="badge badge-admin">Admin</span></h3>
+          <p style="margin:0 0 12px; color:var(--slate); font-size:0.9rem;">
+            Locks "Give feedback on a student" above for every lecturer, portal-wide. The course/lecturer
+            feedback students submit is always open and can't be locked.
+          </p>
+          <div class="card-row-between">
+            <strong id="studentFeedbackLockState">Currently OPEN</strong>
+            <button type="button" class="btn btn-danger btn-sm" id="studentFeedbackLockToggleBtn">Lock form</button>
+          </div>
+          <p class="status-message" id="studentFeedbackLockStatus" role="alert"></p>
+        </div>
+
+        <div class="card-row-between">
+          <h2 style="margin:0;">All course/lecturer feedback <span class="badge badge-admin">Admin</span></h2>
+        </div>
+        <div class="card"><ul class="record-list" id="allCourseFeedbackList"></ul></div>
+
+        <div class="card-row-between">
+          <h2 style="margin:0;">All student feedback <span class="badge badge-admin">Admin</span></h2>
+        </div>
+        <div class="card"><ul class="record-list" id="allStudentFeedbackList"></ul></div>
+      </div>
+    </section>
 
     <!-- RESOURCES -->
     <section id="resources" class="tab-content">
@@ -244,9 +296,9 @@
       <div class="card">
         <div class="search-row">
           <input type="search" id="resourceSearch" placeholder="Search resources by name…">
-          <select id="resourceCourseFilter" class="course-select-target"><option value="">All courses</option></select>
+          <select id="resourceCourseFilter" class="department-select-target"><option value="">All departments</option></select>
         </div>
-        <p class="field-hint" style="margin:0;">Every resource is visible here regardless of course — filter and search are just to help you find one.</p>
+        <p class="field-hint" style="margin:0;">Every resource is visible here regardless of department — filter and search are just to help you find one.</p>
       </div>
       <div class="card"><ul class="record-list" id="resourcesList"></ul></div>
     </section>
@@ -256,7 +308,7 @@
       <h2>Input Grades</h2>
       <div class="card">
         <div class="search-row">
-          <select id="gradesCourseSelect" class="course-select-target" style="max-width:320px;">
+          <select id="gradesCourseSelect" class="course-select-target">
             <option value="" disabled selected>-- Select a course --</option>
           </select>
           <input type="search" id="gradesSearch" placeholder="Search by name or student ID…">
@@ -308,10 +360,13 @@
       <h2>Attendance</h2>
       <div class="card">
         <div class="search-row">
+          <input type="text" id="attendanceSubject" list="attendanceSubjectList" placeholder="Subject, e.g., Computer Programming" maxlength="100" autocomplete="off">
+          <datalist id="attendanceSubjectList"></datalist>
           <select id="attendanceCourseSelect" class="course-select-target" style="max-width:320px;">
             <option value="" disabled selected>-- Select a course --</option>
           </select>
           <input type="date" id="attendanceDate">
+          <span class="attendance-date-weekday" id="attendanceDateWeekday" aria-live="polite"></span>
           <button type="button" class="btn btn-secondary btn-sm" id="attendanceRefresh">Load</button>
         </div>
         <div class="chip-row" id="attendanceQuickPicks"></div>
@@ -324,8 +379,22 @@
         </table>
       </div>
       <div class="card">
-        <button type="button" class="btn" id="attendanceSaveAll">Save attendance</button>
-        <p class="status-message" id="attendanceStatus" role="alert"></p>
+        <div class="attendance-save-row">
+          <button type="button" class="btn" id="attendanceSaveAll">Save attendance</button>
+          <p class="status-message" id="attendanceStatus" role="alert"></p>
+        </div>
+      </div>
+
+      <div class="card-row-between">
+        <h2 style="margin:0;">Attendance overview</h2>
+        <button type="button" class="btn btn-secondary btn-sm" id="attendanceOverviewRefresh">Refresh</button>
+      </div>
+      <p class="field-hint" style="margin:0 0 10px;">Every date recorded for this class, broken down by subject per student.</p>
+      <div class="card table-wrap">
+        <table class="admin-table" id="attendanceOverviewTable">
+          <thead><tr><th>Name</th><th>Student ID</th><th>Subject</th><th>Present</th><th>Absent</th><th>Late</th><th>Attendance %</th><th>Last recorded</th></tr></thead>
+          <tbody id="attendanceOverviewTbody"></tbody>
+        </table>
       </div>
     </section>
 
@@ -491,9 +560,9 @@
     </div>
     <form id="resourceForm" novalidate>
       <input type="hidden" id="resourceId">
-      <label for="resourceCourse">Course</label>
-      <select id="resourceCourse" class="course-select-target" required>
-        <option value="" disabled selected>-- Select a course --</option>
+      <label for="resourceCourse">Department</label>
+      <select id="resourceCourse" class="department-select-target" required>
+        <option value="" disabled selected>-- Select a department --</option>
       </select>
 
       <label for="resourceTitle">Title</label>
@@ -516,8 +585,8 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="app.js"></script>
+<script src="app.js?v=3"></script>
 <script src="courses-data.js"></script>
-<script src="lecturer-home.js?v=2"></script>
+<script src="lecturer-home.js?v=5"></script>
 </body>
 </html>

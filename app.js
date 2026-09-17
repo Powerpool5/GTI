@@ -764,7 +764,16 @@ function enhanceCourseSelect(select) {
     window.removeEventListener("resize", positionPanel);
   }
 
-  input.addEventListener("focus", openPanel);
+  // Clicking/tapping in clears whatever course is currently shown,
+  // same as initClearableSearchInputs() does for the plain search
+  // boxes elsewhere — so you can start typing a new course right away
+  // instead of having to select-all/backspace the old one first.
+  // openPanel() already re-renders the (now unfiltered) accordion, so
+  // there's no separate "input" event to fire here.
+  input.addEventListener("focus", () => {
+    input.value = "";
+    openPanel();
+  });
   input.addEventListener("input", () => {
     renderPanel(input.value);
     positionPanel();
@@ -825,8 +834,8 @@ function syncCourseSelectDisplay(select) {
    Each of the three reads as its own situation, not just "a red bar":
    connectivity-down is the plain unmarked red, maintenance gets its own
    info/warning/danger colors plus a top caution stripe, and lockdown
-   gets its own (darker) info/warning/danger colors plus a bottom amber
-   stripe. See styles.css for the actual variants.
+   gets its own (darker) info/warning/danger colors, no stripe. See
+   styles.css for the actual variants.
    ------------------------------------------------------- */
 let statusBanner = null;
 let statusBannerTrack = null;
@@ -895,6 +904,13 @@ function ensureStatusBanner() {
   return statusBanner;
 }
 
+// How fast the banner text scrolls, in pixels per second. Slower =
+// smaller number. Duration is derived from this (not a fixed seconds
+// value) so a longer message doesn't go rushing past any faster than
+// a short one — see renderStatusBanner below.
+const BANNER_SCROLL_PX_PER_SECOND = 116;
+const BANNER_SCROLL_MIN_SECONDS = 5;
+
 function renderStatusBanner(message, variant) {
   const banner = ensureStatusBanner();
   // A visible separator (not just spaces) between the two repeats —
@@ -906,7 +922,16 @@ function renderStatusBanner(message, variant) {
   banner.className = "db-down-banner"; // reset any previous variant class
   if (variant) banner.classList.add(variant);
   banner.hidden = false;
-  window.requestAnimationFrame(updateHeaderHeightVar);
+  window.requestAnimationFrame(() => {
+    updateHeaderHeightVar();
+    // Track width includes the doubled text, so translateX(-100%) covers
+    // exactly this many pixels per loop — pace the duration to it instead
+    // of using one flat seconds value that reads fine for a short message
+    // and flies by for a long one.
+    const width = statusBannerTrack.scrollWidth;
+    const seconds = Math.max(width / BANNER_SCROLL_PX_PER_SECOND, BANNER_SCROLL_MIN_SECONDS);
+    statusBannerTrack.style.animationDuration = seconds + "s";
+  });
 }
 
 function hideStatusBanner() {

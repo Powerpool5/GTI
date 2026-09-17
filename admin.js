@@ -6,8 +6,6 @@
   function populateCourseSelects() {
     const timetableSelect = document.getElementById('timetableCourseSelect');
     const announcementSelect = document.getElementById('announcementCourse');
-    const resourceFilterSelect = document.getElementById('resourceCourseFilter');
-    const resourceCourseSelect = document.getElementById('resourceCourse');
 
     function fill(sel, groups) {
       sel.innerHTML = '';
@@ -29,27 +27,37 @@
     // staff account to, or to post a course-scoped announcement for.
     fill(timetableSelect, COURSES.filter((g) => g.label !== 'Staff'));
     fill(announcementSelect, COURSES);
-    fill(resourceCourseSelect, COURSES.filter((g) => g.label !== 'Staff'));
-
-    // The filter keeps its "All courses" placeholder option, so fill
-    // into a fresh <optgroup> set appended after it rather than
-    // wiping the select the way fill() does for the others.
-    COURSES.filter((g) => g.label !== 'Staff').forEach((group) => {
-      const optgroup = document.createElement('optgroup');
-      optgroup.label = group.label;
-      group.options.forEach((opt) => {
-        const option = document.createElement('option');
-        option.value = opt.value;
-        option.textContent = opt.label;
-        optgroup.appendChild(option);
-      });
-      resourceFilterSelect.appendChild(optgroup);
-    });
 
     enhanceCourseSelect(timetableSelect);
     enhanceCourseSelect(announcementSelect);
-    enhanceCourseSelect(resourceCourseSelect);
-    enhanceCourseSelect(resourceFilterSelect);
+  }
+
+  // Resources are uploaded per department rather than per specific
+  // course — see departmentFor()/DEPARTMENTS and populateDepartmentSelects()
+  // below, and the matching comment in lecturer-home.js.
+  function departmentFor(code) {
+    for (const group of COURSES) {
+      if (group.options.some((o) => o.value === code)) return group.label;
+    }
+    return code;
+  }
+
+  const DEPARTMENTS = COURSES.filter((g) => g.label !== 'Staff').map((g) => g.label);
+
+  function populateDepartmentSelects() {
+    const resourceFilterSelect = document.getElementById('resourceCourseFilter');
+    const resourceCourseSelect = document.getElementById('resourceCourse');
+    [resourceFilterSelect, resourceCourseSelect].forEach((select) => {
+      const keepFirst = select.querySelector('option'); // preserve "All departments" / "-- Select --" placeholder
+      select.innerHTML = '';
+      if (keepFirst) select.appendChild(keepFirst);
+      DEPARTMENTS.forEach((dept) => {
+        const option = document.createElement('option');
+        option.value = dept;
+        option.textContent = dept;
+        select.appendChild(option);
+      });
+    });
   }
 
   function courseNameFor(code) {
@@ -95,6 +103,7 @@
     currentAdminUserId = admin.session.user.id;
 
     populateCourseSelects();
+    populateDepartmentSelects();
 
     document.getElementById('headerEmail').textContent = admin.session.user.email || '';
     renderAvatar(document.getElementById('avatarSlot'), admin.profile.full_name || admin.session.user.email, admin.profile.avatar_url);
@@ -606,14 +615,13 @@
     document.getElementById('resourceId').value = existing ? existing.id : '';
     document.getElementById('resourceModalTitle').textContent = existing ? 'Edit resource' : 'New resource';
     if (existing) {
-      document.getElementById('resourceCourse').value = existing.course_code;
+      document.getElementById('resourceCourse').value = existing.department;
       document.getElementById('resourceTitle').value = existing.title;
       document.getElementById('resourceAuthor').value = existing.author || '';
       document.getElementById('resourceFileUrl').value = existing.file_url || '';
     } else if (currentResourceFilter) {
       document.getElementById('resourceCourse').value = currentResourceFilter;
     }
-    syncCourseSelectDisplay(document.getElementById('resourceCourse'));
     document.getElementById('resourceUploadStatus').textContent = '';
     setStatus(document.getElementById('resourceFormStatus'), '', null);
     resourceModal.hidden = false;
@@ -627,7 +635,7 @@
     const submitBtn = document.getElementById('resourceSubmit');
 
     const id = document.getElementById('resourceId').value;
-    const courseCode = document.getElementById('resourceCourse').value;
+    const department = document.getElementById('resourceCourse').value;
     const title = document.getElementById('resourceTitle').value.trim();
     const author = document.getElementById('resourceAuthor').value.trim() || null;
     let fileUrl = document.getElementById('resourceFileUrl').value.trim() || null;
@@ -636,6 +644,10 @@
     const uploadStatus = document.getElementById('resourceUploadStatus');
     const chosenFile = uploadInput.files && uploadInput.files[0];
 
+    if (!department) {
+      setStatus(status, 'Choose a department.', 'error');
+      return;
+    }
     if (!fileUrl && !chosenFile) {
       setStatus(status, 'Provide a link or upload a file.', 'error');
       return;
@@ -645,7 +657,8 @@
 
     if (chosenFile) {
       uploadStatus.textContent = 'Uploading…';
-      const path = `${courseCode}/${Date.now()}-${chosenFile.name}`;
+      const deptSlug = department.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      const path = `${deptSlug}/${Date.now()}-${chosenFile.name}`;
       const { error: uploadError } = await supabaseClient.storage
         .from('resource-files')
         .upload(path, chosenFile, { upsert: false });
@@ -664,7 +677,7 @@
     }
 
     const payload = {
-      course_code: courseCode,
+      department,
       title,
       author,
       file_url: fileUrl,
@@ -672,9 +685,9 @@
     if (!id) payload.created_by = currentAdminUserId;
 
     // Unlike timetable (one row per course), resources are a plain
-    // list — several textbooks can exist for the same course, so this
-    // is a normal insert/update by id rather than an upsert on
-    // course_code.
+    // list — several textbooks can exist for the same department, so
+    // this is a normal insert/update by id rather than an upsert on
+    // department.
     const { error } = id
       ? await supabaseClient.from('resources').update(payload).eq('id', id).select().single()
       : await supabaseClient.from('resources').insert(payload).select().single();
@@ -691,17 +704,17 @@
     loadOverviewStats();
   });
 
-  async function loadResources(courseCode) {
-    currentResourceFilter = courseCode || '';
+  async function loadResources(department) {
+    currentResourceFilter = department || '';
     const tbody = document.getElementById('resourcesTableBody');
     tbody.innerHTML = '<tr><td colspan="6"><div class="skeleton skeleton-line"></div></td></tr>';
 
     let query = supabaseClient
       .from('resources')
-      .select('id, course_code, title, author, file_url, created_at')
-      .order('course_code')
+      .select('id, department, title, author, file_url, created_at')
+      .order('department')
       .order('title');
-    if (courseCode) query = query.eq('course_code', courseCode);
+    if (department) query = query.eq('department', department);
 
     const { data, error } = await query;
 
@@ -714,7 +727,7 @@
       const tr = document.createElement('tr');
 
       const courseTd = document.createElement('td');
-      courseTd.textContent = r.course_code;
+      courseTd.textContent = r.department;
       tr.appendChild(courseTd);
 
       const titleTd = document.createElement('td');

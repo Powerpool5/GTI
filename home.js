@@ -18,6 +18,27 @@
   );
   enhanceCourseSelect(document.getElementById('courseChange'));
 
+  // Feedback tab's "course this relates to" picker — same course list
+  // as "change course" above (Staff left out, a student isn't giving
+  // feedback "for" the Staff pseudo-course).
+  populateCourseSelect(
+    document.getElementById('feedbackCourse'),
+    COURSES.filter((g) => g.label !== 'Staff'),
+    '-- Select a Course --',
+    false
+  );
+  enhanceCourseSelect(document.getElementById('feedbackCourse'));
+
+  // Resources are uploaded per department (see lecturer-home.js), not
+  // per specific course — a student's own course_code isn't what's
+  // stored on the resource row, so this maps it to the department
+  // first. Falls back to the raw code if it's somehow not in COURSES
+  // (e.g. "STAFF"), same as courseNameFor()-style helpers elsewhere.
+  function departmentFor(code) {
+    const group = COURSES.find((g) => g.options.some((o) => o.value === code));
+    return group ? group.label : code;
+  }
+
   // Filled in by loadAccount() once the profile is loaded.
   let currentUserId = null;
   let currentUserEmail = null;
@@ -277,13 +298,13 @@
     const { data, error } = await supabaseClient
       .from('resources')
       .select('title, author, file_url, created_at')
-      .eq('course_code', courseCode)
+      .eq('department', departmentFor(courseCode))
       .order('title');
 
     list.innerHTML = '';
     if (error) { console.error('Loading resources failed:', error); list.innerHTML = emptyState('Resources are not available right now.'); return; }
     const rows = data || [];
-    if (!rows.length) { list.innerHTML = emptyState('No resources have been uploaded for this course yet.'); return; }
+    if (!rows.length) { list.innerHTML = emptyState('No resources have been uploaded for this department yet.'); return; }
 
     rows.forEach((r) => {
       const item = document.createElement('li');
@@ -480,6 +501,79 @@
     }
   }
 
+  // Lecturer picker for the Feedback tab — any staff/admin account is a
+  // valid feedback target, not just people teaching the student's own
+  // course, since a student may want to leave feedback about someone
+  // outside their current course. Loaded once; the list doesn't change
+  // often enough to need refreshing per tab visit.
+  //
+  // Non-teaching job titles are excluded — technicians, the
+  // administration team, the principal, and the deputy/vice principal
+  // aren't rated. Kept in sync with the same exclusion enforced
+  // server-side in feedback-schema.sql (course_feedback_insert policy).
+  const UNRATABLE_JOB_TITLES = ['technician', 'administration', 'principal', 'deputy_principal'];
+
+  async function loadFeedbackLecturers() {
+    const select = document.getElementById('feedbackLecturer');
+    const { data, error } = await supabaseClient
+      .from('profiles')
+      .select('id, full_name, email, role, job_title')
+      .in('role', ['staff', 'admin'])
+      .order('full_name');
+
+    if (error) { console.error('Loading lecturers for feedback failed:', error); return; }
+
+    select.innerHTML = '<option value="">-- Select a lecturer --</option>';
+    (data || [])
+      .filter((p) => !UNRATABLE_JOB_TITLES.includes(p.job_title))
+      .forEach((p) => {
+        const option = document.createElement('option');
+        option.value = p.id;
+        option.textContent = (p.full_name || p.email || 'Unnamed') + ' — ' + displayRoleLabel(p);
+        select.appendChild(option);
+      });
+  }
+
+  document.getElementById('courseFeedbackForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const status = document.getElementById('feedbackStatus');
+    const submitBtn = document.getElementById('feedbackSubmit');
+
+    const lecturerId = document.getElementById('feedbackLecturer').value;
+    const courseCode = document.getElementById('feedbackCourse').value;
+    const rating = document.getElementById('feedbackRating').value;
+    const comments = document.getElementById('feedbackComments').value.trim();
+
+    if (!lecturerId) { setStatus(status, 'Please select a lecturer.', 'error'); return; }
+    if (!courseCode) { setStatus(status, 'Please select a course.', 'error'); return; }
+    if (!rating) { setStatus(status, 'Please select a rating.', 'error'); return; }
+
+    submitBtn.disabled = true;
+    setStatus(status, '', null);
+
+    // No student id is sent — this table has no such column, so the
+    // submission is anonymous by construction, not just by convention.
+    const { error } = await supabaseClient.from('course_feedback').insert({
+      course_code: courseCode,
+      lecturer_id: lecturerId,
+      rating: Number(rating),
+      comments: comments || null,
+    });
+
+    submitBtn.disabled = false;
+
+    if (error) {
+      console.error('Submitting course feedback failed:', error);
+      setStatus(status, 'Could not submit feedback. Please try again.', 'error');
+      return;
+    }
+
+    setStatus(status, 'Thanks — your anonymous feedback has been submitted.', 'success');
+    toast('Feedback submitted anonymously.', 'success');
+    document.getElementById('courseFeedbackForm').reset();
+    syncCourseSelectDisplay(document.getElementById('feedbackCourse'));
+  });
+
   courseChangeForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     const courseSelect = document.getElementById('courseChange');
@@ -524,4 +618,5 @@
   });
 
   loadAccount();
+  loadFeedbackLecturers();
 })();

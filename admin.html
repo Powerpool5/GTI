@@ -9,7 +9,7 @@
 <title>Admin - GTI Student Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=4">
+<link rel="stylesheet" href="styles.css?v=8">
 <script src="theme.js"></script>
 <link rel="icon" type="image/x-icon" href="gti.png">
 
@@ -135,12 +135,12 @@
         <button class="btn btn-sm" id="newResourceBtn">+ Add resource</button>
       </div>
       <div class="card">
-        <label for="resourceCourseFilter">Filter by course</label>
-        <select id="resourceCourseFilter"><option value="">All courses</option></select>
+        <label for="resourceCourseFilter">Filter by department</label>
+        <select id="resourceCourseFilter"><option value="">All departments</option></select>
       </div>
       <div class="card table-wrap">
         <table class="admin-table" id="resourcesTable">
-          <thead><tr><th>Course</th><th>Title</th><th>Author</th><th>File</th><th>Uploaded</th><th></th></tr></thead>
+          <thead><tr><th>Department</th><th>Title</th><th>Author</th><th>File</th><th>Uploaded</th><th></th></tr></thead>
           <tbody id="resourcesTableBody"></tbody>
         </table>
       </div>
@@ -283,7 +283,7 @@
     </div>
     <form id="resourceForm" novalidate>
       <input type="hidden" id="resourceId">
-      <label for="resourceCourse">Course</label>
+      <label for="resourceCourse">Department</label>
       <select id="resourceCourse" required></select>
 
       <label for="resourceTitle">Title</label>
@@ -306,7 +306,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="app.js?v=2"></script>
+<script src="app.js?v=3"></script>
 <script src="courses-data.js?v=2"></script>
 <script src="admin.js?v=2"></script>
 </body>

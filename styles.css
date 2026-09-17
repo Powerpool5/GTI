@@ -285,9 +285,9 @@ button, input, select { font-family: inherit; font-size: 1rem; }
   transition: box-shadow 0.2s var(--ease), background 0.2s var(--ease);
 }
 
-.card-row-between { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.card-row-between { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 14px; }
 
-.detail-row { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--paper-line); font-size: 0.95rem; }
+.detail-row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; padding: 9px 0; border-bottom: 1px solid var(--paper-line); font-size: 0.95rem; }
 .detail-row:last-child { border-bottom: none; }
 .detail-row .label { color: var(--slate); }
 .detail-row .value { font-family: var(--font-mono); font-size: 0.9rem; text-align: right; }
@@ -377,6 +377,22 @@ select, textarea {
 input[type="date"]::-webkit-calendar-picker-indicator { filter: var(--date-icon-filter, none); cursor: pointer; }
 [data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.8); }
 input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+/* Mobile WebKit/Blink (iOS Safari, Android Chrome) keep rendering
+   type="search" fields with their own native rounded/light "pill" look —
+   including a background that ignores our --surface color and never
+   flips with dark mode — even with -webkit-appearance:none above.
+   -webkit-appearance:textfield is the one value that reliably strips
+   that native chrome down to a plain text field on those browsers;
+   restating background/border here too in case the native style had
+   been winning on those. */
+input[type="search"] {
+  -webkit-appearance: textfield;
+  appearance: textfield;
+  background: var(--surface);
+  border: 1px solid var(--border-input);
+  color: var(--ink);
+}
+input[type="search"]::-webkit-search-decoration { -webkit-appearance: none; appearance: none; }
 textarea { resize: vertical; min-height: 90px; }
 input:focus, select:focus, textarea:focus { border-color: var(--blueprint); box-shadow: 0 0 0 3px rgba(43,95,140,0.12); outline: none; }
 input:disabled, select:disabled, button:disabled { opacity: 0.55; cursor: not-allowed; }
@@ -430,6 +446,9 @@ input:disabled, select:disabled, button:disabled { opacity: 0.55; cursor: not-al
   cursor: pointer;
   background-image: none;
   font-family: var(--font-body);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .course-combo::after {
   content: "▾";
@@ -733,7 +752,7 @@ button.btn-link { background: none; border: none; color: var(--blueprint); paddi
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
-.form-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
+.form-footer { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin-top: 4px; }
 
 @media (max-width: 860px) {
   .auth-screen { flex-direction: column; }
@@ -1173,6 +1192,26 @@ table.admin-table .grade-total { display: inline-block; min-width: 48px; font-fa
 .attendance-status-btn.absent.active { background: var(--danger-bg); border-color: var(--danger); color: var(--danger); }
 .attendance-status-btn.late.active { background: #FBF1DC; border-color: var(--brass); color: var(--brass-dark); }
 
+/* Name/Student ID cells span down over a student's subject rows in
+   the Attendance overview table — top-align them so they sit level
+   with that student's first subject rather than centering across the
+   whole span. */
+#attendanceOverviewTable td[rowspan] { vertical-align: top; }
+
+/* The save-attendance status message used to stretch the shared
+   .status-message bar across the full width of the card, which reads
+   as an oversized, heavy banner next to a small button. Scoped here
+   to sit as a compact pill right beside the button instead. */
+.attendance-save-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.attendance-save-row .status-message {
+  margin: 0;
+  flex: 0 1 auto;
+  width: auto;
+  border-radius: 999px;
+  padding: 8px 16px;
+}
+.attendance-save-row .status-message.visible { display: inline-block; }
+
 .attendance-summary-card {
   display: flex;
   align-items: center;
@@ -1190,9 +1229,27 @@ table.admin-table .grade-total { display: inline-block; min-width: 48px; font-fa
 .attendance-summary-card .attendance-summary-counts { display: flex; gap: 6px; flex-wrap: wrap; }
 
 .search-row { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
-.search-row input { margin-bottom: 0; }
-.search-row select { margin-bottom: 0; }
-.search-row .course-combo { margin-bottom: 0; flex: 1; min-width: 200px; }
+/* Plain <input>/<select> pick up `width: 100%` from the shared form-field
+   rule above, which — inside a flex row — becomes each item's flex-basis.
+   Two 100%-basis items in one row is what forced the search box onto its
+   own line, then the course filter onto another, then the button onto a
+   third, instead of sharing one row like the .course-combo variant
+   already did. Giving them a sane, shrinkable basis instead of 100%
+   fixes that on every screen size, not just mobile. */
+.search-row input:not(.course-combo-input) { width: auto; flex: 1 1 180px; min-width: 140px; margin-bottom: 0; }
+/* Date/time/number fields have a fixed, sensible native width — growing
+   them the same way as a search box (above) is what stretched the
+   Attendance date picker across almost the whole row. Keep these at
+   their natural size instead. */
+.search-row input[type="date"], .search-row input[type="time"], .search-row input[type="number"] {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 0;
+}
+.search-row .attendance-date-weekday { flex: 0 0 auto; align-self: center; color: var(--slate); font-size: 0.85rem; white-space: nowrap; }
+.search-row select { width: auto; flex: 0 1 220px; min-width: 140px; margin-bottom: 0; }
+.search-row button { flex: 0 0 auto; }
+.search-row .course-combo { margin-bottom: 0; flex: 2 1 280px; min-width: 260px; }
 
 .modal-backdrop {
   position: fixed; inset: 0; background: rgba(5, 18, 36, 0.62);
@@ -1206,8 +1263,9 @@ table.admin-table .grade-total { display: inline-block; min-width: 48px; font-fa
   max-width: 480px; width: 100%; box-shadow: var(--shadow-lg);
   max-height: 90vh; overflow-y: auto;
 }
-.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.modal-close { background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--slate); }
+.modal-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
+.modal-header h2, .modal-header h3 { min-width: 0; overflow-wrap: break-word; }
+.modal-close { flex-shrink: 0; background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--slate); }
 
 /* Skeleton loading */
 .skeleton { background: linear-gradient(90deg, var(--paper-line) 25%, var(--surface) 37%, var(--paper-line) 63%); background-size: 400% 100%; animation: shimmer 1.4s ease infinite; border-radius: var(--radius-sm); }
@@ -1415,15 +1473,15 @@ table.admin-table .grade-total { display: inline-block; min-width: 48px; font-fa
 }
 .db-down-banner.lockdown-info {
   background: #1B3A5C;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25), inset 0 -2px 0 #FFB020;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
 }
 .db-down-banner.lockdown-warning {
   background: #6B4310;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25), inset 0 -2px 0 #FFB020;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
 }
 .db-down-banner.lockdown-danger {
   background: #6B1410;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25), inset 0 -2px 0 #FFB020;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
 }
 .db-down-banner .db-down-track {
   display: inline-block;

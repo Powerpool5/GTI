@@ -12,6 +12,17 @@
   );
   enhanceCourseSelect(document.getElementById('signUpCourse'));
 
+  // Auto-insert the dash after the first 2 digits as the person types,
+  // instead of making them type it themselves — e.g. "251729" becomes
+  // "25-1729" on the fly. Non-digits are stripped as they're typed
+  // (rather than merely rejected) so pasting "25-1729" or "25 1729"
+  // still lands in the right format.
+  const studentIdInput = document.getElementById('signUpStudentId');
+  studentIdInput.addEventListener('input', () => {
+    const digits = studentIdInput.value.replace(/\D/g, '').slice(0, 6); // 2 + 4
+    studentIdInput.value = digits.length > 2 ? digits.slice(0, 2) + '-' + digits.slice(2) : digits;
+  });
+
   const tabSignIn = document.getElementById('tabSignIn');
   const tabSignUp = document.getElementById('tabSignUp');
   const signInForm = document.getElementById('signInForm');
@@ -119,13 +130,22 @@
     if (document.getElementById('companyWebsite2').value) return; // honeypot
 
     const courseSelect = document.getElementById('signUpCourse');
-    const name = document.getElementById('signUpName').value.trim();
+    const firstName = document.getElementById('signUpFirstName').value.trim();
+    const lastName = document.getElementById('signUpLastName').value.trim();
     const studentId = document.getElementById('signUpStudentId').value.trim();
     const email = document.getElementById('signUpEmail').value.trim();
     const password = document.getElementById('signUpPassword').value;
 
     if (!courseSelect.value) {
       setStatus(status, 'Please select a course.', 'error');
+      return;
+    }
+    if (!firstName || !lastName) {
+      setStatus(status, 'Please enter your first and last name.', 'error');
+      return;
+    }
+    if (!/^[0-9]{2}-[0-9]{4}$/.test(studentId)) {
+      setStatus(status, 'Student ID must be 2 digits, then 4 digits (e.g., 25-1729).', 'error');
       return;
     }
     if (password.length < 8) {
@@ -141,7 +161,7 @@
       password,
       options: {
         data: {
-          full_name: name,
+          full_name: `${firstName} ${lastName}`,
           student_id: studentId,
           course_code: courseSelect.value,
           course_name: courseSelect.options[courseSelect.selectedIndex].textContent.trim(),

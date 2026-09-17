@@ -63,7 +63,7 @@
       // group, including Staff, since those really do apply to staff
       // accounts (assigning "Staff" as someone's course, or posting a
       // course-scoped announcement).
-      const NO_STAFF_GROUP_SELECTS = ['gradesCourseSelect', 'resourceCourse', 'resourceCourseFilter', 'attendanceCourseSelect'];
+      const NO_STAFF_GROUP_SELECTS = ['gradesCourseSelect', 'attendanceCourseSelect'];
       const groups = NO_STAFF_GROUP_SELECTS.includes(select.id) ? COURSES.filter((g) => g.label !== 'Staff') : COURSES;
       groups.forEach((group) => {
         const optgroup = document.createElement('optgroup');
@@ -105,6 +105,38 @@
       if (found) return found.label;
     }
     return code;
+  }
+
+  // Resources are uploaded per department rather than per specific
+  // course (a lecturer covering "Natural Sciences" resources shouldn't
+  // have to re-upload the same textbook once per course in that
+  // department) — this maps a course code to its department the same
+  // way courseNameFor() above maps it to a course name.
+  function departmentFor(code) {
+    const group = COURSES.find((g) => g.options.some((o) => o.value === code));
+    return group ? group.label : code;
+  }
+
+  const DEPARTMENTS = COURSES.filter((g) => g.label !== 'Staff').map((g) => g.label);
+
+  // Flat department lists for the Resources tab's course/filter pickers
+  // — separate from populateCourseSelects() above (which builds the
+  // full per-course optgroup pickers used everywhere else) since these
+  // two need only the six department names, not every course under
+  // them, and don't need the searchable course-combo UI for a list
+  // this short.
+  function populateDepartmentSelects() {
+    document.querySelectorAll('select.department-select-target').forEach((select) => {
+      const keepFirst = select.querySelector('option'); // preserve "All departments" / "-- Select --" placeholder
+      select.innerHTML = '';
+      if (keepFirst) select.appendChild(keepFirst);
+      DEPARTMENTS.forEach((dept) => {
+        const option = document.createElement('option');
+        option.value = dept;
+        option.textContent = dept;
+        select.appendChild(option);
+      });
+    });
   }
 
   function fmtDate(iso) {
@@ -573,7 +605,7 @@
       const select = document.getElementById('attendanceCourseSelect');
       select.value = courseCode;
       syncCourseSelectDisplay(select);
-      loadAttendance(courseCode, document.getElementById('attendanceDate').value);
+      onAttendanceCourseChange(courseCode);
     });
 
     // First time the schedule loads on this page view, and nothing's
@@ -585,7 +617,7 @@
     if (!attendanceSelect.value && todaysScheduledCourse()) {
       attendanceSelect.value = todaysScheduledCourse();
       syncCourseSelectDisplay(attendanceSelect);
-      loadAttendance(attendanceSelect.value, document.getElementById('attendanceDate').value);
+      onAttendanceCourseChange(attendanceSelect.value);
     }
   }
 
@@ -1147,8 +1179,10 @@
      admin.html's Resources tab — this just brings the same management
      UI to plain staff accounts, matching how Announcements and
      Timetable already work here without needing full admin access.
-     Unlike timetable (one row per course), resources are a plain list:
-     several textbooks/links can exist for the same course. */
+     Uploaded per department rather than per specific course (see
+     departmentFor()/DEPARTMENTS above) — several courses in the same
+     department share the same textbooks/links, so one upload covers
+     everyone in that department instead of needing one per course. */
   let currentResourceFilter = '';
   let currentAllResources = [];
   const resourceModal = document.getElementById('resourceModal');
@@ -1159,14 +1193,13 @@
     document.getElementById('resourceId').value = existing ? existing.id : '';
     document.getElementById('resourceModalTitle').textContent = existing ? 'Edit resource' : 'New resource';
     if (existing) {
-      document.getElementById('resourceCourse').value = existing.course_code;
+      document.getElementById('resourceCourse').value = existing.department;
       document.getElementById('resourceTitle').value = existing.title;
       document.getElementById('resourceAuthor').value = existing.author || '';
       document.getElementById('resourceFileUrl').value = existing.file_url || '';
     } else if (currentResourceFilter) {
       document.getElementById('resourceCourse').value = currentResourceFilter;
     }
-    syncCourseSelectDisplay(document.getElementById('resourceCourse'));
     document.getElementById('resourceUploadStatus').textContent = '';
     setStatus(document.getElementById('resourceFormStatus'), '', null);
     resourceModal.hidden = false;
@@ -1180,7 +1213,8 @@
     const submitBtn = document.getElementById('resourceSubmit');
 
     const id = document.getElementById('resourceId').value;
-    const courseCode = document.getElementById('resourceCourse').value;
+    const department = document.getElementById('resourceCourse').value;
+
     const title = document.getElementById('resourceTitle').value.trim();
     const author = document.getElementById('resourceAuthor').value.trim() || null;
     let fileUrl = document.getElementById('resourceFileUrl').value.trim() || null;
@@ -1189,8 +1223,8 @@
     const uploadStatus = document.getElementById('resourceUploadStatus');
     const chosenFile = uploadInput.files && uploadInput.files[0];
 
-    if (!courseCode) {
-      setStatus(status, 'Choose a course.', 'error');
+    if (!department) {
+      setStatus(status, 'Choose a department.', 'error');
       return;
     }
     if (!fileUrl && !chosenFile) {
@@ -1202,7 +1236,10 @@
 
     if (chosenFile) {
       uploadStatus.textContent = 'Uploading…';
-      const path = `${courseCode}/${Date.now()}-${chosenFile.name}`;
+      // Storage keys — unlike the department name shown in the UI,
+      // spaces/slashes cause path issues, so slugify it here only.
+      const deptSlug = department.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      const path = `${deptSlug}/${Date.now()}-${chosenFile.name}`;
       const { error: uploadError } = await supabaseClient.storage
         .from('resource-files')
         .upload(path, chosenFile, { upsert: false });
@@ -1220,7 +1257,7 @@
       uploadStatus.textContent = 'Uploaded.';
     }
 
-    const payload = { course_code: courseCode, title, author, file_url: fileUrl };
+    const payload = { department, title, author, file_url: fileUrl };
     if (!id) payload.created_by = currentUserId;
 
     const { error } = id
@@ -1239,17 +1276,17 @@
     loadOverview();
   });
 
-  async function loadResources(courseCode) {
-    currentResourceFilter = courseCode || '';
+  async function loadResources(department) {
+    currentResourceFilter = department || '';
     const list = document.getElementById('resourcesList');
     list.innerHTML = '';
 
     let query = supabaseClient
       .from('resources')
-      .select('id, course_code, title, author, file_url, created_at')
-      .order('course_code')
+      .select('id, department, title, author, file_url, created_at')
+      .order('department')
       .order('title');
-    if (courseCode) query = query.eq('course_code', courseCode);
+    if (department) query = query.eq('department', department);
 
     const { data, error } = await query;
 
@@ -1287,7 +1324,7 @@
       meta.className = 'record-meta';
       const courseBadge = document.createElement('span');
       courseBadge.className = 'badge badge-course';
-      courseBadge.textContent = courseNameFor(r.course_code);
+      courseBadge.textContent = r.department;
       meta.appendChild(courseBadge);
       if (r.author) {
         const authorSpan = document.createElement('span');
@@ -1391,6 +1428,14 @@
   let currentGradesStudents = [];
   let currentGradesByStudent = new Map(); // student_id -> array of grade rows (one per subject)
 
+  // While the search box has text in it, results come from here instead —
+  // matched by name/ID across every course, not just the one picked above.
+  // Null means "not searching"; an array (possibly empty) means a search
+  // has completed. Cleared back to null when the box is emptied.
+  let gradesSearchStudents = null;
+  let gradesSearchByStudent = new Map();
+  let gradesSearchDebounce = null;
+
   async function loadGrades(courseCode) {
     currentGradesCourse = courseCode;
     const tbody = document.getElementById('gradesTbody');
@@ -1402,7 +1447,7 @@
     const [studentsRes, gradesRes] = await Promise.all([
       supabaseClient
         .from('profiles')
-        .select('id, full_name, student_id')
+        .select('id, full_name, student_id, course_code')
         .eq('course_code', courseCode)
         .eq('role', 'student')
         .order('full_name'),
@@ -1429,29 +1474,83 @@
     renderGradesTable();
   }
 
+  // Cross-course search — a name or student ID could belong to a student
+  // on any course, so this ignores gradesCourseSelect entirely rather
+  // than filtering within whatever course happens to be picked. Grades
+  // for each match still come back scoped to that student's own course,
+  // via renderStudentGradeBlock/renderGradeSubjectRow's courseCode param.
+  async function runGradesSearch(query) {
+    const tbody = document.getElementById('gradesTbody');
+    tbody.innerHTML = '<tr><td colspan="8"><div class="skeleton skeleton-line"></div></td></tr>';
+
+    const escaped = query.replace(/[%,]/g, '');
+    const { data: students, error } = await supabaseClient
+      .from('profiles')
+      .select('id, full_name, student_id, course_code')
+      .eq('role', 'student')
+      .or(`full_name.ilike.%${escaped}%,student_id.ilike.%${escaped}%`)
+      .order('full_name');
+
+    // The box may have been cleared or retyped while this was in flight —
+    // only apply a result if it's still the query currently in the box.
+    if (document.getElementById('gradesSearch').value.trim() !== query) return;
+
+    if (error) {
+      console.error('Searching students failed:', error);
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Could not search students.</td></tr>';
+      return;
+    }
+
+    gradesSearchStudents = students || [];
+    gradesSearchByStudent = new Map();
+    if (gradesSearchStudents.length) {
+      const ids = gradesSearchStudents.map((s) => s.id);
+      const { data: grades, error: gradesError } = await supabaseClient
+        .from('grades')
+        .select('id, student_id, subject, attendance, class_work, home_work, examination, total_grade, gpa, letter_grade')
+        .in('student_id', ids)
+        .order('subject');
+      if (gradesError) console.error('Loading grades for search results failed:', gradesError);
+      (grades || []).forEach((g) => {
+        if (!gradesSearchByStudent.has(g.student_id)) gradesSearchByStudent.set(g.student_id, []);
+        gradesSearchByStudent.get(g.student_id).push(g);
+      });
+    }
+    renderGradesTable();
+  }
+
+  // Re-loads whichever view is currently on screen after a save/remove —
+  // the search results if the box has text, otherwise the picked course.
+  function reloadGradesView() {
+    const q = document.getElementById('gradesSearch').value.trim();
+    if (q) runGradesSearch(q);
+    else loadGrades(currentGradesCourse);
+  }
+
   function renderGradesTable() {
     const tbody = document.getElementById('gradesTbody');
     tbody.innerHTML = '';
 
-    if (!currentGradesStudents.length) {
-      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No students are on this course yet.</td></tr>';
+    const q = document.getElementById('gradesSearch').value.trim();
+    const searching = q.length > 0;
+    if (searching && gradesSearchStudents === null) return; // search in flight; skeleton is already showing
+
+    const students = searching ? gradesSearchStudents : currentGradesStudents;
+    const byStudent = searching ? gradesSearchByStudent : currentGradesByStudent;
+
+    if (!students.length) {
+      tbody.innerHTML = `<tr><td colspan="8" class="empty-state">${searching ? 'No matching students.' : 'No students are on this course yet.'}</td></tr>`;
       return;
     }
 
-    const q = document.getElementById('gradesSearch').value.trim().toLowerCase();
-    const rows = q
-      ? currentGradesStudents.filter((s) => (s.full_name || '').toLowerCase().includes(q) || (s.student_id || '').toLowerCase().includes(q))
-      : currentGradesStudents;
-
-    if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No matching students.</td></tr>';
-      return;
-    }
-
-    rows.forEach((s) => renderStudentGradeBlock(s, currentGradesByStudent.get(s.id) || []));
+    students.forEach((s) => renderStudentGradeBlock(s, byStudent.get(s.id) || [], {
+      showCourse: searching,
+      courseCode: s.course_code || currentGradesCourse,
+    }));
   }
 
-  function renderStudentGradeBlock(student, existingRows) {
+  function renderStudentGradeBlock(student, existingRows, options) {
+    const courseCode = (options && options.courseCode) || currentGradesCourse;
     const tbody = document.getElementById('gradesTbody');
 
     const headerRow = document.createElement('tr');
@@ -1471,6 +1570,16 @@
     idSpan.className = 'grades-student-idtext';
     idSpan.textContent = student.student_id ? `ID ${student.student_id}` : '';
     idBlock.append(nameSpan, idSpan);
+
+    // Only shown for cross-course search results — in the normal
+    // course-scoped view every row is already on the picked course, so
+    // this would just repeat the same tag on every row for no reason.
+    if (options && options.showCourse) {
+      const courseBadge = document.createElement('span');
+      courseBadge.className = 'badge badge-course';
+      courseBadge.textContent = courseNameFor(courseCode);
+      idBlock.appendChild(courseBadge);
+    }
 
     // GPA averaged from this student's saved subjects — shown once
     // here, not repeated on every subject row below.
@@ -1500,20 +1609,20 @@
     const anchor = { el: headerRow };
     const rowsToRender = existingRows.length ? existingRows : [null];
     rowsToRender.forEach((existing) => {
-      const tr = renderGradeSubjectRow(student, existing);
+      const tr = renderGradeSubjectRow(student, existing, courseCode);
       anchor.el.insertAdjacentElement('afterend', tr);
       anchor.el = tr;
     });
 
     addBtn.addEventListener('click', () => {
-      const tr = renderGradeSubjectRow(student, null);
+      const tr = renderGradeSubjectRow(student, null, courseCode);
       anchor.el.insertAdjacentElement('afterend', tr);
       anchor.el = tr;
       tr.querySelector('input[type="text"]').focus();
     });
   }
 
-  function renderGradeSubjectRow(student, existing) {
+  function renderGradeSubjectRow(student, existing, courseCode) {
     const tr = document.createElement('tr');
 
     const subjectTd = document.createElement('td');
@@ -1596,8 +1705,8 @@
       const letter = letterSelect.value;
       const payload = {
         student_id: student.id,
-        course_code: currentGradesCourse,
-        course_name: courseNameFor(currentGradesCourse),
+        course_code: courseCode,
+        course_name: courseNameFor(courseCode),
         subject,
         attendance: attendanceInput.value === '' ? 0 : Number(attendanceInput.value),
         class_work: classWorkInput.value === '' ? 0 : Number(classWorkInput.value),
@@ -1622,7 +1731,7 @@
         return;
       }
       toast(`Saved ${subject} for ${student.full_name || 'student'}.`, 'success');
-      loadGrades(currentGradesCourse);
+      reloadGradesView();
     });
 
     const removeBtn = document.createElement('button');
@@ -1636,7 +1745,7 @@
       const { error } = await supabaseClient.from('grades').delete().eq('id', existing.id);
       if (error) { toast('Could not remove this subject.', 'error'); return; }
       toast('Subject removed.', 'success');
-      loadGrades(currentGradesCourse);
+      reloadGradesView();
     });
 
     actionsTd.append(saveBtn, removeBtn);
@@ -1646,14 +1755,26 @@
   }
 
   document.getElementById('gradesCourseSelect').addEventListener('change', (e) => loadGrades(e.target.value));
-  document.getElementById('gradesRefresh').addEventListener('click', () => loadGrades(currentGradesCourse));
-  document.getElementById('gradesSearch').addEventListener('input', renderGradesTable);
+  document.getElementById('gradesRefresh').addEventListener('click', () => reloadGradesView());
+  document.getElementById('gradesSearch').addEventListener('input', () => {
+    const q = document.getElementById('gradesSearch').value.trim();
+    clearTimeout(gradesSearchDebounce);
+    if (!q) {
+      gradesSearchStudents = null;
+      gradesSearchByStudent = new Map();
+      renderGradesTable();
+      return;
+    }
+    gradesSearchDebounce = setTimeout(() => runGradesSearch(q), 300);
+  });
 
   /* ---------------- Attendance ----------------
      A real day-by-day present/absent/late tracker — separate from the
      Attendance *number* on the Input Grades tab (that one's a
      per-subject score staff type in themselves; this one is a daily
-     mark per student, one row per (student, course, date)). */
+     mark per student, one row per (student, course, subject, date) —
+     the same class can be marked separately for each subject taught
+     on it). */
 
   const ATTENDANCE_STATUSES = [
     { value: 'present', label: 'Present' },
@@ -1662,21 +1783,103 @@
   ];
 
   let currentAttendanceCourse = '';
+  let currentAttendanceSubject = '';
   let currentAttendanceDate = '';
   let currentAttendanceStudents = [];
   let currentAttendanceMarks = new Map(); // student_id -> status
+
+  const attendanceSubjectInput = document.getElementById('attendanceSubject');
+  wireSubjectFormatting(attendanceSubjectInput);
+
+  // Datalist of subjects already used for the selected course, so a
+  // subject only has to be typed out in full once — after that it's a
+  // "quick complete" pick from the list for every date going forward.
+  // Seeded from both this class's existing attendance rows and its
+  // Input Grades subjects (which are usually entered first), then
+  // topped up with whatever gets saved here in this session.
+  async function refreshAttendanceSubjectOptions(courseCode) {
+    const list = document.getElementById('attendanceSubjectList');
+    list.innerHTML = '';
+    if (!courseCode) return;
+
+    const [attendanceRes, gradesRes] = await Promise.all([
+      supabaseClient.from('attendance').select('subject').eq('course_code', courseCode),
+      supabaseClient.from('grades').select('subject').eq('course_code', courseCode),
+    ]);
+    if (attendanceRes.error) console.error('Loading attendance subjects failed:', attendanceRes.error);
+    if (gradesRes.error) console.error('Loading grade subjects failed:', gradesRes.error);
+
+    const subjects = new Set();
+    (attendanceRes.data || []).forEach((r) => { if (r.subject) subjects.add(r.subject); });
+    (gradesRes.data || []).forEach((r) => { if (r.subject) subjects.add(r.subject); });
+
+    [...subjects].sort((a, b) => a.localeCompare(b)).forEach((subject) => {
+      const option = document.createElement('option');
+      option.value = subject;
+      list.appendChild(option);
+    });
+  }
+
+  // Adds a freshly-saved subject to the datalist immediately, so it's
+  // available to "quick complete" right away rather than only after
+  // switching courses and back.
+  function addAttendanceSubjectOption(subject) {
+    const list = document.getElementById('attendanceSubjectList');
+    if ([...list.options].some((o) => o.value === subject)) return;
+    const option = document.createElement('option');
+    option.value = subject;
+    list.appendChild(option);
+  }
+
+  // Fires whenever the selected class changes — from the dropdown, a
+  // quick pick, or the "today's class" default. A new class means a
+  // different set of subjects, so the subject field is cleared rather
+  // than carrying over a subject that may not apply here.
+  function onAttendanceCourseChange(courseCode) {
+    attendanceSubjectInput.value = '';
+    refreshAttendanceSubjectOptions(courseCode);
+    loadAttendance(courseCode, document.getElementById('attendanceDate').value, '');
+    loadAttendanceOverview(courseCode);
+  }
 
   function todayIso() {
     const d = new Date();
     const pad = (n) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   }
+  // Parsed as a local date (not via `new Date(dateStr)`, which reads
+  // yyyy-mm-dd as UTC midnight and can print the wrong weekday for
+  // anyone west of UTC) so it always matches the day shown in the
+  // native date picker next to it.
+  function weekdayLabel(dateStr) {
+    if (!dateStr) return '';
+    const [y, m, d] = dateStr.split('-').map(Number);
+    if (!y || !m || !d) return '';
+    return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'long' });
+  }
+  // Same local-date parsing as weekdayLabel above, but spells the
+  // month and includes the year in full — "16 September 2026" — for
+  // the Attendance overview table, rather than the short "Sep 16,
+  // 2026" style fmtDate() uses elsewhere.
+  function fmtDateLong(dateStr) {
+    if (!dateStr) return '';
+    const [y, m, d] = dateStr.split('-').map(Number);
+    if (!y || !m || !d) return '';
+    return new Date(y, m - 1, d).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+  }
+  function updateAttendanceDateWeekday() {
+    document.getElementById('attendanceDateWeekday').textContent =
+      weekdayLabel(document.getElementById('attendanceDate').value);
+  }
   document.getElementById('attendanceDate').value = todayIso();
+  updateAttendanceDateWeekday();
 
-  async function loadAttendance(courseCode, dateStr) {
+  async function loadAttendance(courseCode, dateStr, subject) {
     currentAttendanceCourse = courseCode || '';
+    currentAttendanceSubject = subject != null ? subject : attendanceSubjectInput.value.trim();
     currentAttendanceDate = dateStr || todayIso();
     document.getElementById('attendanceDate').value = currentAttendanceDate;
+    updateAttendanceDateWeekday();
 
     const tbody = document.getElementById('attendanceTbody');
     const summary = document.getElementById('attendanceSummary');
@@ -1691,6 +1894,11 @@
     }
     tbody.innerHTML = '<tr><td colspan="3"><div class="skeleton skeleton-line"></div></td></tr>';
 
+    // The class list only depends on the course, so it loads as soon
+    // as one is picked — marking can start right away. Only the
+    // existing-marks lookup needs a subject too (a mark without one
+    // has nowhere to be saved), so that query is skipped until a
+    // subject is entered, rather than holding up the whole roster.
     const [studentsRes, attendanceRes] = await Promise.all([
       supabaseClient
         .from('profiles')
@@ -1698,11 +1906,14 @@
         .eq('course_code', currentAttendanceCourse)
         .eq('role', 'student')
         .order('full_name'),
-      supabaseClient
-        .from('attendance')
-        .select('student_id, status')
-        .eq('course_code', currentAttendanceCourse)
-        .eq('class_date', currentAttendanceDate),
+      currentAttendanceSubject
+        ? supabaseClient
+            .from('attendance')
+            .select('student_id, status')
+            .eq('course_code', currentAttendanceCourse)
+            .eq('subject', currentAttendanceSubject)
+            .eq('class_date', currentAttendanceDate)
+        : Promise.resolve({ data: [], error: null }),
     ]);
 
     if (studentsRes.error) {
@@ -1743,10 +1954,12 @@
     const left = document.createElement('div');
     const title = document.createElement('span');
     title.className = 'attendance-summary-title';
-    title.textContent = courseLabel || 'Attendance';
+    title.textContent = currentAttendanceSubject
+      ? `${currentAttendanceSubject} — ${courseLabel || 'Attendance'}`
+      : (courseLabel || 'Attendance');
     const markedNote = document.createElement('span');
     markedNote.className = 'attendance-summary-marked';
-    markedNote.textContent = `${marked} of ${total} marked`;
+    markedNote.textContent = `${marked} of ${total} marked · ${fmtDate(currentAttendanceDate)}`;
     left.append(title, markedNote);
 
     const counts = document.createElement('div');
@@ -1814,13 +2027,19 @@
   }
 
   document.getElementById('attendanceCourseSelect').addEventListener('change', (e) =>
-    loadAttendance(e.target.value, document.getElementById('attendanceDate').value)
+    onAttendanceCourseChange(e.target.value)
   );
+  // 'change' (not 'input') so this fires once the subject is settled —
+  // picked from the datalist, or typed and left — rather than on every
+  // keystroke while formatting is still happening.
+  attendanceSubjectInput.addEventListener('change', () => {
+    loadAttendance(currentAttendanceCourse, document.getElementById('attendanceDate').value, attendanceSubjectInput.value.trim());
+  });
   document.getElementById('attendanceDate').addEventListener('change', (e) =>
-    loadAttendance(currentAttendanceCourse, e.target.value)
+    loadAttendance(currentAttendanceCourse, e.target.value, currentAttendanceSubject)
   );
   document.getElementById('attendanceRefresh').addEventListener('click', () =>
-    loadAttendance(document.getElementById('attendanceCourseSelect').value, document.getElementById('attendanceDate').value)
+    loadAttendance(document.getElementById('attendanceCourseSelect').value, document.getElementById('attendanceDate').value, attendanceSubjectInput.value.trim())
   );
 
   document.getElementById('attendanceSaveAll').addEventListener('click', async () => {
@@ -1828,11 +2047,13 @@
     const btn = document.getElementById('attendanceSaveAll');
 
     if (!currentAttendanceCourse) { setStatus(status, 'Select a course first.', 'error'); return; }
+    if (!currentAttendanceSubject) { setStatus(status, 'Enter a subject first.', 'error'); return; }
     if (!currentAttendanceMarks.size) { setStatus(status, 'Mark at least one student before saving.', 'error'); return; }
 
     const rows = [...currentAttendanceMarks.entries()].map(([studentId, markStatus]) => ({
       student_id: studentId,
       course_code: currentAttendanceCourse,
+      subject: currentAttendanceSubject,
       class_date: currentAttendanceDate,
       status: markStatus,
       marked_by: currentUserId,
@@ -1843,63 +2064,161 @@
 
     const { error } = await supabaseClient
       .from('attendance')
-      .upsert(rows, { onConflict: 'student_id,course_code,class_date' });
+      .upsert(rows, { onConflict: 'student_id,course_code,subject,class_date' });
 
     btn.disabled = false;
 
     if (error) {
       console.error('Saving attendance failed:', error);
-      setStatus(status, 'Could not save attendance. Please try again.', 'error');
+      // 23505 (unique_violation) here almost always means the table's
+      // constraint doesn't match this upsert's onConflict target (e.g.
+      // an old, pre-subject constraint is still sitting alongside the
+      // new one) — that's a schema issue, not something re-clicking
+      // Save fixes, so say so rather than the generic message.
+      const message = error.code === '23505'
+        ? "Could not save — the attendance table's constraints need updating (contact your admin)."
+        : 'Could not save attendance. Please try again.';
+      setStatus(status, message, 'error');
       return;
     }
 
-    setStatus(status, 'Attendance saved.', 'success');
-    toast(`Attendance saved for ${fmtDate(currentAttendanceDate)}.`, 'success');
+    const savedFor = `${currentAttendanceSubject} — ${fmtDate(currentAttendanceDate)}`;
+    setStatus(status, `Attendance saved for ${savedFor}.`, 'success');
+    toast(`Attendance saved for ${savedFor}.`, 'success');
+    addAttendanceSubjectOption(currentAttendanceSubject);
+    loadAttendanceOverview(currentAttendanceCourse);
   });
 
-  /* ---------------- Maintenance banner (admin only) ---------------- */
+  /* ---------------- Attendance overview ----------------
+     A per-class rollup — every date recorded for the selected course,
+     broken down by subject per student (so "Computer Programming" and
+     "Data Structures" show as separate lines for the same student)
+     rather than the single subject/date view above. Refreshes
+     whenever the class changes or attendance is saved. */
 
-  async function loadMaintenanceCard() {
-    const card = document.getElementById('maintenanceCard');
-    if (!currentUserIsAdmin) { card.hidden = true; return; }
-    card.hidden = false;
-
-    const { data, error } = await supabaseClient
-      .from('system_status')
-      .select('maintenance_mode, maintenance_message')
-      .eq('id', 1)
-      .maybeSingle();
-
-    if (!error && data) {
-      document.getElementById('maintenanceToggle').checked = !!data.maintenance_mode;
-      document.getElementById('maintenanceMessage').value = data.maintenance_message || '';
+  async function loadAttendanceOverview(courseCode) {
+    const tbody = document.getElementById('attendanceOverviewTbody');
+    if (!courseCode) {
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Select a course to see its attendance overview.</td></tr>';
+      return;
     }
+    tbody.innerHTML = '<tr><td colspan="8"><div class="skeleton skeleton-line"></div></td></tr>';
+
+    const [studentsRes, attendanceRes] = await Promise.all([
+      supabaseClient
+        .from('profiles')
+        .select('id, full_name, student_id')
+        .eq('course_code', courseCode)
+        .eq('role', 'student')
+        .order('full_name'),
+      supabaseClient
+        .from('attendance')
+        .select('student_id, subject, status, class_date')
+        .eq('course_code', courseCode),
+    ]);
+
+    if (studentsRes.error) {
+      console.error('Loading students for attendance overview failed:', studentsRes.error);
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Could not load students.</td></tr>';
+      return;
+    }
+    if (attendanceRes.error) console.error('Loading attendance overview failed:', attendanceRes.error);
+
+    const students = studentsRes.data || [];
+    // Keyed by "student_id||subject" rather than just student_id, so
+    // each subject gets its own line instead of being folded into one
+    // combined total per student. Rows with no subject (saved before
+    // the subject column existed) land under "No subject".
+    const bySubject = new Map(); // key -> { studentId, subject, present, absent, late, lastDate }
+    (attendanceRes.data || []).forEach((row) => {
+      const subject = row.subject || 'No subject';
+      const key = `${row.student_id}||${subject}`;
+      if (!bySubject.has(key)) bySubject.set(key, { studentId: row.student_id, subject, present: 0, absent: 0, late: 0, lastDate: null });
+      const counts = bySubject.get(key);
+      if (counts[row.status] != null) counts[row.status] += 1;
+      // class_date sorts fine as a plain "yyyy-mm-dd" string, so the
+      // latest date for this subject can just be tracked with a string
+      // comparison rather than parsing dates on every row.
+      if (row.class_date && (!counts.lastDate || row.class_date > counts.lastDate)) counts.lastDate = row.class_date;
+    });
+
+    renderAttendanceOverviewTable(students, bySubject);
   }
 
-  document.getElementById('maintenanceSaveBtn').addEventListener('click', async () => {
-    const status = document.getElementById('maintenanceStatus');
-    const btn = document.getElementById('maintenanceSaveBtn');
-    const active = document.getElementById('maintenanceToggle').checked;
-    const message = document.getElementById('maintenanceMessage').value.trim() || null;
+  function renderAttendanceOverviewTable(students, bySubject) {
+    const tbody = document.getElementById('attendanceOverviewTbody');
+    tbody.innerHTML = '';
 
-    btn.disabled = true;
-    setStatus(status, '', null);
-
-    const { error } = await supabaseClient
-      .from('system_status')
-      .update({ maintenance_mode: active, maintenance_message: message })
-      .eq('id', 1);
-
-    btn.disabled = false;
-
-    if (error) {
-      setStatus(status, 'Could not update the maintenance banner.', 'error');
+    if (!students.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No students are on this course yet.</td></tr>';
       return;
     }
 
-    setStatus(status, active ? 'Maintenance banner is now live.' : 'Maintenance banner turned off.', 'success');
-    toast(active ? 'Maintenance banner turned on.' : 'Maintenance banner turned off.', 'success');
-  });
+    // Group this class's subject rows by student, in the same order as
+    // the (name-sorted) student list, so a student's subjects stay
+    // together rather than being interleaved with other students'.
+    const rowsByStudent = new Map(students.map((s) => [s.id, []]));
+    [...bySubject.values()]
+      .sort((a, b) => a.subject.localeCompare(b.subject))
+      .forEach((row) => {
+        if (rowsByStudent.has(row.studentId)) rowsByStudent.get(row.studentId).push(row);
+      });
+
+    let rendered = false;
+    students.forEach((student) => {
+      const subjectRows = rowsByStudent.get(student.id) || [];
+      if (!subjectRows.length) {
+        appendAttendanceOverviewRow(tbody, student, { subject: 'No attendance yet', present: 0, absent: 0, late: 0, lastDate: null }, true);
+        rendered = true;
+        return;
+      }
+      subjectRows.forEach((row, i) => {
+        appendAttendanceOverviewRow(tbody, student, row, false, i === 0 ? subjectRows.length : 0);
+        rendered = true;
+      });
+    });
+
+    if (!rendered) tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No attendance recorded for this class yet.</td></tr>';
+  }
+
+  // rowSpanCount, when set on a student's first subject row, spans the
+  // Name/Student ID cells down over all of that student's subject rows
+  // so the name isn't repeated on every line.
+  function appendAttendanceOverviewRow(tbody, student, row, isEmptyRow, rowSpanCount) {
+    const total = row.present + row.absent + row.late;
+    const pct = total ? Math.round((row.present / total) * 1000) / 10 : null;
+
+    const tr = document.createElement('tr');
+
+    if (rowSpanCount) {
+      const nameTd = document.createElement('td');
+      nameTd.textContent = student.full_name || '—';
+      nameTd.rowSpan = rowSpanCount;
+      const idTd = document.createElement('td');
+      idTd.textContent = student.student_id || '—';
+      idTd.rowSpan = rowSpanCount;
+      tr.append(nameTd, idTd);
+    }
+
+    [
+      row.subject,
+      isEmptyRow ? '—' : String(row.present),
+      isEmptyRow ? '—' : String(row.absent),
+      isEmptyRow ? '—' : String(row.late),
+      isEmptyRow || pct == null ? '—' : `${pct}%`,
+      isEmptyRow || !row.lastDate ? '—' : fmtDateLong(row.lastDate),
+    ].forEach((text) => {
+      const td = document.createElement('td');
+      td.textContent = text;
+      tr.appendChild(td);
+    });
+
+    tbody.appendChild(tr);
+  }
+
+  document.getElementById('attendanceOverviewRefresh').addEventListener('click', () =>
+    loadAttendanceOverview(document.getElementById('attendanceCourseSelect').value)
+  );
 
   /* ---------------- Support ---------------- */
 
@@ -2322,6 +2641,271 @@
 
   document.getElementById('activityLogRefresh').addEventListener('click', loadActivityLog);
 
+  /* ---------------- Feedback ---------------- */
+
+  // "Give feedback on a student" course picker — Staff left out, same
+  // as every other course picker on this page (COURSES.filter above).
+  populateCourseSelect(
+    document.getElementById('studentFeedbackCourse'),
+    COURSES.filter((g) => g.label !== 'Staff'),
+    '-- Select a course --',
+    true
+  );
+  enhanceCourseSelect(document.getElementById('studentFeedbackCourse'));
+
+  async function loadStudentFeedbackStudents(courseCode) {
+    const select = document.getElementById('studentFeedbackStudent');
+    select.innerHTML = '';
+    if (!courseCode) {
+      select.innerHTML = '<option value="">-- Select a course first --</option>';
+      return;
+    }
+    select.innerHTML = '<option value="">Loading…</option>';
+    const { data, error } = await supabaseClient
+      .from('profiles')
+      .select('id, full_name, student_id')
+      .eq('course_code', courseCode)
+      .eq('role', 'student')
+      .order('full_name');
+
+    if (error) {
+      console.error('Loading students for feedback failed:', error);
+      select.innerHTML = '<option value="">Could not load students</option>';
+      return;
+    }
+
+    const rows = data || [];
+    select.innerHTML = rows.length
+      ? '<option value="">-- Select a student --</option>'
+      : '<option value="">No students on this course</option>';
+    rows.forEach((s) => {
+      const option = document.createElement('option');
+      option.value = s.id;
+      option.textContent = s.full_name + (s.student_id ? ' (' + s.student_id + ')' : '');
+      select.appendChild(option);
+    });
+  }
+  document.getElementById('studentFeedbackCourse').addEventListener('change', (e) => loadStudentFeedbackStudents(e.target.value));
+
+  // Whether an admin has locked "Give feedback on a student" — checked
+  // on load and re-checked right before submit, since the lock can be
+  // flipped by an admin in a different tab at any time. The real gate
+  // is the RLS policy on student_feedback (see feedback-schema.sql);
+  // this is only so the lecturer isn't surprised by a rejected insert.
+  let studentFeedbackLocked = false;
+
+  async function refreshFeedbackLockState() {
+    const { data, error } = await supabaseClient
+      .from('feedback_settings')
+      .select('lecturer_feedback_locked')
+      .eq('id', 1)
+      .maybeSingle();
+    if (error) { console.error('Loading feedback lock state failed:', error); return; }
+    studentFeedbackLocked = !!(data && data.lecturer_feedback_locked);
+
+    const notice = document.getElementById('studentFeedbackLockNotice');
+    const submitBtn = document.getElementById('studentFeedbackSubmit');
+    if (studentFeedbackLocked) {
+      setStatus(notice, 'This form is currently locked by an administrator. You can\u2019t submit student feedback right now.', 'error');
+      submitBtn.disabled = true;
+    } else {
+      setStatus(notice, '', null);
+      notice.hidden = true;
+      submitBtn.disabled = false;
+    }
+  }
+
+  document.getElementById('studentFeedbackForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const status = document.getElementById('studentFeedbackStatus');
+    const submitBtn = document.getElementById('studentFeedbackSubmit');
+
+    await refreshFeedbackLockState();
+    if (studentFeedbackLocked) {
+      setStatus(status, 'This form is currently locked by an administrator.', 'error');
+      return;
+    }
+
+    const courseCode = document.getElementById('studentFeedbackCourse').value;
+    const studentId = document.getElementById('studentFeedbackStudent').value;
+    const rating = document.getElementById('studentFeedbackRating').value;
+    const comments = document.getElementById('studentFeedbackComments').value.trim();
+
+    if (!courseCode) { setStatus(status, 'Please select a course.', 'error'); return; }
+    if (!studentId) { setStatus(status, 'Please select a student.', 'error'); return; }
+    if (!rating) { setStatus(status, 'Please select a rating.', 'error'); return; }
+    if (!comments) { setStatus(status, 'Please add a comment.', 'error'); return; }
+
+    submitBtn.disabled = true;
+    setStatus(status, '', null);
+
+    const { error } = await supabaseClient.from('student_feedback').insert({
+      lecturer_id: currentUserId,
+      student_id: studentId,
+      course_code: courseCode,
+      rating: Number(rating),
+      comments,
+    });
+
+    submitBtn.disabled = false;
+
+    if (error) {
+      console.error('Submitting student feedback failed:', error);
+      setStatus(status, studentFeedbackLocked ? 'This form is currently locked by an administrator.' : 'Could not submit feedback. Please try again.', 'error');
+      return;
+    }
+
+    setStatus(status, 'Feedback submitted.', 'success');
+    toast('Student feedback submitted.', 'success');
+    document.getElementById('studentFeedbackForm').reset();
+    loadStudentFeedbackStudents('');
+  });
+
+  function renderFeedbackItem(list, { headline, meta, rating, comments, empty }) {
+    if (empty) { list.innerHTML = emptyState(empty); return; }
+    const item = document.createElement('li');
+    item.className = 'record';
+
+    const head = document.createElement('div');
+    head.className = 'record-head';
+    const headMain = document.createElement('div');
+    headMain.className = 'record-head-main';
+    const headText = document.createElement('div');
+    headText.className = 'record-head-text';
+    const title = document.createElement('div');
+    title.className = 'record-title';
+    title.textContent = headline;
+    const metaRow = document.createElement('div');
+    metaRow.className = 'record-meta';
+    const metaSpan = document.createElement('span');
+    metaSpan.textContent = meta;
+    const ratingBadge = document.createElement('span');
+    ratingBadge.className = 'badge ' + (rating >= 4 ? 'badge-verified' : rating <= 2 ? 'badge-unverified' : 'badge-course');
+    ratingBadge.textContent = rating + '/5';
+    metaRow.append(metaSpan, ratingBadge);
+    headText.append(title, metaRow);
+    headMain.append(recordIcon('bell'), headText);
+    head.appendChild(headMain);
+
+    const body = document.createElement('div');
+    body.className = 'record-body';
+    body.textContent = comments || '(no comments left)';
+
+    item.append(head, body);
+    list.appendChild(item);
+  }
+
+  async function loadMyCourseFeedback() {
+    const list = document.getElementById('myCourseFeedbackList');
+    const { data, error } = await supabaseClient
+      .from('course_feedback')
+      .select('id, course_code, rating, comments, created_at')
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    list.innerHTML = '';
+    if (error) { console.error('Loading your feedback failed:', error); list.innerHTML = emptyState('Feedback is not available right now.'); return; }
+    const rows = data || [];
+    if (!rows.length) { list.innerHTML = emptyState('No feedback yet.'); return; }
+    rows.forEach((r) => renderFeedbackItem(list, {
+      headline: courseNameFor(r.course_code),
+      meta: fmtDate(r.created_at),
+      rating: r.rating,
+      comments: r.comments,
+    }));
+  }
+
+  /* Admin-only: all reports + the lock toggle. */
+
+  async function loadAllCourseFeedback() {
+    const list = document.getElementById('allCourseFeedbackList');
+    const { data, error } = await supabaseClient
+      .from('course_feedback')
+      .select('id, course_code, lecturer_id, rating, comments, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    list.innerHTML = '';
+    if (error) { console.error('Loading all course feedback failed:', error); list.innerHTML = emptyState('Could not load feedback.'); return; }
+    const rows = data || [];
+    if (!rows.length) { list.innerHTML = emptyState('No feedback yet.'); return; }
+
+    const ids = [...new Set(rows.map((r) => r.lecturer_id))];
+    const [{ data: people }, labels] = await Promise.all([
+      supabaseClient.from('profiles').select('id, full_name').in('id', ids),
+      fetchPosterLabels(ids),
+    ]);
+    const nameById = new Map((people || []).map((p) => [p.id, p.full_name]));
+
+    rows.forEach((r) => renderFeedbackItem(list, {
+      headline: (nameById.get(r.lecturer_id) || 'Unknown lecturer') + ' — ' + courseNameFor(r.course_code),
+      meta: fmtDate(r.created_at) + (labels.get(r.lecturer_id) ? ' • ' + labels.get(r.lecturer_id) : ''),
+      rating: r.rating,
+      comments: r.comments,
+    }));
+  }
+
+  async function loadAllStudentFeedback() {
+    const list = document.getElementById('allStudentFeedbackList');
+    const { data, error } = await supabaseClient
+      .from('student_feedback')
+      .select('id, lecturer_id, student_id, course_code, rating, comments, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    list.innerHTML = '';
+    if (error) { console.error('Loading all student feedback failed:', error); list.innerHTML = emptyState('Could not load feedback.'); return; }
+    const rows = data || [];
+    if (!rows.length) { list.innerHTML = emptyState('No feedback yet.'); return; }
+
+    const ids = [...new Set(rows.flatMap((r) => [r.lecturer_id, r.student_id]))];
+    const { data: people } = await supabaseClient.from('profiles').select('id, full_name').in('id', ids);
+    const nameById = new Map((people || []).map((p) => [p.id, p.full_name]));
+
+    rows.forEach((r) => renderFeedbackItem(list, {
+      headline: (nameById.get(r.student_id) || 'Unknown student') + ' — ' + courseNameFor(r.course_code),
+      meta: fmtDate(r.created_at) + ' • by ' + (nameById.get(r.lecturer_id) || 'Unknown lecturer'),
+      rating: r.rating,
+      comments: r.comments,
+    }));
+  }
+
+  async function loadFeedbackLockCard() {
+    await refreshFeedbackLockState();
+    document.getElementById('studentFeedbackLockState').textContent =
+      studentFeedbackLocked ? 'Currently LOCKED' : 'Currently OPEN';
+    document.getElementById('studentFeedbackLockToggleBtn').textContent =
+      studentFeedbackLocked ? 'Unlock form' : 'Lock form';
+  }
+
+  document.getElementById('studentFeedbackLockToggleBtn').addEventListener('click', async () => {
+    const status = document.getElementById('studentFeedbackLockStatus');
+    const btn = document.getElementById('studentFeedbackLockToggleBtn');
+    const nextValue = !studentFeedbackLocked;
+
+    btn.disabled = true;
+    setStatus(status, '', null);
+
+    const { error } = await supabaseClient
+      .from('feedback_settings')
+      .update({ lecturer_feedback_locked: nextValue, updated_by: currentUserId, updated_at: new Date().toISOString() })
+      .eq('id', 1);
+
+    btn.disabled = false;
+
+    if (error) {
+      console.error('Updating feedback lock failed:', error);
+      setStatus(status, 'Could not update. Please try again.', 'error');
+      return;
+    }
+
+    studentFeedbackLocked = nextValue;
+    document.getElementById('studentFeedbackLockState').textContent = nextValue ? 'Currently LOCKED' : 'Currently OPEN';
+    btn.textContent = nextValue ? 'Unlock form' : 'Lock form';
+    setStatus(status, nextValue ? 'Form locked.' : 'Form unlocked.', 'success');
+    toast(nextValue ? 'Student feedback form locked.' : 'Student feedback form unlocked.', 'success');
+  });
+
   /* ---------------- Boot ---------------- */
 
   async function init() {
@@ -2349,6 +2933,7 @@
     heroAccessTag.classList.toggle('tag-pending', !hasElevatedAccess);
 
     document.getElementById('adminTicketsSection').hidden = !currentUserIsAdmin;
+    document.getElementById('adminFeedbackSection').hidden = !currentUserIsAdmin;
     // Root/super admin only — being a plain "admin" is no longer
     // enough to see this link. (admin.js enforces the same rule on
     // admin.html itself, in case someone bookmarks or types the URL
@@ -2373,7 +2958,21 @@
     }
 
     populateCourseSelects();
+    populateDepartmentSelects();
     populateStudentCourseFilter();
+
+    // Land on a real course instead of the blank "-- Select a course --"
+    // placeholder, so grades show up immediately rather than making the
+    // lecturer pick one first. Just the first course alphabetically by
+    // department (same order COURSES lists them in) — there's no
+    // "assigned courses" concept for staff to default to instead.
+    const gradesCourseSelect = document.getElementById('gradesCourseSelect');
+    const firstGradesCourseOption = gradesCourseSelect.querySelector('option[value]:not([value=""])');
+    if (firstGradesCourseOption && !gradesCourseSelect.value) {
+      gradesCourseSelect.value = firstGradesCourseOption.value;
+      syncCourseSelectDisplay(gradesCourseSelect);
+    }
+
     document.getElementById('timetableCourseSelect').addEventListener('change', (e) => loadTimetable(e.target.value));
     document.getElementById('resourceCourseFilter').addEventListener('change', (e) => loadResources(e.target.value));
     document.getElementById('resourceSearch').addEventListener('input', renderResourcesList);
@@ -2391,15 +2990,21 @@
       loadAnnouncements(),
       loadResources(document.getElementById('resourceCourseFilter').value),
       loadMySchedule(),
+      loadAttendance(document.getElementById('attendanceCourseSelect').value, document.getElementById('attendanceDate').value, ''),
+      loadAttendanceOverview(document.getElementById('attendanceCourseSelect').value),
+      refreshFeedbackLockState(),
+      loadMyCourseFeedback(),
     ];
     // Everything else here backs an admin-only tab — skip fetching it
     // for lecturers rather than firing requests RLS will just reject.
     if (currentUserIsAdmin) {
       loaders.push(
         loadOverview(),
-        loadMaintenanceCard(),
         loadAllTickets(),
         loadActivityLog(),
+        loadFeedbackLockCard(),
+        loadAllCourseFeedback(),
+        loadAllStudentFeedback(),
       );
     }
     await Promise.all(loaders);
