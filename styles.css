@@ -351,6 +351,34 @@ ul.record-list { list-style: none; margin: 0; padding: 0; }
 .ticket-compact summary .record-title { margin: 0; }
 .ticket-compact-body { margin-top: 12px; }
 
+/* Archived-attendance week groups — same collapsible <details> idea
+   as .ticket-compact above, but each group is its own full .card
+   rather than a line in a list. */
+.archive-week-group summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.archive-week-group summary::-webkit-details-marker { display: none; }
+.archive-week-group summary .archive-week-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.archive-week-group summary .archive-week-label::before {
+  content: "▸";
+  display: inline-block;
+  font-size: 0.7rem;
+  color: var(--slate);
+  transition: transform 0.15s var(--ease);
+}
+.archive-week-group[open] summary .archive-week-label::before { transform: rotate(90deg); }
+.archive-week-group-body { margin-top: 16px; }
+
 /* =========================
    Forms
    ========================= */

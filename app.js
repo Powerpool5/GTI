@@ -552,9 +552,13 @@ function populateCourseSelect(select, groups, placeholderText, placeholderDisabl
   });
 }
 
-function enhanceCourseSelect(select) {
+function enhanceCourseSelect(select, options) {
   if (!select || select.dataset.enhanced) return;
   select.dataset.enhanced = "1";
+  // Scoped per-select, not a global setting — only passed by whichever
+  // select actually asked for it (currently just the Timetable tab's
+  // course search in lecturer-home.js).
+  const disableTypingOnMobile = !!(options && options.disableTypingOnMobile);
 
   const wrapper = document.createElement("div");
   wrapper.className = "course-combo";
@@ -573,6 +577,22 @@ function enhanceCourseSelect(select) {
   input.setAttribute("aria-expanded", "false");
   input.placeholder = "Search for a course…";
   wrapper.appendChild(input);
+
+  // On mobile, typing to search competes with the on-screen keyboard
+  // eating half the viewport right as the panel needs room to show
+  // results — readOnly keeps the input tappable (focus still opens the
+  // panel below) without inviting a keyboard, so browsing the plain
+  // department list is the only path there. Re-evaluated on resize /
+  // orientation change, not just once at setup.
+  if (disableTypingOnMobile) {
+    const mobileQuery = window.matchMedia("(max-width: 760px)");
+    const applyMobileMode = () => {
+      input.readOnly = mobileQuery.matches;
+      input.placeholder = mobileQuery.matches ? "Tap to choose a course" : "Search for a course…";
+    };
+    applyMobileMode();
+    mobileQuery.addEventListener("change", applyMobileMode);
+  }
 
   const panel = document.createElement("div");
   panel.className = "course-combo-panel";

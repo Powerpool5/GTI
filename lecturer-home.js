@@ -80,11 +80,19 @@
       enhanceCourseSelect(select);
     });
 
-    // timetableCourseSelect isn't a .course-select-target — it's a
-    // standalone "which course am I looking at" picker with no placeholder,
-    // and Staff isn't a real course with a schedule so it's excluded.
+    // Now that the tab defaults to showing every course (with an
+    // explicit "Show all" reset), this needs a real blank placeholder
+    // so clearing the filter can land on an empty, disabled option —
+    // it used to have none, back when picking a course was mandatory.
+    // Staff still isn't a real course with a schedule, so it's excluded.
     const timetableSelect = document.getElementById('timetableCourseSelect');
     timetableSelect.innerHTML = '';
+    const timetablePlaceholder = document.createElement('option');
+    timetablePlaceholder.value = '';
+    timetablePlaceholder.disabled = true;
+    timetablePlaceholder.selected = true;
+    timetablePlaceholder.textContent = '-- Search for a course --';
+    timetableSelect.appendChild(timetablePlaceholder);
     COURSES.filter((g) => g.label !== 'Staff').forEach((group) => {
       const optgroup = document.createElement('optgroup');
       optgroup.label = group.label;
@@ -96,7 +104,26 @@
       });
       timetableSelect.appendChild(optgroup);
     });
-    enhanceCourseSelect(timetableSelect);
+    enhanceCourseSelect(timetableSelect, { disableTypingOnMobile: true });
+
+    // Same standalone treatment as timetableCourseSelect above — a
+    // plain filter (with an "All courses" option), not part of the
+    // searchable course-select-target widget.
+    const resetCourseSelect = document.getElementById('attendanceResetCourse');
+    const keepFirst = resetCourseSelect.querySelector('option'); // "All courses"
+    resetCourseSelect.innerHTML = '';
+    if (keepFirst) resetCourseSelect.appendChild(keepFirst);
+    COURSES.filter((g) => g.label !== 'Staff').forEach((group) => {
+      const optgroup = document.createElement('optgroup');
+      optgroup.label = group.label;
+      group.options.forEach((opt) => {
+        const option = document.createElement('option');
+        option.value = opt.value;
+        option.textContent = opt.label;
+        optgroup.appendChild(option);
+      });
+      resetCourseSelect.appendChild(optgroup);
+    });
   }
 
   function courseNameFor(code) {
@@ -599,7 +626,7 @@
       const select = document.getElementById('timetableCourseSelect');
       select.value = courseCode;
       syncCourseSelectDisplay(select);
-      loadTimetable(courseCode);
+      renderTimetableRows(courseCode);
     });
     renderScheduleQuickPicks('attendanceQuickPicks', null, (courseCode) => {
       const select = document.getElementById('attendanceCourseSelect');
@@ -1012,10 +1039,13 @@
 
   /* ---------------- Timetable ---------------- */
   let currentTimetableCourse = null;
+  let allTimetableEntries = []; // last fetch, merged with every course in COURSES so gaps show up
+  let currentTimetableFilter = null;
   const timetableModal = document.getElementById('timetableModal');
   const timetableForm = document.getElementById('timetableForm');
 
-  function openTimetableModal(existing) {
+  function openTimetableModal(existing, courseCodeForNew) {
+    currentTimetableCourse = existing ? existing.course_code : courseCodeForNew;
     timetableForm.reset();
     document.getElementById('timetableEntryId').value = existing ? existing.id : '';
     document.getElementById('timetableModalTitle').textContent = existing ? 'Edit entry' : 'New timetable entry';
@@ -1028,7 +1058,6 @@
     setStatus(document.getElementById('timetableFormStatus'), '', null);
     timetableModal.hidden = false;
   }
-  document.getElementById('newTimetableEntryBtn').addEventListener('click', () => openTimetableModal(null));
   document.getElementById('timetableModalClose').addEventListener('click', () => timetableModal.hidden = true);
 
   timetableForm.addEventListener('submit', async (event) => {
@@ -1089,31 +1118,74 @@
     uploadStatus.textContent = '';
     timetableModal.hidden = true;
     toast('Timetable saved.', 'success');
-    loadTimetable(currentTimetableCourse);
+    loadAllTimetables();
     loadOverview();
     markUploadedTimetableCourses();
   });
 
-  async function loadTimetable(courseCode) {
-    currentTimetableCourse = courseCode;
+  async function loadAllTimetables() {
     const tbody = document.getElementById('timetableTableBody');
     tbody.innerHTML = '<tr><td colspan="4"><div class="skeleton skeleton-line"></div></td></tr>';
 
     const { data, error } = await supabaseClient
       .from('timetable')
-      .select('id, course_code, file_name, file_url, updated_at')
-      .eq('course_code', courseCode)
-      .maybeSingle();
+      .select('id, course_code, file_name, file_url, updated_at');
+
+    if (error) {
+      console.error('Loading timetable failed:', error);
+      tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Could not load timetable.</td></tr>';
+      return;
+    }
+
+    const byCourse = new Map((data || []).map((row) => [row.course_code, row]));
+    // Every real course (Staff excluded — it has no class schedule),
+    // whether or not it has a timetable yet, so a missing one shows up
+    // as its own row instead of just being absent from the list.
+    allTimetableEntries = COURSES.filter((g) => g.label !== 'Staff').flatMap((group) =>
+      group.options.map((opt) => byCourse.get(opt.value) || { id: null, course_code: opt.value, file_name: null, file_url: null, updated_at: null })
+    );
+
+    renderTimetableRows(currentTimetableFilter);
+  }
+
+  function renderTimetableRows(filterCode) {
+    currentTimetableFilter = filterCode || null;
+    const tbody = document.getElementById('timetableTableBody');
+    const hint = document.getElementById('timetableFilterHint');
+    const showAllBtn = document.getElementById('timetableShowAllBtn');
+    showAllBtn.hidden = !currentTimetableFilter;
+
+    const rows = currentTimetableFilter
+      ? allTimetableEntries.filter((e) => e.course_code === currentTimetableFilter)
+      : allTimetableEntries;
+
+    if (currentTimetableFilter) {
+      hint.textContent = `Showing ${courseLabel(currentTimetableFilter)} (${currentTimetableFilter}).`;
+    } else {
+      const missingCount = allTimetableEntries.filter((e) => !e.file_url).length;
+      hint.textContent = `Showing every course (${allTimetableEntries.length}) — ${missingCount} missing a timetable.`;
+    }
 
     tbody.innerHTML = '';
-    if (error) { console.error('Loading timetable failed:', error); tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Could not load timetable.</td></tr>'; return; }
-    if (!data) { tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No timetable uploaded for this course yet.</td></tr>'; return; }
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No matching course.</td></tr>';
+      return;
+    }
+    rows.forEach((entry) => tbody.appendChild(renderTimetableRow(entry)));
+  }
 
-    const entry = data;
+  document.getElementById('timetableShowAllBtn').addEventListener('click', () => {
+    const select = document.getElementById('timetableCourseSelect');
+    select.value = '';
+    syncCourseSelectDisplay(select);
+    renderTimetableRows(null);
+  });
+
+  function renderTimetableRow(entry) {
     const tr = document.createElement('tr');
 
     const courseTd = document.createElement('td');
-    courseTd.textContent = entry.course_code;
+    courseTd.textContent = `${courseLabel(entry.course_code)} (${entry.course_code})`;
     tr.appendChild(courseTd);
 
     const fileTd = document.createElement('td');
@@ -1126,38 +1198,47 @@
       link.textContent = entry.file_name || 'View timetable';
       fileTd.appendChild(link);
     } else {
-      fileTd.textContent = '—';
+      const badge = document.createElement('span');
+      badge.className = 'badge badge-inactive';
+      badge.textContent = 'Missing';
+      fileTd.appendChild(badge);
     }
     tr.appendChild(fileTd);
 
     const updatedTd = document.createElement('td');
-    updatedTd.textContent = entry.updated_at
-      ? new Date(entry.updated_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
-      : '—';
+    updatedTd.textContent = entry.updated_at ? fmtDate(entry.updated_at) : '—';
     tr.appendChild(updatedTd);
 
     const actionsTd = document.createElement('td');
-    const editBtn = document.createElement('button');
-    editBtn.className = 'btn btn-secondary btn-sm';
-    editBtn.textContent = 'Edit';
-    editBtn.addEventListener('click', () => openTimetableModal(entry));
-    const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'btn btn-danger btn-sm';
-    deleteBtn.textContent = 'Remove';
-    deleteBtn.style.marginLeft = '8px';
-    deleteBtn.addEventListener('click', async () => {
-      if (!confirm(`Remove the timetable for ${entry.course_code}?`)) return;
-      const { error: delError } = await supabaseClient.from('timetable').delete().eq('id', entry.id);
-      if (delError) { toast('Could not remove entry.', 'error'); return; }
-      toast('Timetable removed.', 'success');
-      loadTimetable(currentTimetableCourse);
-      loadOverview();
-      markUploadedTimetableCourses();
-    });
-    actionsTd.append(editBtn, deleteBtn);
+    if (entry.id) {
+      const editBtn = document.createElement('button');
+      editBtn.className = 'btn btn-secondary btn-sm';
+      editBtn.textContent = 'Edit';
+      editBtn.addEventListener('click', () => openTimetableModal(entry));
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'btn btn-danger btn-sm';
+      deleteBtn.textContent = 'Remove';
+      deleteBtn.style.marginLeft = '8px';
+      deleteBtn.addEventListener('click', async () => {
+        if (!confirm(`Remove the timetable for ${entry.course_code}?`)) return;
+        const { error: delError } = await supabaseClient.from('timetable').delete().eq('id', entry.id);
+        if (delError) { toast('Could not remove entry.', 'error'); return; }
+        toast('Timetable removed.', 'success');
+        loadAllTimetables();
+        loadOverview();
+        markUploadedTimetableCourses();
+      });
+      actionsTd.append(editBtn, deleteBtn);
+    } else {
+      const addBtn = document.createElement('button');
+      addBtn.className = 'btn btn-sm';
+      addBtn.textContent = 'Add';
+      addBtn.addEventListener('click', () => openTimetableModal(null, entry.course_code));
+      actionsTd.appendChild(addBtn);
+    }
     tr.appendChild(actionsTd);
 
-    tbody.appendChild(tr);
+    return tr;
   }
 
   // Prefixes a ✓ onto the course options that already have a timetable
@@ -1913,6 +1994,7 @@
             .eq('course_code', currentAttendanceCourse)
             .eq('subject', currentAttendanceSubject)
             .eq('class_date', currentAttendanceDate)
+            .eq('archived', false)
         : Promise.resolve({ data: [], error: null }),
     ]);
 
@@ -2057,6 +2139,12 @@
       class_date: currentAttendanceDate,
       status: markStatus,
       marked_by: currentUserId,
+      // Explicit, not just relying on the column default — an upsert
+      // only touches columns it's given, so if this date/subject was
+      // previously archived, re-marking it here needs to say so
+      // itself or the old row would silently stay archived.
+      archived: false,
+      archived_at: null,
     }));
 
     btn.disabled = true;
@@ -2089,6 +2177,274 @@
     loadAttendanceOverview(currentAttendanceCourse);
   });
 
+  /* ---------------- Attendance reset / archive (admin only) ----------
+     "Reset" never deletes — it calls the archive_attendance() RPC,
+     which flags matching rows as archived so they drop out of the
+     register and the overview above but stay readable in the viewer
+     below. See attendance-archive.sql for the RPC + archived column. */
+
+  document.getElementById('attendanceResetBtn').addEventListener('click', async () => {
+    const status = document.getElementById('attendanceResetStatus');
+    const btn = document.getElementById('attendanceResetBtn');
+    const courseCode = document.getElementById('attendanceResetCourse').value || null;
+    const dateFrom = document.getElementById('attendanceResetFrom').value || null;
+    const dateTo = document.getElementById('attendanceResetTo').value || null;
+
+    const courseLabel = courseCode
+      ? document.getElementById('attendanceResetCourse').selectedOptions[0].textContent
+      : 'every course';
+    const rangeLabel = dateFrom || dateTo
+      ? `from ${dateFrom ? fmtDate(dateFrom) : 'the beginning'} to ${dateTo ? fmtDate(dateTo) : 'now'}`
+      : 'for all dates';
+    if (!confirm(`Archive attendance for ${courseLabel}, ${rangeLabel}? Records are archived, not deleted — you'll still be able to view them below.`)) return;
+
+    btn.disabled = true;
+    setStatus(status, '', null);
+
+    const { data, error } = await supabaseClient.rpc('archive_attendance', {
+      p_course_code: courseCode,
+      p_date_from: dateFrom,
+      p_date_to: dateTo,
+    });
+
+    btn.disabled = false;
+
+    if (error) {
+      console.error('Archiving attendance failed:', error);
+      setStatus(status, 'Could not archive attendance. Please try again.', 'error');
+      return;
+    }
+
+    setStatus(status, `Archived ${data} record${data === 1 ? '' : 's'}.`, 'success');
+    toast(`Archived ${data} attendance record${data === 1 ? '' : 's'}.`, 'success');
+    // Refresh whatever's currently on screen so the archived rows drop
+    // out of view immediately rather than waiting for the next reload.
+    if (currentAttendanceCourse) {
+      loadAttendance(currentAttendanceCourse, currentAttendanceDate, currentAttendanceSubject);
+      loadAttendanceOverview(currentAttendanceCourse);
+    }
+  });
+
+  // Course code -> display label, for the per-week course filters.
+  // Falls back to the raw code for anything not found (e.g. if a
+  // record's course was since renamed or removed from COURSES).
+  function courseLabel(code) {
+    for (const group of COURSES) {
+      const match = group.options.find((o) => o.value === code);
+      if (match) return match.label;
+    }
+    return code;
+  }
+
+  // Monday-start week bucket for a class_date, with friendly labels
+  // for the two most recent weeks and a date range for anything older.
+  function weekBucketFor(dateStr) {
+    const d = new Date(`${dateStr}T00:00:00`);
+    const monday = new Date(d);
+    monday.setDate(d.getDate() + (d.getDay() === 0 ? -6 : 1 - d.getDay()));
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    const mondayIso = monday.toISOString().slice(0, 10);
+
+    const now = new Date();
+    const thisMonday = new Date(now);
+    thisMonday.setDate(now.getDate() + (now.getDay() === 0 ? -6 : 1 - now.getDay()));
+    const thisMondayIso = thisMonday.toISOString().slice(0, 10);
+    const lastMonday = new Date(thisMonday);
+    lastMonday.setDate(thisMonday.getDate() - 7);
+    const lastMondayIso = lastMonday.toISOString().slice(0, 10);
+
+    let label;
+    if (mondayIso === thisMondayIso) label = 'This week';
+    else if (mondayIso === lastMondayIso) label = 'Last week';
+    else label = `${fmtDateLong(mondayIso)} – ${fmtDateLong(sunday.toISOString().slice(0, 10))}`;
+
+    return { key: mondayIso, label };
+  }
+
+  async function loadAttendanceArchive() {
+    const container = document.getElementById('attendanceArchiveGroups');
+    const dateFrom = document.getElementById('attendanceArchiveFrom').value || null;
+    const dateTo = document.getElementById('attendanceArchiveTo').value || null;
+
+    container.innerHTML = '<div class="card"><div class="skeleton skeleton-line"></div></div>';
+
+    // Aliased ("student:"/"marker:") since both embeds point at
+    // profiles via different foreign keys (student_id vs marked_by) —
+    // without distinct aliases they'd collide under the same key.
+    let query = supabaseClient
+      .from('attendance')
+      .select(`
+        course_code, subject, class_date, status, archived_at,
+        student:profiles!attendance_student_id_fkey(full_name, student_id),
+        marker:profiles!attendance_marked_by_fkey(full_name)
+      `)
+      .eq('archived', true)
+      .order('class_date', { ascending: false })
+      .limit(1000);
+    if (dateFrom) query = query.gte('class_date', dateFrom);
+    if (dateTo) query = query.lte('class_date', dateTo);
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Loading archived attendance failed:', error);
+      container.innerHTML = '<div class="card empty-state">Could not load archived attendance.</div>';
+      return;
+    }
+
+    const rows = data || [];
+    if (!rows.length) {
+      const filtered = !!(dateFrom || dateTo);
+      container.innerHTML = `<div class="card empty-state">${filtered ? 'No archived records in that date range.' : 'No archived attendance yet.'}</div>`;
+      return;
+    }
+
+    // Group by the week each record's class was held, newest week
+    // first — courses within a week are filtered client-side (below)
+    // once a group is opened, rather than re-querying per click.
+    const weeks = new Map(); // key -> { label, rows: [] }
+    rows.forEach((row) => {
+      const { key, label } = weekBucketFor(row.class_date);
+      if (!weeks.has(key)) weeks.set(key, { label, rows: [] });
+      weeks.get(key).rows.push(row);
+    });
+
+    container.innerHTML = '';
+    [...weeks.entries()]
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .forEach(([key, week], i) => {
+        container.appendChild(renderArchiveWeekGroup(key, week, i === 0));
+      });
+  }
+
+  function renderArchiveWeekGroup(key, week, openByDefault) {
+    const details = document.createElement('details');
+    details.className = 'card archive-week-group';
+    if (openByDefault) details.open = true;
+
+    const summary = document.createElement('summary');
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'archive-week-label';
+    labelSpan.innerHTML = `<strong>${week.label}</strong>`;
+    const countSpan = document.createElement('span');
+    countSpan.className = 'record-meta';
+    countSpan.textContent = `${week.rows.length} record${week.rows.length === 1 ? '' : 's'}`;
+    summary.append(labelSpan, countSpan);
+
+    const body = document.createElement('div');
+    body.className = 'archive-week-group-body';
+
+    // Course filter, scoped to this one week — options are only the
+    // courses that actually appear in this group, not the full list.
+    const courses = [...new Set(week.rows.map((r) => r.course_code).filter(Boolean))]
+      .sort((a, b) => courseLabel(a).localeCompare(courseLabel(b)));
+
+    const filterWrap = document.createElement('div');
+    filterWrap.style.marginBottom = '12px';
+    const filterLabel = document.createElement('label');
+    filterLabel.textContent = 'Filter this week by course';
+    const select = document.createElement('select');
+    const allOption = document.createElement('option');
+    allOption.value = '';
+    allOption.textContent = `All courses (${week.rows.length})`;
+    select.appendChild(allOption);
+    courses.forEach((code) => {
+      const option = document.createElement('option');
+      option.value = code;
+      const count = week.rows.filter((r) => r.course_code === code).length;
+      option.textContent = `${courseLabel(code)} (${count})`;
+      select.appendChild(option);
+    });
+    filterWrap.append(filterLabel, select);
+
+    const tableWrap = document.createElement('div');
+    tableWrap.className = 'table-wrap';
+    const table = document.createElement('table');
+    table.className = 'admin-table';
+    table.innerHTML = '<thead><tr><th>Name</th><th>Student ID</th><th>Course</th><th>Subject</th><th>Date</th><th>Status</th><th>Marked by</th><th>Archived on</th></tr></thead><tbody></tbody>';
+    tableWrap.appendChild(table);
+
+    function renderRows(courseFilter) {
+      const tbody = table.querySelector('tbody');
+      tbody.innerHTML = '';
+      const filteredRows = courseFilter ? week.rows.filter((r) => r.course_code === courseFilter) : week.rows;
+      filteredRows.forEach((row) => {
+        const student = row.student || {};
+        const tr = document.createElement('tr');
+        [
+          student.full_name || '—',
+          student.student_id || '—',
+          row.course_code || '—',
+          row.subject || '—',
+          fmtDate(row.class_date),
+          row.status || '—',
+          row.marker?.full_name || '—',
+          row.archived_at ? fmtDate(row.archived_at) : '—',
+        ].forEach((text) => {
+          const td = document.createElement('td');
+          td.textContent = text;
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+    }
+    select.addEventListener('change', () => renderRows(select.value));
+    renderRows('');
+
+    body.append(filterWrap, tableWrap);
+    details.append(summary, body);
+    return details;
+  }
+
+  document.getElementById('attendanceArchiveRefresh').addEventListener('click', loadAttendanceArchive);
+
+  /* ---------------- Yearly attendance-archive prompt (admin only) ---
+     Shown once per login (not repeated within the same page load) when
+     unarchived records exist from over a year ago. "Not now" just
+     closes it for this session — it's asked again next time there's
+     something to ask about. */
+
+  async function offerAttendanceArchivePrompt() {
+    const cutoff = new Date();
+    cutoff.setFullYear(cutoff.getFullYear() - 1);
+    const cutoffIso = cutoff.toISOString().slice(0, 10);
+
+    const { data: count, error } = await supabaseClient.rpc('count_unarchived_attendance_older_than', { p_cutoff: cutoffIso });
+    if (error) { console.error('Checking for old attendance failed:', error); return; }
+    if (!count) return;
+
+    const modal = document.getElementById('attendanceArchivePromptModal');
+    document.getElementById('attendanceArchivePromptText').textContent =
+      `You have ${count} attendance record${count === 1 ? '' : 's'} from over a year ago (before ${fmtDate(cutoffIso)}) that haven't been archived yet.`;
+    setStatus(document.getElementById('attendanceArchivePromptStatus'), '', null);
+    modal.hidden = false;
+
+    document.getElementById('attendanceArchivePromptDismiss').onclick = () => { modal.hidden = true; };
+    document.getElementById('attendanceArchivePromptConfirm').onclick = async () => {
+      const status = document.getElementById('attendanceArchivePromptStatus');
+      const confirmBtn = document.getElementById('attendanceArchivePromptConfirm');
+      confirmBtn.disabled = true;
+      const { data, error: archiveError } = await supabaseClient.rpc('archive_attendance', {
+        p_course_code: null,
+        p_date_from: null,
+        p_date_to: cutoffIso,
+      });
+      confirmBtn.disabled = false;
+      if (archiveError) {
+        console.error('Archiving old attendance failed:', archiveError);
+        setStatus(status, 'Could not archive. Please try again.', 'error');
+        return;
+      }
+      toast(`Archived ${data} old attendance record${data === 1 ? '' : 's'}.`, 'success');
+      modal.hidden = true;
+      if (currentAttendanceCourse) {
+        loadAttendance(currentAttendanceCourse, currentAttendanceDate, currentAttendanceSubject);
+        loadAttendanceOverview(currentAttendanceCourse);
+      }
+    };
+  }
+
   /* ---------------- Attendance overview ----------------
      A per-class rollup — every date recorded for the selected course,
      broken down by subject per student (so "Computer Programming" and
@@ -2099,10 +2455,10 @@
   async function loadAttendanceOverview(courseCode) {
     const tbody = document.getElementById('attendanceOverviewTbody');
     if (!courseCode) {
-      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Select a course to see its attendance overview.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" class="empty-state">Select a course to see its attendance overview.</td></tr>';
       return;
     }
-    tbody.innerHTML = '<tr><td colspan="8"><div class="skeleton skeleton-line"></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9"><div class="skeleton skeleton-line"></div></td></tr>';
 
     const [studentsRes, attendanceRes] = await Promise.all([
       supabaseClient
@@ -2113,13 +2469,14 @@
         .order('full_name'),
       supabaseClient
         .from('attendance')
-        .select('student_id, subject, status, class_date')
-        .eq('course_code', courseCode),
+        .select('student_id, subject, status, class_date, profiles!attendance_marked_by_fkey(full_name)')
+        .eq('course_code', courseCode)
+        .eq('archived', false),
     ]);
 
     if (studentsRes.error) {
       console.error('Loading students for attendance overview failed:', studentsRes.error);
-      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Could not load students.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" class="empty-state">Could not load students.</td></tr>';
       return;
     }
     if (attendanceRes.error) console.error('Loading attendance overview failed:', attendanceRes.error);
@@ -2129,17 +2486,23 @@
     // each subject gets its own line instead of being folded into one
     // combined total per student. Rows with no subject (saved before
     // the subject column existed) land under "No subject".
-    const bySubject = new Map(); // key -> { studentId, subject, present, absent, late, lastDate }
+    const bySubject = new Map(); // key -> { studentId, subject, present, absent, late, lastDate, lastMarkedBy }
     (attendanceRes.data || []).forEach((row) => {
       const subject = row.subject || 'No subject';
       const key = `${row.student_id}||${subject}`;
-      if (!bySubject.has(key)) bySubject.set(key, { studentId: row.student_id, subject, present: 0, absent: 0, late: 0, lastDate: null });
+      if (!bySubject.has(key)) bySubject.set(key, { studentId: row.student_id, subject, present: 0, absent: 0, late: 0, lastDate: null, lastMarkedBy: null });
       const counts = bySubject.get(key);
       if (counts[row.status] != null) counts[row.status] += 1;
       // class_date sorts fine as a plain "yyyy-mm-dd" string, so the
       // latest date for this subject can just be tracked with a string
-      // comparison rather than parsing dates on every row.
-      if (row.class_date && (!counts.lastDate || row.class_date > counts.lastDate)) counts.lastDate = row.class_date;
+      // comparison rather than parsing dates on every row. Whoever
+      // marked that latest date travels with it, same idea as
+      // "Last recorded" — it's the most recent marker, not a list of
+      // everyone who's ever touched this subject/student.
+      if (row.class_date && (!counts.lastDate || row.class_date > counts.lastDate)) {
+        counts.lastDate = row.class_date;
+        counts.lastMarkedBy = row.profiles?.full_name || null;
+      }
     });
 
     renderAttendanceOverviewTable(students, bySubject);
@@ -2150,7 +2513,7 @@
     tbody.innerHTML = '';
 
     if (!students.length) {
-      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No students are on this course yet.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No students are on this course yet.</td></tr>';
       return;
     }
 
@@ -2168,7 +2531,7 @@
     students.forEach((student) => {
       const subjectRows = rowsByStudent.get(student.id) || [];
       if (!subjectRows.length) {
-        appendAttendanceOverviewRow(tbody, student, { subject: 'No attendance yet', present: 0, absent: 0, late: 0, lastDate: null }, true);
+        appendAttendanceOverviewRow(tbody, student, { subject: 'No attendance yet', present: 0, absent: 0, late: 0, lastDate: null, lastMarkedBy: null }, true);
         rendered = true;
         return;
       }
@@ -2178,7 +2541,7 @@
       });
     });
 
-    if (!rendered) tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No attendance recorded for this class yet.</td></tr>';
+    if (!rendered) tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No attendance recorded for this class yet.</td></tr>';
   }
 
   // rowSpanCount, when set on a student's first subject row, spans the
@@ -2207,6 +2570,7 @@
       isEmptyRow ? '—' : String(row.late),
       isEmptyRow || pct == null ? '—' : `${pct}%`,
       isEmptyRow || !row.lastDate ? '—' : fmtDateLong(row.lastDate),
+      isEmptyRow || !row.lastMarkedBy ? '—' : row.lastMarkedBy,
     ].forEach((text) => {
       const td = document.createElement('td');
       td.textContent = text;
@@ -2934,6 +3298,7 @@
 
     document.getElementById('adminTicketsSection').hidden = !currentUserIsAdmin;
     document.getElementById('adminFeedbackSection').hidden = !currentUserIsAdmin;
+    document.getElementById('attendanceAdminTools').hidden = !currentUserIsAdmin;
     // Root/super admin only — being a plain "admin" is no longer
     // enough to see this link. (admin.js enforces the same rule on
     // admin.html itself, in case someone bookmarks or types the URL
@@ -2973,7 +3338,7 @@
       syncCourseSelectDisplay(gradesCourseSelect);
     }
 
-    document.getElementById('timetableCourseSelect').addEventListener('change', (e) => loadTimetable(e.target.value));
+    document.getElementById('timetableCourseSelect').addEventListener('change', (e) => renderTimetableRows(e.target.value));
     document.getElementById('resourceCourseFilter').addEventListener('change', (e) => loadResources(e.target.value));
     document.getElementById('resourceSearch').addEventListener('input', renderResourcesList);
     markUploadedTimetableCourses();
@@ -2983,7 +3348,7 @@
     signOutButton.hidden = false;
 
     const loaders = [
-      loadTimetable(document.getElementById('timetableCourseSelect').value),
+      loadAllTimetables(),
       loadSupportTab(),
       loadGrades(document.getElementById('gradesCourseSelect').value),
       loadStudents(),
@@ -3005,9 +3370,14 @@
         loadFeedbackLockCard(),
         loadAllCourseFeedback(),
         loadAllStudentFeedback(),
+        loadAttendanceArchive(),
       );
     }
     await Promise.all(loaders);
+    // Runs after everything else settles, once per login — a modal
+    // popping up mid-load would compete with the rest of the page for
+    // attention.
+    if (currentUserIsAdmin) offerAttendanceArchivePrompt();
   }
 
   signOutButton.addEventListener('click', async () => {

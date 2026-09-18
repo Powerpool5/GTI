@@ -16,7 +16,7 @@
     '-- Select a Course --',
     false
   );
-  enhanceCourseSelect(document.getElementById('courseChange'));
+  enhanceCourseSelect(document.getElementById('courseChange'), { disableTypingOnMobile: true });
 
   // Feedback tab's "course this relates to" picker — same course list
   // as "change course" above (Staff left out, a student isn't giving

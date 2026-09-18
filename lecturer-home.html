@@ -9,7 +9,7 @@
 <title>Staff Dashboard - GTI Staff Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=8">
+<link rel="stylesheet" href="styles.css?v=9">
 <script src="theme.js"></script>
 <link rel="icon" type="image/x-icon" href="gti.png">
 </head>
@@ -340,11 +340,11 @@
         <div class="chip-row" id="timetableQuickPicks"></div>
       </div>
       <div class="card">
-        <label for="timetableCourseSelect">Course</label>
+        <label for="timetableCourseSelect">Search for a course</label>
         <select id="timetableCourseSelect"></select>
         <div class="card-row-between" style="margin-top:6px;">
-          <span style="font-size:0.85rem; color:var(--slate);">Timetable for the selected course</span>
-          <button class="btn btn-sm" id="newTimetableEntryBtn">Add / replace</button>
+          <span style="font-size:0.85rem; color:var(--slate);" id="timetableFilterHint">Showing every course — courses with no timetable uploaded are flagged below.</span>
+          <button type="button" class="btn-link" id="timetableShowAllBtn" hidden>Show all courses</button>
         </div>
       </div>
       <div class="card table-wrap">
@@ -392,9 +392,64 @@
       <p class="field-hint" style="margin:0 0 10px;">Every date recorded for this class, broken down by subject per student.</p>
       <div class="card table-wrap">
         <table class="admin-table" id="attendanceOverviewTable">
-          <thead><tr><th>Name</th><th>Student ID</th><th>Subject</th><th>Present</th><th>Absent</th><th>Late</th><th>Attendance %</th><th>Last recorded</th></tr></thead>
+          <thead><tr><th>Name</th><th>Student ID</th><th>Subject</th><th>Present</th><th>Absent</th><th>Late</th><th>Attendance %</th><th>Last recorded</th><th>Marked by</th></tr></thead>
           <tbody id="attendanceOverviewTbody"></tbody>
         </table>
+      </div>
+
+      <!-- Admin only: bulk archive ("reset") + the archived-records
+           viewer. Archiving never deletes a row — it just flags it so
+           it drops out of the table above and the daily register,
+           while staying readable here for later reference. -->
+      <div id="attendanceAdminTools" hidden>
+        <div class="card">
+          <h3 style="margin-top:0;">Reset attendance</h3>
+          <p style="margin:0 0 12px; color:var(--slate); font-size:0.9rem;">
+            Archives attendance records instead of deleting them — archived records disappear
+            from the register and the overview above, but stay available below for later
+            viewing. Leave a field on "All" / blank to not filter by it; leaving everything on
+            "All" with no dates archives every current record.
+          </p>
+          <label for="attendanceResetCourse">Course</label>
+          <select id="attendanceResetCourse">
+            <option value="">All courses</option>
+          </select>
+          <div class="field-row">
+            <div>
+              <label for="attendanceResetFrom">From date (optional)</label>
+              <input type="date" id="attendanceResetFrom">
+            </div>
+            <div>
+              <label for="attendanceResetTo">To date (optional)</label>
+              <input type="date" id="attendanceResetTo">
+            </div>
+          </div>
+          <p class="status-message" id="attendanceResetStatus" role="alert"></p>
+          <button type="button" class="btn btn-danger btn-sm" id="attendanceResetBtn">Archive matching records</button>
+        </div>
+
+        <div class="card-row-between">
+          <h3 style="margin:0;">Archived attendance</h3>
+          <button type="button" class="btn btn-secondary btn-sm" id="attendanceArchiveRefresh">Refresh</button>
+        </div>
+        <div class="card">
+          <p style="margin:0 0 12px; color:var(--slate); font-size:0.9rem;">
+            Grouped by week. Open a week to filter its records down to one course.
+          </p>
+          <div class="field-row">
+            <div>
+              <label for="attendanceArchiveFrom">From date (optional)</label>
+              <input type="date" id="attendanceArchiveFrom">
+            </div>
+            <div>
+              <label for="attendanceArchiveTo">To date (optional)</label>
+              <input type="date" id="attendanceArchiveTo">
+            </div>
+          </div>
+        </div>
+        <div id="attendanceArchiveGroups">
+          <div class="card"><div class="skeleton skeleton-line"></div></div>
+        </div>
       </div>
     </section>
 
@@ -584,9 +639,30 @@
   </div>
 </div>
 
+<!-- Yearly attendance-archive prompt (admin/root only) — shown once
+     per login when unarchived records exist from over a year ago.
+     See offerAttendanceArchivePrompt() in lecturer-home.js. -->
+<div class="modal-backdrop" id="attendanceArchivePromptModal" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h2 style="margin:0;">Old attendance records</h2>
+    </div>
+    <p id="attendanceArchivePromptText" style="margin:0 0 16px; color:var(--slate); font-size:0.9rem;"></p>
+    <p style="margin:0 0 16px; color:var(--slate); font-size:0.85rem;">
+      Archiving moves them out of the register and overview — they'll stay viewable under
+      Attendance → Archived attendance, just not counted day-to-day.
+    </p>
+    <p class="status-message" id="attendanceArchivePromptStatus" role="alert"></p>
+    <div class="card-row-between" style="margin-top:4px;">
+      <button type="button" class="btn-link" id="attendanceArchivePromptDismiss">Not now</button>
+      <button type="button" class="btn btn-sm" id="attendanceArchivePromptConfirm">Archive them</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="app.js?v=3"></script>
 <script src="courses-data.js"></script>
-<script src="lecturer-home.js?v=5"></script>
+<script src="lecturer-home.js?v=9"></script>
 </body>
 </html>
