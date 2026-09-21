@@ -89,8 +89,7 @@
     // access both checked out.
     const lockdownMessage = await checkLockdownBlock();
     if (lockdownMessage) {
-      setStatus(status, lockdownMessage, 'error');
-      submitBtn.disabled = false;
+      window.location.href = 'lockdown.html';
       return;
     }
 

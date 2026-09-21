@@ -457,21 +457,191 @@
   const timetableModal = document.getElementById('timetableModal');
   const timetableForm = document.getElementById('timetableForm');
 
+  // Holds the current draft of the extracted/edited table (array of
+  // arrays of strings) for the entry currently open in the modal, plus
+  // the editor widget instance so the export/save handlers can pull the
+  // latest cells out of it. Both are reset every time the modal opens.
+  let timetableEditorHandle = null;
+  let currentTimetableTableData = null;
+
+  function timetableEntryTitle() {
+    return document.getElementById('timetableFileName').value.trim() || courseNameFor(currentTimetableCourse);
+  }
+
+  // JSON of the table as it was when the editor opened — used at save time to
+  // tell whether the words were actually changed.
+  let timetableBaselineJson = null;
+
+  // `extra` (optional, from the OCR step): { flags, previewUrl } — which cells
+  // the reader was unsure about (highlighted until edited) and a picture of
+  // the original to compare against.
+  function showTimetableEditor(rows, extra) {
+    currentTimetableTableData = TimetableEditor.normalizeRows(rows);
+    timetableBaselineJson = JSON.stringify(currentTimetableTableData);
+    document.getElementById('timetableEditorSection').hidden = false;
+    timetableEditorHandle = TimetableEditor.renderTimetableEditor(
+      document.getElementById('timetableEditorContainer'),
+      currentTimetableTableData,
+      {
+        onChange: (rows) => { currentTimetableTableData = rows; },
+        flags: extra && extra.flags,
+        previewUrl: extra && extra.previewUrl,
+      }
+    );
+  }
+
+  function hideTimetableEditor() {
+    currentTimetableTableData = null;
+    timetableEditorHandle = null;
+    document.getElementById('timetableEditorSection').hidden = true;
+    document.getElementById('timetableEditorContainer').innerHTML = '';
+    document.getElementById('timetableDisplayModeImage').checked = true;
+  }
+
   function openTimetableModal(existing) {
     timetableForm.reset();
     document.getElementById('timetableEntryId').value = existing ? existing.id : '';
     document.getElementById('timetableModalTitle').textContent = existing ? 'Edit entry' : 'New timetable entry';
+    document.getElementById('timetableOcrBtn').hidden = true;
+    document.getElementById('timetableOcrProgress').textContent = '';
+    hideTimetableEditor();
     if (existing) {
       document.getElementById('timetableFileUrl').value = existing.file_url || '';
       document.getElementById('timetableFileName').value = existing.file_name || '';
+      // Previously-extracted/edited table, if any — let staff keep
+      // refining it without having to re-run OCR from scratch.
+      if (existing.table_data && existing.table_data.length) {
+        showTimetableEditor(existing.table_data);
+        document.getElementById(existing.display_mode === 'table' ? 'timetableDisplayModeTable' : 'timetableDisplayModeImage').checked = true;
+      }
     } else {
       document.getElementById('timetableFileName').value = courseNameFor(currentTimetableCourse);
     }
     setStatus(document.getElementById('timetableFormStatus'), '', null);
+    updateReconvertVisibility();
     timetableModal.hidden = false;
   }
   document.getElementById('newTimetableEntryBtn').addEventListener('click', () => openTimetableModal(null));
   document.getElementById('timetableModalClose').addEventListener('click', () => timetableModal.hidden = true);
+
+  // Show the "Extract table" button as soon as a usable file is chosen —
+  // OCR runs against the file the person just picked, before it's
+  // uploaded anywhere, so there's nothing to wait on here.
+  document.getElementById('timetableFileUpload').addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    const ocrBtn = document.getElementById('timetableOcrBtn');
+    ocrBtn.hidden = !file;
+    document.getElementById('timetableOcrProgress').textContent = '';
+  });
+
+  // Reads a picture/PDF into the editor. Used by "Extract table from file" (a newly chosen
+  // file) and "Reconvert from original" (the file already saved for this entry).
+  async function runTimetableOcr(file, keepExistingOnError) {
+    const ocrBtn = document.getElementById('timetableOcrBtn');
+    const reconvertBtn = document.getElementById('timetableReconvertBtn');
+    const progress = document.getElementById('timetableOcrProgress');
+
+    // Never silently throw away edits.
+    if (timetableEditorHandle
+        && JSON.stringify(timetableEditorHandle.getRows()) !== timetableBaselineJson
+        && !window.confirm('This replaces the table below with a fresh reading of the picture, and your edits to it will be lost. Continue?')) {
+      return;
+    }
+
+    ocrBtn.disabled = true;
+    reconvertBtn.disabled = true;
+    progress.textContent = 'Loading OCR engine…';
+    try {
+      const { rows, flags, previewUrl, flagCount, mode } = await TimetableEditor.ocrExtractTable(file, {
+        onProgress: (pct, text) => { progress.textContent = `${text || 'Reading table…'} (${pct}%)`; },
+      });
+      showTimetableEditor(rows, { flags, previewUrl });
+      // The point of extracting the table is for students to see it, so show
+      // "Converted table" by default (it can still be switched back below).
+      document.getElementById('timetableDisplayModeTable').checked = true;
+      if (mode === 'fallback') {
+        progress.textContent = 'No table lines were found in that picture, so this is a rougher reading — please check every cell against the original.';
+      } else if (flagCount > 0) {
+        progress.textContent = `Extracted — ${flagCount} highlighted cell${flagCount === 1 ? '' : 's'} need a quick check against the original. Click a cell to fix it.`;
+      } else {
+        progress.textContent = 'Extracted — nothing was flagged, but still give it a quick look against the original picture.';
+      }
+    } catch (err) {
+      console.error('Timetable OCR failed:', err);
+      if (keepExistingOnError) {
+        progress.textContent = 'Could not read that file automatically — your current table has been kept.';
+      } else {
+        progress.textContent = 'Could not read that file automatically. You can still type the table in by hand below.';
+        showTimetableEditor([['', '', ''], ['', '', '']]);
+      }
+    } finally {
+      ocrBtn.disabled = false;
+      reconvertBtn.disabled = false;
+    }
+  }
+
+  document.getElementById('timetableOcrBtn').addEventListener('click', () => {
+    const file = document.getElementById('timetableFileUpload').files[0];
+    if (file) runTimetableOcr(file, false);
+  });
+
+  // "Reconvert from original": run the reader again on the picture/PDF already saved
+  // for this entry (its link), without having to upload it again.
+  function updateReconvertVisibility() {
+    document.getElementById('timetableReconvertBtn').hidden = !document.getElementById('timetableFileUrl').value.trim();
+  }
+  document.getElementById('timetableFileUrl').addEventListener('input', updateReconvertVisibility);
+
+  document.getElementById('timetableReconvertBtn').addEventListener('click', async () => {
+    const progress = document.getElementById('timetableOcrProgress');
+    const url = document.getElementById('timetableFileUrl').value.trim();
+    if (!url) return;
+    let file;
+    progress.textContent = 'Downloading the original…';
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const blob = await res.blob();
+      const name = decodeURIComponent(url.split('?')[0].split('/').pop() || 'timetable');
+      const type = blob.type && blob.type !== 'application/octet-stream'
+        ? blob.type
+        : (/\.pdf$/i.test(name) ? 'application/pdf' : 'image/jpeg');
+      file = new File([blob], name, { type });
+    } catch (err) {
+      console.error('Could not download the original timetable file:', err);
+      progress.textContent = 'Could not download the original to reconvert it (it may be an external link). Upload the file again with "Or upload a picture/PDF", then use "Extract table from file".';
+      return;
+    }
+    runTimetableOcr(file, true);
+  });
+
+  document.getElementById('timetableExportPdfBtn').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    if (!timetableEditorHandle) return;
+    btn.disabled = true;
+    try {
+      await TimetableEditor.exportTimetablePdf(timetableEditorHandle.getRows(), timetableEntryTitle());
+    } catch (err) {
+      console.error('PDF export failed:', err);
+      toast('Could not create the PDF.', 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById('timetableExportDocxBtn').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    if (!timetableEditorHandle) return;
+    btn.disabled = true;
+    try {
+      await TimetableEditor.exportTimetableDocx(timetableEditorHandle.getRows(), timetableEntryTitle());
+    } catch (err) {
+      console.error('Word export failed:', err);
+      toast('Could not create the Word document.', 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
 
   timetableForm.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -488,6 +658,17 @@
     if (!fileUrl && !chosenFile) {
       setStatus(status, 'Provide a link or upload a file.', 'error');
       return;
+    }
+
+    // Students only see the edited words when the entry is set to show the
+    // converted table. If the table was changed but the entry still shows the
+    // original picture, the save would look like it did nothing — so ask.
+    if (timetableEditorHandle
+        && document.getElementById('timetableDisplayModeImage').checked
+        && JSON.stringify(timetableEditorHandle.getRows()) !== timetableBaselineJson) {
+      if (window.confirm('You changed the table, but this timetable is set to show students the original image/PDF, so they would not see your changes.\n\nShow the converted table instead?')) {
+        document.getElementById('timetableDisplayModeTable').checked = true;
+      }
     }
 
     submitBtn.disabled = true;
@@ -512,10 +693,18 @@
       uploadStatus.textContent = 'Uploaded.';
     }
 
+    // Pull the latest cells straight from the editor widget (rather than
+    // trusting the last onChange event) so an edit still focused/mid-blur
+    // at submit time is never lost.
+    const tableData = timetableEditorHandle ? timetableEditorHandle.getRows() : null;
+    const displayMode = document.getElementById('timetableDisplayModeTable').checked ? 'table' : 'image';
+
     const payload = {
       course_code: currentTimetableCourse,
       file_url: fileUrl,
       file_name: fileName,
+      table_data: tableData,
+      display_mode: tableData ? displayMode : 'image',
     };
 
     // One row per course — upsert on course_code so re-saving an
@@ -530,10 +719,21 @@
 
     if (error) { setStatus(status, 'Could not save entry. Please try again.', 'error'); console.error('Saving timetable entry failed:', error); return; }
 
+    // Make sure the stored row really holds what was sent — otherwise this page
+    // could say "saved" while the old data is still what the database has.
+    if (JSON.stringify(data.table_data) !== JSON.stringify(payload.table_data) || data.display_mode !== payload.display_mode) {
+      console.error('Timetable save mismatch', { sent: payload, stored: data });
+      setStatus(status, 'The save went through, but the stored timetable does not match what you entered. Please try again — and tell an admin if it keeps happening.', 'error');
+      return;
+    }
+
     uploadInput.value = '';
     uploadStatus.textContent = '';
+    hideTimetableEditor();
     timetableModal.hidden = true;
-    toast('Timetable saved.', 'success');
+    toast(payload.display_mode === 'table'
+      ? 'Timetable saved — students will see the converted table.'
+      : 'Timetable saved — students will see the original image/PDF.', 'success');
     loadTimetable(currentTimetableCourse);
     loadOverviewStats();
     markUploadedTimetableCourses();
@@ -546,7 +746,7 @@
 
     const { data, error } = await supabaseClient
       .from('timetable')
-      .select('id, course_code, file_name, file_url, updated_at')
+      .select('id, course_code, file_name, file_url, updated_at, table_data, display_mode')
       .eq('course_code', courseCode)
       .maybeSingle();
 
@@ -562,16 +762,38 @@
     tr.appendChild(courseTd);
 
     const fileTd = document.createElement('td');
+    // The converted table itself — opens in its own tab so staff can see exactly
+    // what students will see (not just a link to the original picture/PDF).
+    const hasTableData = entry.table_data && entry.table_data.length;
+    if (hasTableData) {
+      const viewTable = document.createElement('a');
+      viewTable.href = '#';
+      viewTable.className = 'file-link';
+      viewTable.textContent = 'View table ↗';
+      viewTable.style.marginRight = '12px';
+      viewTable.addEventListener('click', (e) => {
+        e.preventDefault();
+        TimetableEditor.openTimetablePopup(entry.table_data, entry.file_name || 'Timetable', 'view');
+      });
+      fileTd.appendChild(viewTable);
+    }
     if (entry.file_url) {
       const link = document.createElement('a');
       link.href = entry.file_url;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
       link.className = 'file-link';
-      link.textContent = entry.file_name || 'View timetable';
+      link.textContent = hasTableData ? 'Original file ↗' : (entry.file_name || 'View timetable');
       fileTd.appendChild(link);
     } else {
       fileTd.textContent = '—';
+    }
+    if (entry.table_data && entry.table_data.length) {
+      const modeBadge = document.createElement('span');
+      modeBadge.className = 'badge ' + (entry.display_mode === 'table' ? 'badge-verified' : 'badge-course');
+      modeBadge.style.marginLeft = '8px';
+      modeBadge.textContent = entry.display_mode === 'table' ? 'Showing: Table' : 'Showing: Image';
+      fileTd.appendChild(modeBadge);
     }
     tr.appendChild(fileTd);
 

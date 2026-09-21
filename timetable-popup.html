@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<meta http-equiv="Content-Security-Policy"
+  content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'sha256-vvt4KWwuNr51XfE5m+hzeNEGhiOfZzG97ccfqGsPwvE='; connect-src 'self' https://cdn.jsdelivr.net; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
+<title>Timetable</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css?v=15">
+<script src="theme.js"></script>
+<link rel="icon" type="image/x-icon" href="gti.png">
+</head>
+<body>
+
+<div class="tt-popup-wrap">
+  <header class="tt-popup-header">
+    <h1 id="ttPopupTitle">Timetable</h1>
+    <button type="button" class="btn-icon-light theme-toggle-corner" id="themeToggleBtn" aria-label="Toggle dark mode">☾</button>
+  </header>
+  <p class="status-message" id="ttPopupStatus" role="alert"></p>
+  <div id="ttPopupContainer"></div>
+  <div class="tt-export-row" id="ttPopupActions"></div>
+</div>
+
+<script src="timetable-editor.js?v=6"></script>
+<script src="timetable-popup.js?v=1"></script>
+</body>
+</html>

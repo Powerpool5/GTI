@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex">
 <meta http-equiv="Content-Security-Policy"
-  content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://iqcwrberwzumxxjktgux.supabase.co wss://iqcwrberwzumxxjktgux.supabase.co; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data: https://lh3.googleusercontent.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
+  content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval' 'sha256-vvt4KWwuNr51XfE5m+hzeNEGhiOfZzG97ccfqGsPwvE='; worker-src 'self' blob: https://cdn.jsdelivr.net; connect-src 'self' https://iqcwrberwzumxxjktgux.supabase.co wss://iqcwrberwzumxxjktgux.supabase.co https://cdn.jsdelivr.net data:; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data: https://lh3.googleusercontent.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
 <title>Admin - GTI Student Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=9">
+<link rel="stylesheet" href="styles.css?v=15">
 <script src="theme.js"></script>
 <link rel="icon" type="image/x-icon" href="gti.png">
 
@@ -266,6 +266,28 @@
       <label for="timetableFileUpload">Or upload a picture/PDF of the timetable</label>
       <input type="file" id="timetableFileUpload" accept="image/*,.pdf">
       <p class="field-hint" id="timetableUploadStatus"></p>
+
+      <div class="tt-ocr-row">
+        <button type="button" class="btn btn-secondary btn-sm" id="timetableOcrBtn" hidden>Extract table from file (beta)</button>
+        <button type="button" class="btn btn-secondary btn-sm" id="timetableReconvertBtn" hidden>Reconvert from original</button>
+        <span class="tt-ocr-progress" id="timetableOcrProgress"></span>
+      </div>
+
+      <div id="timetableEditorSection" hidden>
+        <label>Timetable table — edit any cell, add/remove rows &amp; columns</label>
+        <div id="timetableEditorContainer"></div>
+        <div class="tt-export-row">
+          <button type="button" class="btn btn-sm" id="timetableOpenInTabBtn">Open in new tab ↗</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="timetableExportPdfBtn">Download as PDF</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="timetableExportDocxBtn">Download as Word</button>
+        </div>
+        <label>Show students</label>
+        <div class="tt-display-mode">
+          <label><input type="radio" name="timetableDisplayMode" id="timetableDisplayModeTable" value="table"> Converted table</label>
+          <label><input type="radio" name="timetableDisplayMode" id="timetableDisplayModeImage" value="image" checked> Original image/PDF</label>
+        </div>
+      </div>
+
       <p class="field-hint">Provide a link or upload a file — at least one is required.</p>
 
       <p class="status-message" id="timetableFormStatus" role="alert"></p>
@@ -306,8 +328,9 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="app.js?v=3"></script>
+<script src="app.js?v=5"></script>
 <script src="courses-data.js?v=2"></script>
-<script src="admin.js?v=2"></script>
+<script src="timetable-editor.js?v=6"></script>
+<script src="admin.js?v=7"></script>
 </body>
 </html>

@@ -111,8 +111,9 @@
     // admin. checkLockdownBlock() signs them back out if so.
     const lockdownMessage = await checkLockdownBlock();
     if (lockdownMessage) {
-      setStatus(status, lockdownMessage, 'error');
-      submitBtn.disabled = false;
+      // Lockdown has its own page (message + style set by the admin, and it
+      // notices when the lockdown is lifted).
+      window.location.href = 'lockdown.html';
       return;
     }
 

@@ -228,13 +228,14 @@
 
     const { data, error } = await supabaseClient
       .from('timetable')
-      .select('file_name, file_url, updated_at')
+      .select('file_name, file_url, updated_at, table_data, display_mode')
       .eq('course_code', courseCode)
       .maybeSingle();
 
     list.innerHTML = '';
     if (error) { console.error('Loading timetable failed:', error); list.innerHTML = emptyState('Timetable is not available right now.'); return; }
-    if (!data || !data.file_url) { list.innerHTML = emptyState('No timetable has been uploaded for this course yet.'); return; }
+    const hasTable = data && data.display_mode === 'table' && data.table_data && data.table_data.length;
+    if (!data || (!data.file_url && !hasTable)) { list.innerHTML = emptyState('No timetable has been uploaded for this course yet.'); return; }
 
     const item = document.createElement('li');
     item.className = 'record';
@@ -261,19 +262,56 @@
     headMain.append(recordIcon('calendar'), headText);
     head.appendChild(headMain);
 
-    const fileLink = document.createElement('a');
-    fileLink.className = 'record-action';
-    fileLink.href = data.file_url;
-    fileLink.target = '_blank';
-    fileLink.rel = 'noopener noreferrer';
-    fileLink.textContent = 'Open ↗';
-    head.appendChild(fileLink);
+    // The raw file is only offered when there is one, and/or when it's
+    // the version the course has been set to show — a converted table
+    // with no original link (or one the admin chose to keep hidden)
+    // shouldn't offer a broken/irrelevant "Open" pill.
+    if (data.file_url && (!hasTable || data.display_mode !== 'table')) {
+      const fileLink = document.createElement('a');
+      fileLink.className = 'record-action';
+      fileLink.href = data.file_url;
+      fileLink.target = '_blank';
+      fileLink.rel = 'noopener noreferrer';
+      fileLink.textContent = 'Open ↗';
+      head.appendChild(fileLink);
+    }
 
     item.appendChild(head);
 
-    // Show it inline if it looks like an image; otherwise the header's
-    // "Open ↗" pill above is the only way in (e.g. a PDF).
-    if (/\.(png|jpe?g|gif|webp)(\?|$)/i.test(data.file_url)) {
+    if (hasTable) {
+      const tableWrap = document.createElement('div');
+      tableWrap.className = 'tt-view-table-wrap';
+      tableWrap.style.marginTop = '12px';
+      TimetableEditor.renderTimetableView(tableWrap, data.table_data);
+      item.appendChild(tableWrap);
+
+      const exportRow = document.createElement('div');
+      exportRow.className = 'tt-export-row';
+      const pdfBtn = document.createElement('button');
+      pdfBtn.type = 'button';
+      pdfBtn.className = 'btn btn-secondary btn-sm';
+      pdfBtn.textContent = 'Download as PDF';
+      pdfBtn.addEventListener('click', async () => {
+        pdfBtn.disabled = true;
+        try { await TimetableEditor.exportTimetablePdf(data.table_data, data.file_name || 'Timetable'); }
+        catch (err) { console.error('PDF export failed:', err); toast('Could not create the PDF.', 'error'); }
+        finally { pdfBtn.disabled = false; }
+      });
+      const docxBtn = document.createElement('button');
+      docxBtn.type = 'button';
+      docxBtn.className = 'btn btn-secondary btn-sm';
+      docxBtn.textContent = 'Download as Word';
+      docxBtn.addEventListener('click', async () => {
+        docxBtn.disabled = true;
+        try { await TimetableEditor.exportTimetableDocx(data.table_data, data.file_name || 'Timetable'); }
+        catch (err) { console.error('Word export failed:', err); toast('Could not create the Word document.', 'error'); }
+        finally { docxBtn.disabled = false; }
+      });
+      exportRow.append(pdfBtn, docxBtn);
+      item.appendChild(exportRow);
+    } else if (data.file_url && /\.(png|jpe?g|gif|webp)(\?|$)/i.test(data.file_url)) {
+      // Show it inline if it looks like an image; otherwise the header's
+      // "Open ↗" pill above is the only way in (e.g. a PDF).
       const img = document.createElement('img');
       img.src = data.file_url;
       img.alt = data.file_name || 'Timetable';

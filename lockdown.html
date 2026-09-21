@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<meta http-equiv="Content-Security-Policy"
+  content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://iqcwrberwzumxxjktgux.supabase.co wss://iqcwrberwzumxxjktgux.supabase.co; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
+<title>Portal locked down - GTI Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css?v=21">
+<script src="theme.js"></script>
+<link rel="icon" type="image/x-icon" href="gti.png">
+</head>
+<body class="lockdown-page" data-style="warning">
+
+<div class="auth-screen">
+  <div class="auth-visual grid-texture">
+    <span class="brand-mark">GTI</span>
+    <div class="lockdown-lock" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="4.5" y="10.5" width="15" height="10" rx="2.2"/>
+        <path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>
+        <circle cx="12" cy="15.5" r="1.2" fill="currentColor" stroke="none"/>
+      </svg>
+    </div>
+    <h1>Lockdown mode</h1>
+    <p>While a lockdown is active, only administrators can use the portal. Everyone else is signed out until it is lifted.</p>
+  </div>
+
+  <div class="auth-panel">
+    <button type="button" class="btn-icon-light theme-toggle-corner" id="themeToggleBtn" aria-label="Toggle dark mode">☾</button>
+
+    <main class="auth-panel-card error-card lockdown-card" id="lockdownCard" data-state="active">
+      <span class="lockdown-chip"><span class="lockdown-dot" aria-hidden="true"></span><span id="lockdownChip">Lockdown active</span></span>
+      <h2 id="lockdownTitle">The portal is locked</h2>
+      <blockquote class="lockdown-message" id="lockdownMessage">The portal is temporarily locked down by an administrator. Please try again shortly.</blockquote>
+      <p class="subtitle" id="lockdownHint" role="status" aria-live="polite">This page checks automatically. As soon as the lockdown is lifted, you'll be taken back to sign in.</p>
+
+      <div class="error-actions">
+        <a class="btn" id="lockdownPrimary" href="lecturer-login.html">Administrator sign in</a>
+        <button type="button" class="btn btn-secondary" id="lockdownCheck">Check again</button>
+      </div>
+
+      <p class="error-meta" id="lockdownMeta"></p>
+      <p class="error-links"><a href="index.html" id="lockdownStudentLink">Student sign in</a></p>
+    </main>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="lockdown.js?v=1"></script>
+</body>
+</html>

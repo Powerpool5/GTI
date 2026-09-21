@@ -281,13 +281,11 @@
      only feeds a "your classes" priority sort/quick-pick layered on
      top in a few places (Students search, Timetable, Attendance). */
   const WEEKDAYS = [
-    { day: 1, label: 'Monday' },
-    { day: 2, label: 'Tuesday' },
-    { day: 3, label: 'Wednesday' },
-    { day: 4, label: 'Thursday' },
-    { day: 5, label: 'Friday' },
-    { day: 6, label: 'Saturday' },
-    { day: 0, label: 'Sunday' },
+    { day: 1, label: 'Mon' },
+    { day: 2, label: 'Tue' },
+    { day: 3, label: 'Wed' },
+    { day: 4, label: 'Thu' },
+    { day: 5, label: 'Fri' },
   ];
   let mySchedule = new Map(); // day_of_week -> array of course_codes
   let myPriorityCourses = new Set(); // every distinct course_code across mySchedule
@@ -334,6 +332,21 @@
         td.textContent = text;
         tr.appendChild(td);
       });
+
+      // Students' names open a read-only detail view (course, timetable,
+      // full attendance). Staff/admin rows have no course or attendance
+      // to show, so their names stay plain text.
+      if (p.role === 'student') {
+        const nameTd = tr.firstElementChild;
+        const nameBtn = document.createElement('button');
+        nameBtn.type = 'button';
+        nameBtn.className = 'name-link';
+        nameBtn.textContent = p.full_name || '—';
+        nameBtn.title = 'View course, timetable and attendance';
+        nameBtn.addEventListener('click', () => openStudentDetail(p));
+        nameTd.textContent = '';
+        nameTd.appendChild(nameBtn);
+      }
 
       const roleTd = document.createElement('td');
       const roleBadge = document.createElement('span');
@@ -543,6 +556,217 @@
   document.getElementById('studentEditCancel').addEventListener('click', closeStudentEdit);
   document.getElementById('studentModalClose').addEventListener('click', closeStudentEdit);
 
+  /* ---------------- Student detail (click a name on the Students tab) ----
+     Read-only snapshot of one student: their course, that course's
+     timetable, and every attendance record on file — archived ones
+     included, flagged as such. */
+
+  let studentDetailToken = 0; // guards against a slow response landing after the modal was reopened for someone else
+
+  document.getElementById('studentDetailClose').addEventListener('click', () => {
+    studentDetailToken += 1;
+    closeModal('studentDetailModal');
+  });
+  document.getElementById('studentDetailModal').addEventListener('click', (e) => {
+    if (e.target.id === 'studentDetailModal') {
+      studentDetailToken += 1;
+      closeModal('studentDetailModal');
+    }
+  });
+
+  function sdEl(tag, className, text) {
+    const el = document.createElement(tag);
+    if (className) el.className = className;
+    if (text != null) el.textContent = text;
+    return el;
+  }
+
+  function sdSection(title, ...children) {
+    const section = sdEl('section', 'sd-section');
+    section.appendChild(sdEl('h3', 'sd-section-title', title));
+    children.forEach((c) => section.appendChild(c));
+    return section;
+  }
+
+  function sdFact(label, value) {
+    const wrap = sdEl('div', 'sd-fact');
+    wrap.append(sdEl('div', 'sd-fact-label', label), sdEl('div', 'sd-fact-value', value || '—'));
+    return wrap;
+  }
+
+  function sdTable(headers, rows, scroll) {
+    const wrap = sdEl('div', 'table-wrap sd-table-wrap' + (scroll ? ' sd-scroll' : ''));
+    const table = sdEl('table', 'admin-table sd-table');
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    headers.forEach((text) => headRow.appendChild(sdEl('th', null, text)));
+    thead.appendChild(headRow);
+    const tbody = document.createElement('tbody');
+    rows.forEach((cells) => {
+      const tr = document.createElement('tr');
+      cells.forEach((cell) => {
+        const td = document.createElement('td');
+        if (cell instanceof Node) td.appendChild(cell); else td.textContent = cell;
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.append(thead, tbody);
+    wrap.appendChild(table);
+    return wrap;
+  }
+
+  function sdPill(status) {
+    const known = status === 'present' || status === 'absent' || status === 'late';
+    return sdEl('span', 'sd-pill' + (known ? ' ' + status : ''), status ? status.charAt(0).toUpperCase() + status.slice(1) : '—');
+  }
+
+  async function openStudentDetail(p) {
+    const token = ++studentDetailToken;
+    const body = document.getElementById('studentDetailBody');
+    const displayName = p.full_name || p.email || 'Student';
+    document.getElementById('studentDetailTitle').textContent = displayName;
+    document.getElementById('studentDetailAvatar').textContent = displayName.trim().charAt(0).toUpperCase();
+    document.getElementById('studentDetailSub').textContent = [p.student_id, p.course_code].filter(Boolean).join(' · ');
+    body.innerHTML = '<div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line" style="width:60%;"></div>';
+    openModal('studentDetailModal');
+
+    const [ttRes, attRes] = await Promise.all([
+      p.course_code
+        ? supabaseClient.from('timetable').select('file_name, file_url, updated_at, table_data, display_mode').eq('course_code', p.course_code).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      supabaseClient
+        .from('attendance')
+        .select('subject, status, class_date, archived, marker:profiles!attendance_marked_by_fkey(full_name)')
+        .eq('student_id', p.id)
+        .order('class_date', { ascending: false })
+        .limit(2000),
+    ]);
+    if (token !== studentDetailToken) return; // closed or switched to another student meanwhile
+
+    body.innerHTML = '';
+    body.scrollTop = 0;
+
+    // ---- Course ----
+    const facts = sdEl('div', 'sd-facts');
+    facts.append(
+      sdFact('Course', p.course_name || (p.course_code ? courseLabel(p.course_code) : 'Not selected')),
+      sdFact('Course code', p.course_code),
+      sdFact('Department', p.course_code ? departmentFor(p.course_code) : ''),
+      sdFact('Student ID', p.student_id),
+      sdFact('Email', p.email),
+    );
+    body.appendChild(sdSection('Course', facts));
+
+    // ---- Timetable ----
+    const ttSection = sdSection('Timetable');
+    body.appendChild(ttSection);
+    if (!p.course_code) {
+      ttSection.appendChild(sdEl('p', 'sd-note', 'This student has no course selected, so there is no timetable to show.'));
+    } else if (ttRes.error) {
+      console.error('Loading student timetable failed:', ttRes.error);
+      ttSection.appendChild(sdEl('p', 'sd-note', 'Could not load the timetable.'));
+    } else if (ttRes.data && ttRes.data.file_url && /^https?:\/\//i.test(ttRes.data.file_url)) {
+      const link = sdEl('a', 'sd-file');
+      link.href = ttRes.data.file_url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.append(sdEl('span', 'sd-file-name', ttRes.data.file_name || 'View timetable'), sdEl('span', 'sd-file-open', 'Open ↗'));
+      ttSection.appendChild(link);
+      if (ttRes.data.updated_at) ttSection.appendChild(sdEl('p', 'sd-note sd-note-gap', `Updated ${fmtDate(ttRes.data.updated_at)}`));
+      if (ttRes.data.display_mode === 'table' && ttRes.data.table_data && ttRes.data.table_data.length) {
+        const tableWrap = sdEl('div', 'tt-view-table-wrap sd-note-gap');
+        TimetableEditor.renderTimetableView(tableWrap, ttRes.data.table_data);
+        ttSection.appendChild(tableWrap);
+        const openTabBtn = document.createElement('button');
+        openTabBtn.type = 'button';
+        openTabBtn.className = 'btn btn-sm';
+        openTabBtn.textContent = 'Open in new tab ↗';
+        openTabBtn.addEventListener('click', () => {
+          TimetableEditor.openTimetablePopup(ttRes.data.table_data, ttRes.data.file_name || 'Timetable', 'view');
+        });
+        ttSection.appendChild(openTabBtn);
+      }
+    } else {
+      ttSection.appendChild(sdEl('p', 'sd-note', 'No timetable has been uploaded for this course yet.'));
+    }
+
+    // ---- Attendance ----
+    const attSection = sdSection('Attendance');
+    body.appendChild(attSection);
+    if (attRes.error) {
+      console.error('Loading student attendance failed:', attRes.error);
+      attSection.appendChild(sdEl('p', 'sd-note', 'Could not load attendance records.'));
+      return;
+    }
+    const records = attRes.data || [];
+    if (!records.length) {
+      attSection.appendChild(sdEl('p', 'sd-note', 'No attendance has been recorded for this student yet.'));
+      return;
+    }
+
+    const totals = { present: 0, absent: 0, late: 0 };
+    const bySubject = new Map();
+    records.forEach((r) => {
+      if (totals[r.status] != null) totals[r.status] += 1;
+      const subject = r.subject || 'No subject';
+      if (!bySubject.has(subject)) bySubject.set(subject, { present: 0, absent: 0, late: 0 });
+      const c = bySubject.get(subject);
+      if (c[r.status] != null) c[r.status] += 1;
+    });
+    const pctOf = (c) => {
+      const total = c.present + c.absent + c.late;
+      return total ? `${Math.round((c.present / total) * 1000) / 10}%` : '—';
+    };
+
+    const stats = sdEl('div', 'sd-stats');
+    [
+      [totals.present, 'Present', 'present'],
+      [totals.absent, 'Absent', 'absent'],
+      [totals.late, 'Late', 'late'],
+      [pctOf(totals), 'Attendance', 'rate'],
+    ].forEach(([value, label, cls]) => {
+      const stat = sdEl('div', 'sd-stat ' + cls);
+      stat.append(sdEl('div', 'sd-stat-value', String(value)), sdEl('div', 'sd-stat-label', label));
+      stats.appendChild(stat);
+    });
+    attSection.appendChild(stats);
+
+    if (totals.present + totals.absent + totals.late > 0) {
+      const bar = sdEl('div', 'sd-bar');
+      bar.setAttribute('role', 'img');
+      bar.setAttribute('aria-label', `${totals.present} present, ${totals.late} late, ${totals.absent} absent`);
+      ['present', 'late', 'absent'].forEach((key) => {
+        if (!totals[key]) return;
+        const seg = sdEl('span', key);
+        seg.style.flex = String(totals[key]);
+        bar.appendChild(seg);
+      });
+      attSection.appendChild(bar);
+    }
+
+    attSection.appendChild(sdEl('h4', 'sd-subtitle', 'By subject'));
+    attSection.appendChild(sdTable(
+      ['Subject', 'Present', 'Absent', 'Late', 'Attendance'],
+      [...bySubject.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([subject, c]) => [subject, String(c.present), String(c.absent), String(c.late), pctOf(c)]),
+    ));
+
+    attSection.appendChild(sdEl('h4', 'sd-subtitle', `All records (${records.length})`));
+    attSection.appendChild(sdTable(
+      ['Date', 'Subject', 'Status', 'Marked by', ''],
+      records.map((r) => [
+        fmtDateLong(r.class_date) || '—',
+        r.subject || '—',
+        sdPill(r.status),
+        r.marker?.full_name || '—',
+        r.archived ? sdEl('span', 'sd-pill archived', 'Archived') : '',
+      ]),
+      true,
+    ));
+  }
+
   document.getElementById('studentEditForm').addEventListener('submit', async (event) => {
     event.preventDefault();
     if (!editingStudentId) return;
@@ -734,14 +958,22 @@
     const wrap = document.getElementById('myClassesRows');
     wrap.innerHTML = '';
 
+    const today = new Date().getDay();
     WEEKDAYS.forEach(({ day, label }) => {
       const row = document.createElement('div');
       row.className = 'day-schedule-row';
+      if (day === today) row.classList.add('is-today');
       row.dataset.day = String(day);
 
       const dayLabel = document.createElement('span');
       dayLabel.className = 'day-label';
       dayLabel.textContent = label;
+      if (day === today) {
+        const todayTag = document.createElement('span');
+        todayTag.className = 'day-label-today-tag';
+        todayTag.textContent = 'Today';
+        dayLabel.appendChild(todayTag);
+      }
       row.appendChild(dayLabel);
 
       const picksWrap = document.createElement('div');
@@ -1044,21 +1276,191 @@
   const timetableModal = document.getElementById('timetableModal');
   const timetableForm = document.getElementById('timetableForm');
 
+  // Same OCR/editable-table pattern as admin.js's Timetable tab — see
+  // the comments there for how the extraction and export pieces work.
+  let timetableEditorHandle = null;
+  let currentTimetableTableData = null;
+
+  function timetableEntryTitle() {
+    return document.getElementById('timetableFileName').value.trim() || courseNameFor(currentTimetableCourse);
+  }
+
+  // JSON of the table as it was when the editor opened — used at save time to
+  // tell whether the words were actually changed.
+  let timetableBaselineJson = null;
+
+  // `extra` (optional, from the OCR step): { flags, previewUrl } — which cells
+  // the reader was unsure about (highlighted until edited) and a picture of
+  // the original to compare against.
+  function showTimetableEditor(rows, extra) {
+    currentTimetableTableData = TimetableEditor.normalizeRows(rows);
+    timetableBaselineJson = JSON.stringify(currentTimetableTableData);
+    document.getElementById('timetableEditorSection').hidden = false;
+    timetableEditorHandle = TimetableEditor.renderTimetableEditor(
+      document.getElementById('timetableEditorContainer'),
+      currentTimetableTableData,
+      {
+        onChange: (rows) => { currentTimetableTableData = rows; },
+        flags: extra && extra.flags,
+        previewUrl: extra && extra.previewUrl,
+      }
+    );
+  }
+
+  function hideTimetableEditor() {
+    currentTimetableTableData = null;
+    timetableEditorHandle = null;
+    document.getElementById('timetableEditorSection').hidden = true;
+    document.getElementById('timetableEditorContainer').innerHTML = '';
+    document.getElementById('timetableDisplayModeImage').checked = true;
+  }
+
   function openTimetableModal(existing, courseCodeForNew) {
     currentTimetableCourse = existing ? existing.course_code : courseCodeForNew;
     timetableForm.reset();
     document.getElementById('timetableEntryId').value = existing ? existing.id : '';
     document.getElementById('timetableModalTitle').textContent = existing ? 'Edit entry' : 'New timetable entry';
+    document.getElementById('timetableOcrBtn').hidden = true;
+    document.getElementById('timetableOcrProgress').textContent = '';
+    hideTimetableEditor();
     if (existing) {
       document.getElementById('timetableFileUrl').value = existing.file_url || '';
       document.getElementById('timetableFileName').value = existing.file_name || '';
+      if (existing.table_data && existing.table_data.length) {
+        showTimetableEditor(existing.table_data);
+        document.getElementById(existing.display_mode === 'table' ? 'timetableDisplayModeTable' : 'timetableDisplayModeImage').checked = true;
+      }
     } else {
       document.getElementById('timetableFileName').value = courseNameFor(currentTimetableCourse);
     }
     setStatus(document.getElementById('timetableFormStatus'), '', null);
+    updateReconvertVisibility();
     timetableModal.hidden = false;
   }
   document.getElementById('timetableModalClose').addEventListener('click', () => timetableModal.hidden = true);
+
+  document.getElementById('timetableFileUpload').addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    document.getElementById('timetableOcrBtn').hidden = !file;
+    document.getElementById('timetableOcrProgress').textContent = '';
+  });
+
+  // Reads a picture/PDF into the editor. Used by "Extract table from file" (a newly chosen
+  // file) and "Reconvert from original" (the file already saved for this entry).
+  async function runTimetableOcr(file, keepExistingOnError) {
+    const ocrBtn = document.getElementById('timetableOcrBtn');
+    const reconvertBtn = document.getElementById('timetableReconvertBtn');
+    const progress = document.getElementById('timetableOcrProgress');
+
+    // Never silently throw away edits.
+    if (timetableEditorHandle
+        && JSON.stringify(timetableEditorHandle.getRows()) !== timetableBaselineJson
+        && !window.confirm('This replaces the table below with a fresh reading of the picture, and your edits to it will be lost. Continue?')) {
+      return;
+    }
+
+    ocrBtn.disabled = true;
+    reconvertBtn.disabled = true;
+    progress.textContent = 'Loading OCR engine…';
+    try {
+      const { rows, flags, previewUrl, flagCount, mode } = await TimetableEditor.ocrExtractTable(file, {
+        onProgress: (pct, text) => { progress.textContent = `${text || 'Reading table…'} (${pct}%)`; },
+      });
+      showTimetableEditor(rows, { flags, previewUrl });
+      // The point of extracting the table is for students to see it, so show
+      // "Converted table" by default (it can still be switched back below).
+      document.getElementById('timetableDisplayModeTable').checked = true;
+      if (mode === 'fallback') {
+        progress.textContent = 'No table lines were found in that picture, so this is a rougher reading — please check every cell against the original.';
+      } else if (flagCount > 0) {
+        progress.textContent = `Extracted — ${flagCount} highlighted cell${flagCount === 1 ? '' : 's'} need a quick check against the original. Click a cell to fix it.`;
+      } else {
+        progress.textContent = 'Extracted — nothing was flagged, but still give it a quick look against the original picture.';
+      }
+    } catch (err) {
+      console.error('Timetable OCR failed:', err);
+      if (keepExistingOnError) {
+        progress.textContent = 'Could not read that file automatically — your current table has been kept.';
+      } else {
+        progress.textContent = 'Could not read that file automatically. You can still type the table in by hand below.';
+        showTimetableEditor([['', '', ''], ['', '', '']]);
+      }
+    } finally {
+      ocrBtn.disabled = false;
+      reconvertBtn.disabled = false;
+    }
+  }
+
+  document.getElementById('timetableOcrBtn').addEventListener('click', () => {
+    const file = document.getElementById('timetableFileUpload').files[0];
+    if (file) runTimetableOcr(file, false);
+  });
+
+  // "Reconvert from original": run the reader again on the picture/PDF already saved
+  // for this entry (its link), without having to upload it again.
+  function updateReconvertVisibility() {
+    document.getElementById('timetableReconvertBtn').hidden = !document.getElementById('timetableFileUrl').value.trim();
+  }
+  document.getElementById('timetableFileUrl').addEventListener('input', updateReconvertVisibility);
+
+  document.getElementById('timetableReconvertBtn').addEventListener('click', async () => {
+    const progress = document.getElementById('timetableOcrProgress');
+    const url = document.getElementById('timetableFileUrl').value.trim();
+    if (!url) return;
+    let file;
+    progress.textContent = 'Downloading the original…';
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const blob = await res.blob();
+      const name = decodeURIComponent(url.split('?')[0].split('/').pop() || 'timetable');
+      const type = blob.type && blob.type !== 'application/octet-stream'
+        ? blob.type
+        : (/\.pdf$/i.test(name) ? 'application/pdf' : 'image/jpeg');
+      file = new File([blob], name, { type });
+    } catch (err) {
+      console.error('Could not download the original timetable file:', err);
+      progress.textContent = 'Could not download the original to reconvert it (it may be an external link). Upload the file again with "Or upload a picture/PDF", then use "Extract table from file".';
+      return;
+    }
+    runTimetableOcr(file, true);
+  });
+
+  document.getElementById('timetableOpenInTabBtn').addEventListener('click', () => {
+    if (!timetableEditorHandle) return;
+    TimetableEditor.openTimetablePopup(timetableEditorHandle.getRows(), timetableEntryTitle(), 'edit', (newRows) => {
+      timetableEditorHandle.setRows(newRows);
+      currentTimetableTableData = newRows;
+    });
+  });
+
+  document.getElementById('timetableExportPdfBtn').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    if (!timetableEditorHandle) return;
+    btn.disabled = true;
+    try {
+      await TimetableEditor.exportTimetablePdf(timetableEditorHandle.getRows(), timetableEntryTitle());
+    } catch (err) {
+      console.error('PDF export failed:', err);
+      toast('Could not create the PDF.', 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById('timetableExportDocxBtn').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    if (!timetableEditorHandle) return;
+    btn.disabled = true;
+    try {
+      await TimetableEditor.exportTimetableDocx(timetableEditorHandle.getRows(), timetableEntryTitle());
+    } catch (err) {
+      console.error('Word export failed:', err);
+      toast('Could not create the Word document.', 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
 
   timetableForm.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -1075,6 +1477,17 @@
     if (!fileUrl && !chosenFile) {
       setStatus(status, 'Provide a link or upload a file.', 'error');
       return;
+    }
+
+    // Students only see the edited words when the entry is set to show the
+    // converted table. If the table was changed but the entry still shows the
+    // original picture, the save would look like it did nothing — so ask.
+    if (timetableEditorHandle
+        && document.getElementById('timetableDisplayModeImage').checked
+        && JSON.stringify(timetableEditorHandle.getRows()) !== timetableBaselineJson) {
+      if (window.confirm('You changed the table, but this timetable is set to show students the original image/PDF, so they would not see your changes.\n\nShow the converted table instead?')) {
+        document.getElementById('timetableDisplayModeTable').checked = true;
+      }
     }
 
     submitBtn.disabled = true;
@@ -1099,10 +1512,15 @@
       uploadStatus.textContent = 'Uploaded.';
     }
 
+    const tableData = timetableEditorHandle ? timetableEditorHandle.getRows() : null;
+    const displayMode = document.getElementById('timetableDisplayModeTable').checked ? 'table' : 'image';
+
     const payload = {
       course_code: currentTimetableCourse,
       file_url: fileUrl,
       file_name: fileName,
+      table_data: tableData,
+      display_mode: tableData ? displayMode : 'image',
     };
 
     const { data, error } = await supabaseClient
@@ -1114,10 +1532,21 @@
 
     if (error) { setStatus(status, 'Could not save entry. Please try again.', 'error'); console.error('Saving timetable entry failed:', error); return; }
 
+    // Make sure the stored row really holds what was sent — otherwise this page
+    // could say "saved" while the old data is still what the database has.
+    if (JSON.stringify(data.table_data) !== JSON.stringify(payload.table_data) || data.display_mode !== payload.display_mode) {
+      console.error('Timetable save mismatch', { sent: payload, stored: data });
+      setStatus(status, 'The save went through, but the stored timetable does not match what you entered. Please try again — and tell an admin if it keeps happening.', 'error');
+      return;
+    }
+
     uploadInput.value = '';
     uploadStatus.textContent = '';
+    hideTimetableEditor();
     timetableModal.hidden = true;
-    toast('Timetable saved.', 'success');
+    toast(payload.display_mode === 'table'
+      ? 'Timetable saved — students will see the converted table.'
+      : 'Timetable saved — students will see the original image/PDF.', 'success');
     loadAllTimetables();
     loadOverview();
     markUploadedTimetableCourses();
@@ -1129,7 +1558,7 @@
 
     const { data, error } = await supabaseClient
       .from('timetable')
-      .select('id, course_code, file_name, file_url, updated_at');
+      .select('id, course_code, file_name, file_url, updated_at, table_data, display_mode');
 
     if (error) {
       console.error('Loading timetable failed:', error);
@@ -1185,18 +1614,42 @@
     const tr = document.createElement('tr');
 
     const courseTd = document.createElement('td');
+    courseTd.dataset.label = 'Course';
     courseTd.textContent = `${courseLabel(entry.course_code)} (${entry.course_code})`;
     tr.appendChild(courseTd);
 
     const fileTd = document.createElement('td');
+    fileTd.dataset.label = 'Timetable';
+    // The converted table itself — opens in its own tab so staff can see exactly
+    // what students will see (not just a link to the original picture/PDF).
+    const hasTableData = entry.table_data && entry.table_data.length;
+    if (hasTableData) {
+      const viewTable = document.createElement('a');
+      viewTable.href = '#';
+      viewTable.className = 'file-link';
+      viewTable.textContent = 'View table ↗';
+      viewTable.style.marginRight = '12px';
+      viewTable.addEventListener('click', (e) => {
+        e.preventDefault();
+        TimetableEditor.openTimetablePopup(entry.table_data, entry.file_name || 'Timetable', 'view');
+      });
+      fileTd.appendChild(viewTable);
+    }
     if (entry.file_url) {
       const link = document.createElement('a');
       link.href = entry.file_url;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
       link.className = 'file-link';
-      link.textContent = entry.file_name || 'View timetable';
+      link.textContent = hasTableData ? 'Original file ↗' : (entry.file_name || 'View timetable');
       fileTd.appendChild(link);
+      if (entry.table_data && entry.table_data.length) {
+        const modeBadge = document.createElement('span');
+        modeBadge.className = 'badge ' + (entry.display_mode === 'table' ? 'badge-verified' : 'badge-course');
+        modeBadge.style.marginLeft = '8px';
+        modeBadge.textContent = entry.display_mode === 'table' ? 'Table' : 'Image';
+        fileTd.appendChild(modeBadge);
+      }
     } else {
       const badge = document.createElement('span');
       badge.className = 'badge badge-inactive';
@@ -1206,10 +1659,12 @@
     tr.appendChild(fileTd);
 
     const updatedTd = document.createElement('td');
+    updatedTd.dataset.label = 'Updated';
     updatedTd.textContent = entry.updated_at ? fmtDate(entry.updated_at) : '—';
     tr.appendChild(updatedTd);
 
     const actionsTd = document.createElement('td');
+    actionsTd.dataset.label = '';
     if (entry.id) {
       const editBtn = document.createElement('button');
       editBtn.className = 'btn btn-secondary btn-sm';
@@ -2177,13 +2632,16 @@
     loadAttendanceOverview(currentAttendanceCourse);
   });
 
-  /* ---------------- Attendance reset / archive (admin only) ----------
-     "Reset" never deletes — it calls the archive_attendance() RPC,
-     which flags matching rows as archived so they drop out of the
-     register and the overview above but stay readable in the viewer
-     below. See attendance-archive.sql for the RPC + archived column. */
+  /* ---------------- Attendance reset / archive ----------
+     "Reset" (admin/root only) never deletes — it calls the
+     archive_attendance() RPC, which flags matching rows as archived so
+     they drop out of the register and the overview above but stay
+     readable in the viewer below. The archived viewer itself is
+     read-only and visible to ALL staff. See attendance-archive.sql for
+     the RPC + archived column. */
 
   document.getElementById('attendanceResetBtn').addEventListener('click', async () => {
+    if (!currentUserIsAdmin) return; // staff can view archives, not create them
     const status = document.getElementById('attendanceResetStatus');
     const btn = document.getElementById('attendanceResetBtn');
     const courseCode = document.getElementById('attendanceResetCourse').value || null;
@@ -2406,6 +2864,7 @@
      something to ask about. */
 
   async function offerAttendanceArchivePrompt() {
+    if (!currentUserIsAdmin) return; // archiving is admin/root only
     const cutoff = new Date();
     cutoff.setFullYear(cutoff.getFullYear() - 1);
     const cutoffIso = cutoff.toISOString().slice(0, 10);
@@ -3283,7 +3742,7 @@
     document.getElementById('headerName').textContent = admin.profile.full_name || admin.session.user.email || '';
     renderAvatar(document.getElementById('avatarSlot'), admin.profile.full_name || admin.session.user.email, admin.profile.avatar_url);
 
-    // Hero banner (Overview tab, admin/root only) — same pattern as the
+    // Hero banner (Overview tab, all staff) — same pattern as the
     // student portal's hero in home.js: greeting + key account facts up
     // top instead of a bare "Overview" heading.
     const firstName = admin.profile.full_name ? admin.profile.full_name.split(' ')[0] : '';
@@ -3305,21 +3764,19 @@
     // directly instead of clicking this link.)
     document.getElementById('adminPanelLink').hidden = !currentUserIsSuperAdmin;
 
-    // Lecturers (role "staff", not "admin") get Students, Announcements
-    // (course-scoped only), Resources, Attendance, Timetable, Grades,
-    // My Classes, and their own Support tickets. Overview, the Staff
-    // list, and the Activity Log stay admin/root territory. This is a
-    // UX-layer restriction like the others in this file; RLS on the
-    // underlying tables is the real gate (see SECURITY.md).
+    // Lecturers (role "staff", not "admin") get Overview, Students,
+    // Announcements (course-scoped only), Resources, Attendance (incl.
+    // read-only archived attendance), Timetable, Grades, My Classes, and
+    // their own Support tickets. The Staff list and the Activity Log stay
+    // admin/root territory, as does creating an attendance archive. This
+    // is a UX-layer restriction only. Overview is the default active tab
+    // and is visible to everyone here, so no landing-tab redirect is
+    // needed.
     if (!currentUserIsAdmin) {
       document.querySelectorAll('[data-admin-only]').forEach((el) => {
         el.hidden = true;
         el.setAttribute('aria-hidden', 'true');
       });
-      // Overview (the default active tab) is one of the hidden ones,
-      // so land lecturers on Students instead.
-      const studentsNav = document.querySelector('.nav-item[data-tab="students"]');
-      switchTab('students', studentsNav);
     }
 
     populateCourseSelects();
@@ -3359,18 +3816,18 @@
       loadAttendanceOverview(document.getElementById('attendanceCourseSelect').value),
       refreshFeedbackLockState(),
       loadMyCourseFeedback(),
+      loadOverview(),          // Overview tab is visible to all staff
+      loadAttendanceArchive(), // archived attendance is read-only for all staff
     ];
     // Everything else here backs an admin-only tab — skip fetching it
-    // for lecturers rather than firing requests RLS will just reject.
+    // for lecturers.
     if (currentUserIsAdmin) {
       loaders.push(
-        loadOverview(),
         loadAllTickets(),
         loadActivityLog(),
         loadFeedbackLockCard(),
         loadAllCourseFeedback(),
         loadAllStudentFeedback(),
-        loadAttendanceArchive(),
       );
     }
     await Promise.all(loaders);

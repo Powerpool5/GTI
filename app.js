@@ -224,7 +224,13 @@ async function checkLockdownBlock() {
     if (isAdmin === true) return null; // admins and root always get through
 
     await supabaseClient.auth.signOut();
-    return data.lockdown_message || DEFAULT_LOCKDOWN_MESSAGE;
+    const message = data.lockdown_message || DEFAULT_LOCKDOWN_MESSAGE;
+    // Hand the admin's message + banner style to lockdown.html (the lockdown's own
+    // page) so it can show them straight away, before it re-reads the live row.
+    try {
+      sessionStorage.setItem("gti-lockdown", JSON.stringify({ message, style: data.lockdown_style || "warning" }));
+    } catch {}
+    return message;
   } catch {
     return null;
   }
@@ -246,8 +252,7 @@ async function requireSession() {
   // navigation/reload, not just at their next sign-in attempt.
   const lockdownMessage = await checkLockdownBlock();
   if (lockdownMessage) {
-    try { sessionStorage.setItem("gti-lockout-message", lockdownMessage); } catch {}
-    window.location.href = "index.html";
+    window.location.href = "lockdown.html";
     return null;
   }
 

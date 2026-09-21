@@ -328,6 +328,7 @@ ul.record-list { list-style: none; margin: 0; padding: 0; }
 .badge-grade-b { background: var(--blueprint-soft); color: var(--blueprint); }
 .badge-grade-c { background: #EFE6D4; color: var(--brass-dark); }
 .badge-grade-f { background: var(--danger-bg); color: var(--danger); }
+.badge-gpa { background: var(--brass); color: #fff; }
 
 /* Closed tickets collapse to a single summary line (native <details>,
    so no extra JS/CSP-inline handlers are needed to expand them). */
@@ -1138,7 +1139,7 @@ button.btn-link { background: none; border: none; color: var(--blueprint); paddi
 [data-theme="dark"] .stat-card .stat-value { color: var(--ink); }
 .stat-card .stat-label { font-size: 0.78rem; color: var(--slate); letter-spacing: 0.01em; margin-top: 2px; }
 
-.table-wrap { overflow-x: auto; }
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 table.admin-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 table.admin-table th {
   text-align: left; font-family: var(--font-mono); font-size: 0.72rem; text-transform: uppercase;
@@ -1149,6 +1150,38 @@ table.admin-table tr:hover td { background: var(--blueprint-soft); }
 table.admin-table select, table.admin-table input { margin-bottom: 0; }
 table.admin-table input[type="number"] { width: 72px; text-align: right; }
 table.admin-table .grade-total { display: inline-block; min-width: 48px; font-family: var(--font-mono); font-weight: 600; text-align: right; }
+
+/* Input Grades tab: renderStudentGradeBlock (lecturer-home.js) inserts
+   one header row per student — spanning all 8 columns — followed by a
+   plain <tr> per subject. Neither had any styling of its own before,
+   so the header blended into the subject rows below it and ran
+   straight into the previous student's last row with no separation. */
+.grades-student-row td {
+  background: var(--blueprint-soft);
+  border-bottom: 1px solid var(--paper-line);
+  padding: 10px 12px;
+}
+.grades-student-row:not(:first-child) td { border-top: 14px solid var(--surface); }
+.grades-student-row-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+.grades-student-id-block { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.grades-student-name { font-weight: 700; font-size: 0.96rem; color: var(--ink-navy); }
+[data-theme="dark"] .grades-student-name { color: var(--ink); }
+.grades-student-idtext { font-family: var(--font-mono); font-size: 0.78rem; color: var(--slate); }
+
+/* Subject rows for a student sit between that student's own header row
+   and the next one — a light left accent on the first cell keeps them
+   visually grouped under their header without repeating the name on
+   every row (border-collapse ignores a border set on the <tr> itself). */
+table.admin-table #gradesTbody tr:not(.grades-student-row) td:first-child {
+  border-left: 3px solid var(--blueprint-soft);
+  padding-left: 9px;
+}
 
 .chip-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 0; }
 .chip {
@@ -1165,19 +1198,60 @@ table.admin-table .grade-total { display: inline-block; min-width: 48px; font-fa
 .chip.chip-empty { color: var(--slate); border-style: dashed; cursor: default; }
 .chip.chip-empty:hover { background: none; }
 
-.day-schedule-row {
+#myClassesRows {
   display: grid;
-  grid-template-columns: 90px 1fr;
-  align-items: start;
-  gap: 12px;
-  padding: 12px 0;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 18px;
+}
+.day-schedule-row {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 22px;
+  min-height: 160px;
+  background: var(--paper);
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius);
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease), background 0.15s var(--ease);
+}
+.day-schedule-row:hover { border-color: var(--blueprint); box-shadow: var(--shadow-sm); }
+.day-schedule-row .day-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 1.08rem;
+  color: var(--ink-navy);
+  padding-bottom: 12px;
+  margin-bottom: 2px;
   border-bottom: 1px solid var(--paper-line);
 }
-.day-schedule-row:last-child { border-bottom: none; }
-.day-schedule-row .day-label { font-weight: 600; color: var(--ink-navy); padding-top: 10px; }
 [data-theme="dark"] .day-schedule-row .day-label { color: var(--ink); }
+
+/* Highlights the current weekday in the My Classes schedule (see
+   renderMyClassesForm in lecturer-home.js) so a lecturer can spot
+   today's picks at a glance instead of scanning every card. */
+.day-schedule-row.is-today {
+  border-color: var(--blueprint);
+  background: var(--blueprint-soft);
+  box-shadow: 0 0 0 1px var(--blueprint);
+}
+.day-schedule-row.is-today .day-label { border-bottom-color: rgba(43,95,140,0.25); }
+.day-label-today-tag {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fff;
+  background: var(--blueprint);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
 .day-schedule-row select { margin-bottom: 0; }
-.day-schedule-picks { display: flex; flex-direction: column; gap: 8px; }
+.day-schedule-picks { display: flex; flex-direction: column; gap: 10px; }
 .day-schedule-pick { display: flex; align-items: center; gap: 8px; }
 .day-schedule-pick select { flex: 1; min-width: 0; }
 .day-schedule-remove {
@@ -1442,6 +1516,75 @@ table.admin-table .grade-total { display: inline-block; min-width: 48px; font-fa
      rendered as just an ellipsis. Better to drop the text and rely on
      the avatar (which already shows an initial) than show "…". */
   .app-header .user-chip span:last-child { display: none; }
+
+  /* Tables (Students/Staff/Attendance/Grades/Timetable) — tighten up so
+     more columns fit before the horizontal scroll in .table-wrap kicks
+     in, and give buttons/inputs inside cells a touch-friendly minimum
+     size instead of the cramped desktop sizing. */
+  table.admin-table { font-size: 0.82rem; }
+  table.admin-table th, table.admin-table td { padding: 8px 8px; }
+  table.admin-table .btn-sm { padding: 7px 10px; font-size: 0.78rem; }
+  table.admin-table input[type="number"] { width: 58px; }
+
+  /* Search/filter bars above tables: full-width stacked controls read
+     far better on a narrow screen than several shrunken side-by-side
+     inputs fighting for space. */
+  .search-row { flex-direction: column; align-items: stretch; }
+  .search-row input, .search-row select, .search-row .course-combo {
+    width: 100%; flex: 1 1 auto; min-width: 0;
+  }
+  .search-row button { width: 100%; }
+
+  /* Modals: use more of the viewport and trim the padding so forms
+     don't feel squeezed against the edges of the screen. */
+  .modal-backdrop { padding: 10px; align-items: flex-end; }
+  .modal { padding: 18px; border-radius: 16px 16px 0 0; max-height: 92vh; }
+
+  /* Card headers with a button/hint on the right (course counts,
+     "+ Add" buttons, refresh actions, etc. across every tab) — stack
+     them instead of squeezing both onto one crowded row. */
+  .card-row-between { flex-direction: column; align-items: stretch; }
+  .card-row-between > * { width: 100%; }
+
+  /* Timetable table: reflows from a wide 4-column row into a single
+     stacked card per course, each field labelled via the data-label
+     set in renderTimetableRow() (lecturer-home.js) — much easier to
+     read than shrinking 4 columns down to fit a phone screen. */
+  #timetableTable thead { display: none; }
+  #timetableTable, #timetableTable tbody, #timetableTable tr, #timetableTable td {
+    display: block;
+    width: 100%;
+  }
+  #timetableTable tr {
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--paper-line);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+  }
+  #timetableTable tr.empty-state, #timetableTable tr:has(.empty-state), #timetableTable tr:has(.skeleton) {
+    border: none; background: none; padding: 0;
+  }
+  #timetableTable td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 7px 0;
+    border-bottom: 1px dashed var(--paper-line);
+  }
+  #timetableTable td:last-child { border-bottom: none; padding-top: 10px; justify-content: flex-start; }
+  #timetableTable td[data-label]::before {
+    content: attr(data-label);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--slate);
+    flex-shrink: 0;
+  }
+  #timetableTable td[colspan] { display: block; }
+  #timetableTable td[colspan]::before { content: none; }
 }
 /* Database-down banner (added by app.js's connectivity watchdog) */
 /* Sticky wrapper (added by app.js only once a banner is actually
@@ -1530,3 +1673,298 @@ table.admin-table .grade-total { display: inline-block; min-width: 48px; font-fa
     background: var(--danger, #b3261e);
   }
 }
+
+
+/* =========================
+   Staff dashboard: clickable student name (Students tab)
+   Plain text colour with just an underline — no blue link styling.
+   ========================= */
+button.name-link {
+  background: none; border: none; padding: 0; margin: 0;
+  font: inherit; color: var(--ink); text-align: left; cursor: pointer;
+  text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px;
+}
+button.name-link:hover { text-decoration-thickness: 2px; }
+button.name-link:focus-visible { outline: 2px solid var(--blueprint); outline-offset: 2px; border-radius: 2px; }
+
+/* =========================
+   Staff dashboard: student detail modal
+   ========================= */
+.modal.modal-student {
+  max-width: 880px; padding: 0; overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.sd-header {
+  display: flex; align-items: center; gap: 16px;
+  padding: 22px 26px;
+  background: linear-gradient(135deg, var(--ink-navy), var(--ink-navy-deep));
+  color: #fff;
+}
+.sd-avatar {
+  flex-shrink: 0; width: 48px; height: 48px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, 0.14); border: 1px solid rgba(255, 255, 255, 0.3);
+  font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; color: #fff;
+}
+.sd-header-text { min-width: 0; flex: 1; }
+.sd-header-text h2 { margin: 0; font-size: 1.3rem; color: #fff; overflow-wrap: anywhere; }
+.sd-header-text p { margin: 3px 0 0; font-family: var(--font-mono); font-size: 0.78rem; color: var(--on-dark-soft); }
+.sd-header .modal-close { color: var(--on-dark-soft); font-size: 1.6rem; line-height: 1; padding: 4px 8px; border-radius: var(--radius-sm); }
+.sd-header .modal-close:hover { color: #fff; background: rgba(255, 255, 255, 0.12); }
+
+.sd-body { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 26px 26px; background: var(--paper); }
+
+.sd-section {
+  margin-top: 20px; padding: 18px 20px;
+  background: var(--surface); border: 1px solid var(--paper-line);
+  border-radius: var(--radius); box-shadow: var(--shadow-sm);
+}
+.sd-section-title {
+  margin: 0 0 14px; font-family: var(--font-mono); font-size: 0.72rem; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--slate);
+}
+.sd-subtitle { margin: 22px 0 8px; font-size: 0.88rem; font-weight: 600; color: var(--ink); }
+.sd-note { margin: 0; color: var(--slate); font-size: 0.9rem; }
+.sd-note-gap { margin-top: 8px; }
+
+.sd-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px 24px; }
+.sd-fact-label { font-family: var(--font-mono); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--slate); margin-bottom: 3px; }
+.sd-fact-value { font-size: 0.95rem; font-weight: 500; color: var(--ink); overflow-wrap: anywhere; }
+
+.sd-file {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 13px 16px; border: 1px solid var(--paper-line); border-radius: var(--radius-sm);
+  background: var(--paper); color: var(--ink); text-decoration: none;
+  transition: border-color 0.15s var(--ease), background 0.15s var(--ease);
+}
+.sd-file:hover { border-color: var(--blueprint); background: var(--blueprint-soft); }
+.sd-file-name { font-weight: 500; overflow-wrap: anywhere; }
+.sd-file-open { flex-shrink: 0; font-family: var(--font-mono); font-size: 0.78rem; color: var(--blueprint); }
+
+.sd-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
+.sd-stat {
+  padding: 14px 16px; background: var(--paper);
+  border: 1px solid var(--paper-line); border-left: 4px solid var(--slate); border-radius: var(--radius-sm);
+}
+.sd-stat.present { border-left-color: var(--success); }
+.sd-stat.absent { border-left-color: var(--danger); }
+.sd-stat.late { border-left-color: var(--brass); }
+.sd-stat.rate { border-left-color: var(--blueprint); }
+.sd-stat-value { font-family: var(--font-display); font-weight: 600; font-size: 1.6rem; letter-spacing: -0.01em; color: var(--ink); line-height: 1.1; }
+.sd-stat-label { margin-top: 4px; font-size: 0.75rem; color: var(--slate); }
+
+.sd-bar { display: flex; height: 8px; margin-top: 14px; border-radius: 999px; overflow: hidden; background: var(--paper-line); }
+.sd-bar .present { background: var(--success); }
+.sd-bar .late { background: var(--brass); }
+.sd-bar .absent { background: var(--danger); }
+
+.sd-table-wrap { border: 1px solid var(--paper-line); border-radius: var(--radius-sm); }
+.sd-scroll { max-height: 320px; overflow-y: auto; }
+table.sd-table th { background: var(--paper); position: sticky; top: 0; z-index: 1; white-space: nowrap; }
+table.sd-table tr:last-child td { border-bottom: none; }
+
+.sd-pill {
+  display: inline-block; padding: 2px 10px; border-radius: 999px;
+  font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.03em;
+  background: var(--paper-line); color: var(--slate);
+}
+.sd-pill.present { background: var(--success-bg); color: var(--success); }
+.sd-pill.absent { background: var(--danger-bg); color: var(--danger); }
+.sd-pill.late { background: #F4EAD7; color: var(--brass-dark); }
+[data-theme="dark"] .sd-pill.late { background: rgba(184, 134, 59, 0.2); color: #E0B36A; }
+.sd-pill.archived { background: transparent; border: 1px solid var(--paper-line); color: var(--slate); }
+
+@media (max-width: 560px) {
+  .sd-header { padding: 18px 16px; gap: 12px; }
+  .sd-body { padding: 4px 14px 20px; }
+  .sd-section { padding: 16px; }
+}
+/* =========================================================
+   Timetable editor / viewer (timetable-editor.js)
+   ========================================================= */
+.tt-ocr-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 16px; }
+.tt-ocr-progress { font-size: 0.82rem; color: var(--slate); }
+.tt-display-mode { display: flex; gap: 16px; align-items: center; margin: 4px 0 16px; font-size: 0.88rem; }
+.tt-display-mode label { display: flex; align-items: center; gap: 6px; font-weight: 400; margin: 0; }
+
+.tt-editor-toolbar, .tt-view-toolbar { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+
+.tt-editor-table-wrap, .tt-view-table-wrap { overflow-x: auto; border: 1px solid var(--blueprint-soft); border-radius: var(--radius-sm); margin-bottom: 14px; }
+
+.tt-editor-table, .tt-view-table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+.tt-editor-table td, .tt-view-table td, .tt-view-table th {
+  border: 1px solid var(--blueprint-soft);
+  padding: 6px 10px;
+  min-width: 70px;
+  vertical-align: middle;
+  text-align: center;
+}
+.tt-editor-table td div, .tt-view-table td div, .tt-view-table th div { line-height: 1.3; }
+.tt-view-table th { background: var(--blueprint-soft); color: var(--ink-navy); font-weight: 700; }
+.tt-editor-table .tt-editor-header-row td:not(.tt-editor-ctl) { background: var(--blueprint-soft); font-weight: 700; }
+.tt-editor-table td[contenteditable] { background: var(--surface, transparent); cursor: text; white-space: pre-wrap; }
+.tt-editor-table td[contenteditable]:focus { outline: 2px solid var(--blueprint); outline-offset: -2px; }
+.tt-row-compact td, .tt-row-compact th { background: #e5e5e5; font-weight: 700; font-style: italic; }
+.tt-editor-ctl { border: none !important; padding: 2px !important; min-width: 22px !important; text-align: center; background: transparent; }
+.tt-editor-del {
+  background: var(--danger-bg); color: var(--danger); border: none; border-radius: 6px;
+  width: 20px; height: 20px; line-height: 1; font-size: 0.8rem; cursor: pointer; padding: 0;
+}
+.tt-editor-del:hover { opacity: 0.8; }
+
+.tt-export-row { display: flex; gap: 8px; margin: 10px 0 18px; flex-wrap: wrap; }
+
+/* Full-page timetable popup (timetable-popup.html) */
+.tt-popup-wrap { max-width: 1200px; margin: 0 auto; padding: 32px 24px 60px; }
+.tt-popup-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+.tt-popup-header h1 { font-family: "Space Grotesk", sans-serif; font-size: 1.4rem; margin: 0; }
+.tt-popup-header .theme-toggle-corner { position: static; }
+
+
+/* --- Timetable import v5: cells the reader was unsure about + original picture --- */
+.tt-editor-table td.tt-cell-check[contenteditable] { background: #FFF4C2; box-shadow: inset 0 0 0 2px #E0B02F; }
+[data-theme="dark"] .tt-editor-table td.tt-cell-check[contenteditable] { background: rgba(224, 176, 47, 0.22); box-shadow: inset 0 0 0 2px #C99A20; }
+.tt-check-legend { align-self: center; font-size: 0.8rem; color: var(--slate); }
+.tt-source { margin: 0 0 12px; border: 1px solid var(--blueprint-soft); border-radius: var(--radius-sm); background: var(--surface, transparent); }
+.tt-source summary { cursor: pointer; padding: 8px 12px; font-size: 0.82rem; font-weight: 600; color: var(--ink-navy); }
+[data-theme="dark"] .tt-source summary { color: var(--ink); }
+.tt-source img { display: block; max-width: 100%; max-height: 260px; margin: 0 auto 10px; object-fit: contain; cursor: zoom-in; background: #fff; }
+.tt-source img.tt-source-zoom { max-width: none; max-height: none; width: 1400px; cursor: zoom-out; }
+.tt-source[open] { overflow-x: auto; }
+
+/* Timetable view on phones: nested card + record padding left only ~270px for the table.
+   Trim the padding around a timetable so more of it shows without sideways scrolling. */
+@media (max-width: 760px) {
+  .portal-home .card:has(.tt-view-table-wrap) { padding: 10px; }
+  .portal-home .record:has(.tt-view-table-wrap), .staff-dashboard .record:has(.tt-view-table-wrap) { padding: 12px 8px; }
+  .tt-view-table td, .tt-view-table th { padding: 6px 6px; min-width: 60px; }
+}
+
+/* Timetable in dark mode: the header text used the (dark navy) light-mode colour and the
+   break/lunch bars kept their light-grey fill, so both washed out. */
+[data-theme="dark"] .tt-view-table th,
+[data-theme="dark"] .tt-editor-table .tt-editor-header-row td:not(.tt-editor-ctl) { color: var(--ink); }
+[data-theme="dark"] .tt-row-compact td,
+[data-theme="dark"] .tt-row-compact th { background: #2C3947; color: var(--ink); }
+[data-theme="dark"] .tt-export-row .btn-secondary,
+[data-theme="dark"] .tt-editor-toolbar .btn-secondary,
+[data-theme="dark"] .tt-ocr-row .btn-secondary { color: var(--ink); border-color: var(--border-input); }
+
+/* =========================
+   Error pages (404.html, 403.html, 500.html, 503.html, error.html)
+   Built on the sign-in screen's layout (.auth-screen / .auth-visual / .auth-panel).
+   ========================= */
+.error-card { max-width: 420px; }
+.error-code {
+  font-family: var(--font-mono);
+  font-size: 4rem;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--brass);
+  margin: 0 0 14px;
+}
+.error-path {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  background: var(--blueprint-soft);
+  color: var(--ink-navy);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  margin: -10px 0 22px;
+  word-break: break-all;
+}
+[data-theme="dark"] .error-path { color: var(--ink); }
+.error-actions { display: flex; flex-direction: column; gap: 10px; }
+.error-actions [hidden], .error-path[hidden] { display: none !important; }
+.error-actions .btn {
+  display: block;
+  width: 100%;
+  text-align: center;
+  text-decoration: none;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 11px 20px;
+  border-radius: 10px;
+  border: 1px solid var(--brass);
+  background: var(--brass);
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s var(--ease), transform 0.1s var(--ease), box-shadow 0.15s var(--ease);
+}
+.error-actions .btn:hover { background: var(--brass-dark); border-color: var(--brass-dark); box-shadow: var(--shadow-sm); }
+.error-actions .btn:active { transform: translateY(1px); }
+.error-actions .btn.btn-secondary { background: none; color: var(--blueprint); border-color: var(--blueprint); }
+.error-actions .btn.btn-secondary:hover { background: var(--blueprint-soft); box-shadow: none; }
+[data-theme="dark"] .error-actions .btn.btn-secondary { color: var(--ink); border-color: var(--border-input); }
+.error-actions .btn:focus-visible { outline: 2px solid var(--blueprint); outline-offset: 2px; }
+.error-meta { margin: 20px 0 0; font-family: var(--font-mono); font-size: 0.75rem; color: var(--slate); }
+.error-meta:empty { display: none; }
+.error-links { display: flex; gap: 16px; flex-wrap: wrap; margin: 18px 0 0; font-size: 0.85rem; }
+[data-theme="dark"] .error-links a { color: #9DBBD8; }
+@media (max-width: 760px) { .error-card { margin-top: 36px; } .error-code { font-size: 3.4rem; } }
+
+/* =========================
+   Lockdown page (lockdown.html) — its own screen, colour-keyed to the style the
+   admin picked for the lockdown banner (info / warning / danger).
+   ========================= */
+.lockdown-page { --lock-accent: var(--brass); --lock-accent-bg: rgba(184, 134, 59, 0.12); }
+.lockdown-page[data-style="danger"] { --lock-accent: var(--danger); --lock-accent-bg: var(--danger-bg); }
+.lockdown-page[data-style="info"] { --lock-accent: var(--blueprint); --lock-accent-bg: var(--blueprint-soft); }
+[data-theme="dark"] .lockdown-page { --lock-accent-bg: rgba(184, 134, 59, 0.16); }
+[data-theme="dark"] .lockdown-page[data-style="danger"] { --lock-accent: #E0796B; --lock-accent-bg: var(--danger-bg); }
+[data-theme="dark"] .lockdown-page[data-style="info"] { --lock-accent: #7FB0DD; --lock-accent-bg: var(--blueprint-soft); }
+
+.lockdown-lock {
+  width: 92px; height: 92px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--lock-accent);
+  border: 2px solid var(--lock-accent);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: 0 0 0 10px rgba(255, 255, 255, 0.03), 0 0 40px -6px var(--lock-accent);
+  margin-bottom: 26px;
+  animation: lockdownPulse 3.2s ease-in-out infinite;
+}
+@keyframes lockdownPulse {
+  0%, 100% { box-shadow: 0 0 0 10px rgba(255, 255, 255, 0.03), 0 0 30px -8px var(--lock-accent); }
+  50% { box-shadow: 0 0 0 16px rgba(255, 255, 255, 0.02), 0 0 46px -4px var(--lock-accent); }
+}
+
+.lockdown-card { border-top: 4px solid var(--lock-accent); }
+.lockdown-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 5px 12px; margin-bottom: 18px;
+  border-radius: 999px;
+  background: var(--lock-accent-bg); color: var(--lock-accent);
+  font-family: var(--font-mono); font-size: 0.72rem; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase;
+}
+.lockdown-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: lockdownBlink 1.6s ease-in-out infinite; }
+@keyframes lockdownBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+.lockdown-message {
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border-left: 3px solid var(--lock-accent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--lock-accent-bg);
+  color: var(--ink);
+  font-size: 0.95rem; line-height: 1.5;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.lockdown-message[hidden] { display: none; }
+.lockdown-card .subtitle { margin-bottom: 22px; min-height: 1.2em; }
+
+/* Resolved states: the lock turns green. */
+.lockdown-page:has(.lockdown-card[data-state="lifted"]),
+.lockdown-page:has(.lockdown-card[data-state="none"]) { --lock-accent: var(--success); --lock-accent-bg: var(--success-bg); }
+[data-theme="dark"] .lockdown-page:has(.lockdown-card[data-state="lifted"]),
+[data-theme="dark"] .lockdown-page:has(.lockdown-card[data-state="none"]) { --lock-accent: #6FBF95; }
+.lockdown-card[data-state="checking"] .lockdown-dot { animation-duration: 0.8s; }
+
+@media (prefers-reduced-motion: reduce) { .lockdown-lock, .lockdown-dot { animation: none; } }
+@media (max-width: 760px) {
+  .lockdown-lock { width: 0; height: 0; border: 0; box-shadow: none; margin: 0; overflow: hidden; }
+}
+.lockdown-message { margin-top: 14px; }
+.error-links[hidden] { display: none; }
+@media (max-width: 760px) { .lockdown-card { padding-top: 22px; } }
