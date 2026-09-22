@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta http-equiv="Content-Security-Policy"
   content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval' 'sha256-vvt4KWwuNr51XfE5m+hzeNEGhiOfZzG97ccfqGsPwvE='; worker-src 'self' blob: https://cdn.jsdelivr.net; connect-src 'self' https://iqcwrberwzumxxjktgux.supabase.co wss://iqcwrberwzumxxjktgux.supabase.co https://cdn.jsdelivr.net data:; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
@@ -228,7 +228,6 @@
     <section id="feedback" class="tab-content">
       <h2>Give feedback on a student</h2>
       <div class="card">
-        <p class="status-message" id="studentFeedbackLockNotice" hidden></p>
         <form id="studentFeedbackForm" novalidate>
           <label for="studentFeedbackCourse">Course</label>
           <select id="studentFeedbackCourse"></select>
@@ -251,7 +250,7 @@
           <label for="studentFeedbackComments">Comments</label>
           <textarea id="studentFeedbackComments" maxlength="2000" required placeholder="Specific, actionable comments help most."></textarea>
 
-          <p class="field-hint">This isn't anonymous — it's recorded against your account, and only admins can read it.</p>
+          <p class="field-hint">This Form is always open and can't be locked.</p>
           <p class="status-message" id="studentFeedbackStatus" role="alert"></p>
           <button type="submit" class="btn btn-block" id="studentFeedbackSubmit">Submit feedback</button>
         </form>
@@ -263,16 +262,16 @@
 
       <div id="adminFeedbackSection" hidden>
         <div class="card">
-          <h3 style="margin-top:0;">Lock the student feedback form <span class="badge badge-admin">Admin</span></h3>
+          <h3 style="margin-top:0;">Lock the course/lecturer feedback form <span class="badge badge-admin">Admin</span></h3>
           <p style="margin:0 0 12px; color:var(--slate); font-size:0.9rem;">
-            Locks "Give feedback on a student" above for every lecturer, portal-wide. The course/lecturer
-            feedback students submit is always open and can't be locked.
+            Locks "Lecturer &amp; course feedback" — the form students submit from the student portal — portal-wide.
+            "Give feedback on a student" above is always open and can't be locked.
           </p>
           <div class="card-row-between">
-            <strong id="studentFeedbackLockState">Currently OPEN</strong>
-            <button type="button" class="btn btn-danger btn-sm" id="studentFeedbackLockToggleBtn">Lock form</button>
+            <strong id="courseFeedbackLockState">Currently OPEN</strong>
+            <button type="button" class="btn btn-danger btn-sm" id="courseFeedbackLockToggleBtn">Lock form</button>
           </div>
-          <p class="status-message" id="studentFeedbackLockStatus" role="alert"></p>
+          <p class="status-message" id="courseFeedbackLockStatus" role="alert"></p>
         </div>
 
         <div class="card-row-between">
@@ -329,6 +328,7 @@
         <h2 style="margin:0;">Announcements</h2>
         <button class="btn btn-sm" id="newAnnouncementBtn">+ New announcement</button>
       </div>
+      <p class="field-hint" id="announcementsStaffHint" hidden>You can only send announcements to your own class. Set it up under My Classes first if you haven't already — you won't be able to send one until you do.</p>
       <div class="card"><ul class="record-list" id="adminAnnouncementsList"></ul></div>
     </section>
 
@@ -489,9 +489,11 @@
 </div>
 
 <!-- STUDENT EDIT MODAL -->
-<!-- Student detail — opened by clicking a student's name on the Students
-     tab. Read-only: course, that course's timetable, and every
-     attendance record on file. See openStudentDetail() in
+<!-- Detail view — opened by clicking a name on the Students or Staff
+     tab. Read-only. For a student: course, that course's timetable, and
+     every attendance record on file (see openStudentDetail()). For
+     staff/admin: the classes on their weekly schedule and the
+     announcements they've posted (see openStaffDetail()), both in
      lecturer-home.js. -->
 <div class="modal-backdrop" id="studentDetailModal" hidden>
   <div class="modal modal-student" role="dialog" aria-modal="true" aria-labelledby="studentDetailTitle">
@@ -588,6 +590,7 @@
       <div id="announcementCourseWrap">
         <label for="announcementCourse">Course</label>
         <select id="announcementCourse" class="course-select-target"></select>
+        <p class="field-hint" id="announcementCourseHint" hidden>You don't have any classes set up yet — add one under My Classes before you can send an announcement.</p>
       </div>
 
       <label for="announcementTitle">Title</label>

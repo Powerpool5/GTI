@@ -58,12 +58,15 @@
       // rather than let someone select it and find an empty table.
       // Same reasoning for resources: a resource is course material,
       // so "Staff" doesn't belong in either the course picker in the
-      // modal or the tab's filter dropdown.
-      // studentCourseSelect and announcementCourse still get every
-      // group, including Staff, since those really do apply to staff
-      // accounts (assigning "Staff" as someone's course, or posting a
-      // course-scoped announcement).
-      const NO_STAFF_GROUP_SELECTS = ['gradesCourseSelect', 'attendanceCourseSelect'];
+      // modal or the tab's filter dropdown. Same for announcementCourse
+      // (see buildAnnouncementCourseOptions, which rebuilds this select
+      // from scratch anyway, so its own "no Staff" filter is what
+      // actually governs the modal — this just keeps the select's
+      // initial, pre-modal-open state consistent) — staff already have
+      // "Staff only" as an audience option instead.
+      // studentCourseSelect still gets every group, including Staff,
+      // since assigning "Staff" as someone's course is a real thing.
+      const NO_STAFF_GROUP_SELECTS = ['gradesCourseSelect', 'attendanceCourseSelect', 'announcementCourse'];
       const groups = NO_STAFF_GROUP_SELECTS.includes(select.id) ? COURSES.filter((g) => g.label !== 'Staff') : COURSES;
       groups.forEach((group) => {
         const optgroup = document.createElement('optgroup');
@@ -334,8 +337,10 @@
       });
 
       // Students' names open a read-only detail view (course, timetable,
-      // full attendance). Staff/admin rows have no course or attendance
-      // to show, so their names stay plain text.
+      // full attendance). Staff/admin names open a similar read-only
+      // view of their own info instead — the classes they teach and the
+      // announcements they've posted. See openStudentDetail() /
+      // openStaffDetail() below.
       if (p.role === 'student') {
         const nameTd = tr.firstElementChild;
         const nameBtn = document.createElement('button');
@@ -344,6 +349,16 @@
         nameBtn.textContent = p.full_name || '—';
         nameBtn.title = 'View course, timetable and attendance';
         nameBtn.addEventListener('click', () => openStudentDetail(p));
+        nameTd.textContent = '';
+        nameTd.appendChild(nameBtn);
+      } else if (p.role === 'staff' || p.role === 'admin') {
+        const nameTd = tr.firstElementChild;
+        const nameBtn = document.createElement('button');
+        nameBtn.type = 'button';
+        nameBtn.className = 'name-link';
+        nameBtn.textContent = p.full_name || '—';
+        nameBtn.title = 'View classes and announcements';
+        nameBtn.addEventListener('click', () => openStaffDetail(p));
         nameTd.textContent = '';
         nameTd.appendChild(nameBtn);
       }
@@ -767,6 +782,86 @@
     ));
   }
 
+  // Staff/admin equivalent of openStudentDetail above — reuses the same
+  // modal and sdEl/sdSection/sdTable helpers, just with different
+  // sections: the classes on this account's weekly schedule (see "My
+  // Classes"), and the announcements they've posted (see the
+  // Announcements tab). Read-only, same as the student view.
+  async function openStaffDetail(p) {
+    const token = ++studentDetailToken;
+    const body = document.getElementById('studentDetailBody');
+    const displayName = p.full_name || p.email || 'Staff';
+    document.getElementById('studentDetailTitle').textContent = displayName;
+    document.getElementById('studentDetailAvatar').textContent = displayName.trim().charAt(0).toUpperCase();
+    document.getElementById('studentDetailSub').textContent = [displayRoleLabel(p), p.email].filter(Boolean).join(' · ');
+    body.innerHTML = '<div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line" style="width:60%;"></div>';
+    openModal('studentDetailModal');
+
+    const [scheduleRes, annRes] = await Promise.all([
+      supabaseClient.from('staff_class_schedule').select('day_of_week, course_code').eq('staff_id', p.id),
+      supabaseClient
+        .from('announcements')
+        .select('id, title, message, audience, course_code, created_at')
+        .eq('created_by', p.id)
+        .order('created_at', { ascending: false })
+        .limit(50),
+    ]);
+    if (token !== studentDetailToken) return; // closed or switched to someone else meanwhile
+
+    body.innerHTML = '';
+    body.scrollTop = 0;
+
+    // ---- Classes ----
+    const classesSection = sdSection('Classes');
+    body.appendChild(classesSection);
+    if (scheduleRes.error) {
+      console.error('Loading staff schedule failed:', scheduleRes.error);
+      classesSection.appendChild(sdEl('p', 'sd-note', 'Could not load this account\u2019s classes.'));
+    } else {
+      const byDay = new Map();
+      (scheduleRes.data || []).forEach((row) => {
+        if (!row.course_code) return;
+        const list = byDay.get(row.day_of_week) || [];
+        list.push(row.course_code);
+        byDay.set(row.day_of_week, list);
+      });
+      if (!byDay.size) {
+        classesSection.appendChild(sdEl('p', 'sd-note', 'No classes set up on this account\u2019s schedule yet.'));
+      } else {
+        classesSection.appendChild(sdTable(
+          ['Day', 'Classes'],
+          WEEKDAYS.filter(({ day }) => byDay.has(day)).map(({ day, label }) => [label, byDay.get(day).map(courseLabel).join(', ')]),
+        ));
+      }
+    }
+
+    // ---- Announcements ----
+    const annSection = sdSection('Announcements');
+    body.appendChild(annSection);
+    if (annRes.error) {
+      console.error('Loading staff announcements failed:', annRes.error);
+      annSection.appendChild(sdEl('p', 'sd-note', 'Could not load announcements.'));
+      return;
+    }
+    const anns = annRes.data || [];
+    if (!anns.length) {
+      annSection.appendChild(sdEl('p', 'sd-note', 'No announcements posted yet.'));
+      return;
+    }
+    annSection.appendChild(sdTable(
+      ['Date', 'Audience', 'Title', 'Message'],
+      anns.map((a) => [
+        fmtDate(a.created_at) || '—',
+        a.audience === 'everyone' ? 'Everyone' :
+          a.audience === 'all_students' ? 'All students' :
+          a.audience === 'staff' ? 'Staff only' : courseLabel(a.course_code),
+        a.title,
+        a.message,
+      ]),
+      true,
+    ));
+  }
+
   document.getElementById('studentEditForm').addEventListener('submit', async (event) => {
     event.preventDefault();
     if (!editingStudentId) return;
@@ -1071,6 +1166,61 @@
   }
   announcementAudience.addEventListener('change', toggleAnnouncementCourseField);
 
+  // Admins can post a course-specific announcement to any course, so
+  // they get the full picker. Lecturers can only post to a single
+  // course/class (see restrictAnnouncementAudienceForStaff below), and
+  // that class has to be one of theirs — otherwise the picker still
+  // listed every course in the institute, which didn't match what the
+  // RLS policy actually allows them to publish. `keepCode`, when
+  // editing an existing announcement, keeps that announcement's course
+  // selectable even if it's since dropped off the lecturer's schedule
+  // (so they don't lose sight of what they're editing) without adding
+  // it to the picker for a brand-new announcement.
+  //
+  // "Staff" is left off the picker for everyone, admins included —
+  // it isn't a real course with students on it, and staff already
+  // have their own "Staff only" audience option above for that.
+  //
+  // Starts on a blank, disabled placeholder rather than defaulting to
+  // whatever course happens to sort first, so picking a course is a
+  // real choice — the submit handler's "Choose a course…" check (below)
+  // only ever fires because this can now actually be left blank.
+  function buildAnnouncementCourseOptions(keepCode) {
+    const select = document.getElementById('announcementCourse');
+    const hint = document.getElementById('announcementCourseHint');
+    select.innerHTML = '';
+
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.disabled = true;
+    placeholder.selected = true;
+    placeholder.textContent = '-- Select a course --';
+    select.appendChild(placeholder);
+
+    const withoutStaff = COURSES.filter((g) => g.label !== 'Staff');
+    const groups = currentUserIsAdmin ? withoutStaff : (() => {
+      const allowed = new Set(myPriorityCourses);
+      if (keepCode) allowed.add(keepCode);
+      return withoutStaff
+        .map((group) => ({ label: group.label, options: group.options.filter((opt) => allowed.has(opt.value)) }))
+        .filter((group) => group.options.length);
+    })();
+
+    groups.forEach((group) => {
+      const optgroup = document.createElement('optgroup');
+      optgroup.label = group.label;
+      group.options.forEach((opt) => {
+        const option = document.createElement('option');
+        option.value = opt.value;
+        option.textContent = opt.label;
+        optgroup.appendChild(option);
+      });
+      select.appendChild(optgroup);
+    });
+
+    if (hint) hint.hidden = currentUserIsAdmin || groups.some((g) => g.options.length);
+  }
+
   // Lecturers (staff, not admin) can only post to a single course/class —
   // everything wider (all students, staff only, everyone) stays
   // admin/root territory. A UX-layer lock like the role select above;
@@ -1090,6 +1240,7 @@
     announcementForm.reset();
     document.getElementById('announcementId').value = existing ? existing.id : '';
     document.getElementById('announcementModalTitle').textContent = existing ? 'Edit announcement' : 'New announcement';
+    buildAnnouncementCourseOptions(existing ? existing.course_code : '');
     if (existing) {
       announcementAudience.value = existing.audience;
       document.getElementById('announcementCourse').value = existing.course_code || '';
@@ -1185,7 +1336,19 @@
     const rows = data || [];
     if (!rows.length) { list.innerHTML = emptyState('No announcements yet.'); return; }
 
-    const posterLabels = await fetchPosterLabels(rows.map((a) => a.created_by));
+    const posterIds = [...new Set(rows.map((a) => a.created_by).filter(Boolean))];
+    // Role label ("Lecturer", "Admin", a job title) comes from the
+    // shared fetchPosterLabels (also used by ticket/feedback lists,
+    // which want role only) — full_name isn't part of that, so it's
+    // fetched separately here and the two are combined below into
+    // "Role Name" (e.g. "Lecturer Jane Doe") for this list specifically.
+    const [posterLabels, posterNames] = await Promise.all([
+      fetchPosterLabels(posterIds),
+      posterIds.length
+        ? supabaseClient.from('profiles').select('id, full_name').in('id', posterIds)
+            .then(({ data }) => new Map((data || []).map((p) => [p.id, p.full_name])))
+        : Promise.resolve(new Map()),
+    ]);
 
     const ACCENT_FOR_AUDIENCE = { everyone: 'accent-danger', all_students: 'accent-brass', staff: 'accent-ink' };
 
@@ -1220,11 +1383,11 @@
       dateSpan.textContent = new Date(a.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
       meta.append(badge, dateSpan);
 
-      const posterLabel = posterLabels.get(a.created_by);
-      if (posterLabel) {
+      const posterText = [posterLabels.get(a.created_by), posterNames.get(a.created_by)].filter(Boolean).join(' ');
+      if (posterText) {
         const posterSpan = document.createElement('span');
         posterSpan.className = 'badge badge-admin';
-        posterSpan.textContent = posterLabel;
+        posterSpan.textContent = posterText;
         meta.appendChild(posterSpan);
       }
 
@@ -3510,44 +3673,27 @@
   }
   document.getElementById('studentFeedbackCourse').addEventListener('change', (e) => loadStudentFeedbackStudents(e.target.value));
 
-  // Whether an admin has locked "Give feedback on a student" — checked
-  // on load and re-checked right before submit, since the lock can be
-  // flipped by an admin in a different tab at any time. The real gate
-  // is the RLS policy on student_feedback (see feedback-schema.sql);
-  // this is only so the lecturer isn't surprised by a rejected insert.
-  let studentFeedbackLocked = false;
+  // Admin-only: whether the *course/lecturer* feedback form (student
+  // portal, home.js) is locked — read here purely to drive the admin
+  // toggle card below, since that lock now lives on the other portal's
+  // form, not this page's "Give feedback on a student" (which is always
+  // open — see the field-hint on that form).
+  let courseFeedbackLocked = false;
 
-  async function refreshFeedbackLockState() {
+  async function refreshCourseFeedbackLockState() {
     const { data, error } = await supabaseClient
       .from('feedback_settings')
       .select('lecturer_feedback_locked')
       .eq('id', 1)
       .maybeSingle();
     if (error) { console.error('Loading feedback lock state failed:', error); return; }
-    studentFeedbackLocked = !!(data && data.lecturer_feedback_locked);
-
-    const notice = document.getElementById('studentFeedbackLockNotice');
-    const submitBtn = document.getElementById('studentFeedbackSubmit');
-    if (studentFeedbackLocked) {
-      setStatus(notice, 'This form is currently locked by an administrator. You can\u2019t submit student feedback right now.', 'error');
-      submitBtn.disabled = true;
-    } else {
-      setStatus(notice, '', null);
-      notice.hidden = true;
-      submitBtn.disabled = false;
-    }
+    courseFeedbackLocked = !!(data && data.lecturer_feedback_locked);
   }
 
   document.getElementById('studentFeedbackForm').addEventListener('submit', async (event) => {
     event.preventDefault();
     const status = document.getElementById('studentFeedbackStatus');
     const submitBtn = document.getElementById('studentFeedbackSubmit');
-
-    await refreshFeedbackLockState();
-    if (studentFeedbackLocked) {
-      setStatus(status, 'This form is currently locked by an administrator.', 'error');
-      return;
-    }
 
     const courseCode = document.getElementById('studentFeedbackCourse').value;
     const studentId = document.getElementById('studentFeedbackStudent').value;
@@ -3574,7 +3720,7 @@
 
     if (error) {
       console.error('Submitting student feedback failed:', error);
-      setStatus(status, studentFeedbackLocked ? 'This form is currently locked by an administrator.' : 'Could not submit feedback. Please try again.', 'error');
+      setStatus(status, 'Could not submit feedback. Please try again.', 'error');
       return;
     }
 
@@ -3694,17 +3840,17 @@
   }
 
   async function loadFeedbackLockCard() {
-    await refreshFeedbackLockState();
-    document.getElementById('studentFeedbackLockState').textContent =
-      studentFeedbackLocked ? 'Currently LOCKED' : 'Currently OPEN';
-    document.getElementById('studentFeedbackLockToggleBtn').textContent =
-      studentFeedbackLocked ? 'Unlock form' : 'Lock form';
+    await refreshCourseFeedbackLockState();
+    document.getElementById('courseFeedbackLockState').textContent =
+      courseFeedbackLocked ? 'Currently LOCKED' : 'Currently OPEN';
+    document.getElementById('courseFeedbackLockToggleBtn').textContent =
+      courseFeedbackLocked ? 'Unlock form' : 'Lock form';
   }
 
-  document.getElementById('studentFeedbackLockToggleBtn').addEventListener('click', async () => {
-    const status = document.getElementById('studentFeedbackLockStatus');
-    const btn = document.getElementById('studentFeedbackLockToggleBtn');
-    const nextValue = !studentFeedbackLocked;
+  document.getElementById('courseFeedbackLockToggleBtn').addEventListener('click', async () => {
+    const status = document.getElementById('courseFeedbackLockStatus');
+    const btn = document.getElementById('courseFeedbackLockToggleBtn');
+    const nextValue = !courseFeedbackLocked;
 
     btn.disabled = true;
     setStatus(status, '', null);
@@ -3722,11 +3868,11 @@
       return;
     }
 
-    studentFeedbackLocked = nextValue;
-    document.getElementById('studentFeedbackLockState').textContent = nextValue ? 'Currently LOCKED' : 'Currently OPEN';
+    courseFeedbackLocked = nextValue;
+    document.getElementById('courseFeedbackLockState').textContent = nextValue ? 'Currently LOCKED' : 'Currently OPEN';
     btn.textContent = nextValue ? 'Unlock form' : 'Lock form';
     setStatus(status, nextValue ? 'Form locked.' : 'Form unlocked.', 'success');
-    toast(nextValue ? 'Student feedback form locked.' : 'Student feedback form unlocked.', 'success');
+    toast(nextValue ? 'Course/lecturer feedback form locked.' : 'Course/lecturer feedback form unlocked.', 'success');
   });
 
   /* ---------------- Boot ---------------- */
@@ -3779,6 +3925,14 @@
       });
     }
 
+    // Lecturers only ever see the Announcements tab's "course" audience
+    // (see restrictAnnouncementAudienceForStaff), and that course has to
+    // be one of their own (see buildAnnouncementCourseOptions) — so
+    // remind them up front, on the tab itself, rather than only after
+    // they've opened the modal and hit the same wall.
+    const announcementsStaffHint = document.getElementById('announcementsStaffHint');
+    if (announcementsStaffHint) announcementsStaffHint.hidden = currentUserIsAdmin;
+
     populateCourseSelects();
     populateDepartmentSelects();
     populateStudentCourseFilter();
@@ -3814,7 +3968,6 @@
       loadMySchedule(),
       loadAttendance(document.getElementById('attendanceCourseSelect').value, document.getElementById('attendanceDate').value, ''),
       loadAttendanceOverview(document.getElementById('attendanceCourseSelect').value),
-      refreshFeedbackLockState(),
       loadMyCourseFeedback(),
       loadOverview(),          // Overview tab is visible to all staff
       loadAttendanceArchive(), // archived attendance is read-only for all staff

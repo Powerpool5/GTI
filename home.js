@@ -161,7 +161,7 @@
     const list = document.getElementById('announcementsList');
     let query = supabaseClient
       .from('announcements')
-      .select('id, title, message, audience, course_code, created_at')
+      .select('id, title, message, audience, course_code, created_at, created_by')
       .order('created_at', { ascending: false })
       .limit(15);
 
@@ -177,6 +177,21 @@
     if (error) { console.error('Loading announcements failed:', error); list.innerHTML = emptyState('Announcements are not available right now.'); return; }
     const rows = data || [];
     if (!rows.length) { list.innerHTML = emptyState('No announcements yet.'); return; }
+
+    // Students should know who an announcement is from — role
+    // ("Lecturer", "Admin", a job title) via the shared
+    // fetchPosterLabels (app.js), name via a direct profiles lookup
+    // (that helper deliberately doesn't include full_name — see its
+    // comment), combined below into "Role Name" (e.g. "Lecturer Jane
+    // Doe"), same as the staff dashboard's own announcement list.
+    const posterIds = [...new Set(rows.map((a) => a.created_by).filter(Boolean))];
+    const [posterLabels, posterNames] = await Promise.all([
+      fetchPosterLabels(posterIds),
+      posterIds.length
+        ? supabaseClient.from('profiles').select('id, full_name').in('id', posterIds)
+            .then(({ data }) => new Map((data || []).map((p) => [p.id, p.full_name])))
+        : Promise.resolve(new Map()),
+    ]);
 
     rows.forEach((a) => {
       const item = document.createElement('li');
@@ -208,6 +223,14 @@
       badge.className = 'badge ' + (a.audience === 'everyone' ? 'badge-everyone' : a.audience === 'all_students' ? 'badge-all' : 'badge-course');
       badge.textContent = a.audience === 'everyone' ? 'Everyone' : a.audience === 'all_students' ? 'All students' : 'Your course';
       meta.append(dateSpan, badge);
+
+      const posterText = [posterLabels.get(a.created_by), posterNames.get(a.created_by)].filter(Boolean).join(' ');
+      if (posterText) {
+        const posterSpan = document.createElement('span');
+        posterSpan.className = 'badge badge-admin';
+        posterSpan.textContent = posterText;
+        meta.appendChild(posterSpan);
+      }
 
       headText.append(title, meta);
       headMain.append(recordIcon('bell'), headText);
@@ -572,10 +595,45 @@
       });
   }
 
+  // Whether an admin has locked "Lecturer & course feedback" — checked
+  // on load and re-checked right before submit, since the lock can be
+  // flipped by an admin (from the Feedback tab on the staff portal) in
+  // a different tab at any time. The real gate is the RLS policy on
+  // course_feedback (see feedback-schema.sql); this is only so the
+  // student isn't surprised by a rejected insert.
+  let courseFeedbackLocked = false;
+
+  async function refreshCourseFeedbackLockState() {
+    const { data, error } = await supabaseClient
+      .from('feedback_settings')
+      .select('lecturer_feedback_locked')
+      .eq('id', 1)
+      .maybeSingle();
+    if (error) { console.error('Loading feedback lock state failed:', error); return; }
+    courseFeedbackLocked = !!(data && data.lecturer_feedback_locked);
+
+    const notice = document.getElementById('courseFeedbackLockNotice');
+    const submitBtn = document.getElementById('feedbackSubmit');
+    if (courseFeedbackLocked) {
+      setStatus(notice, 'This form is currently locked by an administrator. You can\u2019t submit feedback right now.', 'error');
+      submitBtn.disabled = true;
+    } else {
+      setStatus(notice, '', null);
+      notice.hidden = true;
+      submitBtn.disabled = false;
+    }
+  }
+
   document.getElementById('courseFeedbackForm').addEventListener('submit', async (event) => {
     event.preventDefault();
     const status = document.getElementById('feedbackStatus');
     const submitBtn = document.getElementById('feedbackSubmit');
+
+    await refreshCourseFeedbackLockState();
+    if (courseFeedbackLocked) {
+      setStatus(status, 'This form is currently locked by an administrator.', 'error');
+      return;
+    }
 
     const lecturerId = document.getElementById('feedbackLecturer').value;
     const courseCode = document.getElementById('feedbackCourse').value;
@@ -602,7 +660,7 @@
 
     if (error) {
       console.error('Submitting course feedback failed:', error);
-      setStatus(status, 'Could not submit feedback. Please try again.', 'error');
+      setStatus(status, courseFeedbackLocked ? 'This form is currently locked by an administrator.' : 'Could not submit feedback. Please try again.', 'error');
       return;
     }
 
@@ -657,4 +715,5 @@
 
   loadAccount();
   loadFeedbackLecturers();
+  refreshCourseFeedbackLockState();
 })();

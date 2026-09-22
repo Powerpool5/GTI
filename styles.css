@@ -114,6 +114,14 @@ button, input, select { font-family: inherit; font-size: 1rem; }
   background: var(--ink-navy);
   color: #fff;
   padding: 14px 20px;
+  /* On a notched/Dynamic-Island phone, `viewport-fit=cover` (index.html
+     etc.) lets the page draw under the status bar — without this,
+     the header's own content (brand mark, theme toggle) would sit
+     right under the notch instead of below it. env() is 0 on any
+     browser/device that doesn't need it, so this is a no-op there —
+     same reasoning as the bottom nav's safe-area-inset-bottom padding
+     below (.app-nav, max-width: 760px). */
+  padding-top: calc(14px + env(safe-area-inset-top, 0px));
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1488,6 +1496,7 @@ table.admin-table #gradesTbody tr:not(.grades-student-row) td:first-child {
     flex-wrap: wrap;
     row-gap: 8px;
     padding: 10px 14px;
+    padding-top: calc(10px + env(safe-area-inset-top, 0px));
   }
   .app-header h1 { display: none; }
   /* Was width:100% + centered, which forced the brand onto its own
@@ -1612,6 +1621,15 @@ table.admin-table #gradesTbody tr:not(.grades-student-row) td:first-child {
   font-size: 0.85rem;
   letter-spacing: 0.02em;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  /* Appearing/disappearing animates max-height + opacity (app.js measures
+     and sets an exact px max-height so the transition has a real distance
+     to cover, not the "snaps open the instant it clears 0" you get from
+     animating max-height against an oversized guess). Switching between
+     reasons (lockdown <-> maintenance <-> connectivity-down) never touches
+     max-height at all — app.js crossfades the text/color of an
+     already-open banner in place, and background-color/box-shadow below
+     are what make that recolor read as a fade instead of a snap. */
+  transition: max-height 380ms ease, opacity 260ms ease, background-color 320ms ease, box-shadow 320ms ease;
 }
 .db-down-banner[hidden] {
   display: none;
@@ -1655,18 +1673,45 @@ table.admin-table #gradesTbody tr:not(.grades-student-row) td:first-child {
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
 }
 .db-down-banner .db-down-track {
+  /* Back-to-back copies of the same text, no leading padding — app.js
+     decides HOW MANY copies (bannerRepeatCount, enough to keep the
+     banner full for a short message on a wide screen) and sets
+     --marquee-shift to exactly one copy's rendered width. Translating
+     by that one-copy distance means the instant the loop resets to 0%,
+     the next copy is already sitting exactly where the last one started
+     — no blank stretch, no jump. A fixed percentage here (-50%, -100%)
+     can't do that on its own: it only tiles seamlessly for the one
+     message-length/banner-width ratio it happened to be tuned for. */
   display: inline-block;
-  padding-left: 100%;
   animation: db-down-scroll 16s linear infinite;
+  transition: opacity 220ms ease; /* the crossfade app.js uses when swapping what the banner says */
+}
+/* Applied briefly by app.js while the old text is fading out, just
+   before the new message/variant is swapped in underneath it. */
+.db-down-banner .db-down-track.db-down-fade {
+  opacity: 0;
+}
+/* The divider between repeats — its own element (app.js builds the
+   strip from parts, not one text string) so it can look like a
+   deliberate divider instead of a stray character sharing the
+   message's own size/weight/color. */
+.db-down-banner .db-down-dot {
+  display: inline-block;
+  opacity: 0.55;
+  font-size: 0.7em;
+  transform: translateY(-0.05em);
 }
 @keyframes db-down-scroll {
   0%   { transform: translateX(0); }
-  100% { transform: translateX(-100%); }
+  100% { transform: translateX(calc(-1 * var(--marquee-shift, 50%))); }
 }
 @media (prefers-reduced-motion: reduce) {
+  .db-down-banner {
+    transition: none;
+  }
   .db-down-banner .db-down-track {
     animation: none;
-    padding-left: 0;
+    transition: none;
   }
   .db-down-banner.down {
     animation: none;
@@ -1968,3 +2013,7 @@ table.sd-table tr:last-child td { border-bottom: none; }
 .lockdown-message { margin-top: 14px; }
 .error-links[hidden] { display: none; }
 @media (max-width: 760px) { .lockdown-card { padding-top: 22px; } }
+
+.error-retry-status { margin: 4px 0 10px; font-family: var(--font-mono); font-size: 0.75rem; color: var(--slate); min-height: 1.1em; }
+.error-retry-status[hidden] { display: none; }
+#errorCopyBtn { display: block; margin: 2px 0 0; }

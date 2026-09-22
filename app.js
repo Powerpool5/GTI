@@ -871,6 +871,13 @@ let maintenanceStyle = "warning"; // 'info' | 'warning' | 'danger' — set by ro
 let lockdownActive = false;
 let lockdownMessage = "";
 let lockdownStyle = "warning"; // 'info' | 'warning' | 'danger' — set by root from admin.html
+let bannerShown = false;  // logical open/closed state — distinct from the [hidden] attribute,
+                           // which is only set once the closing transition has actually finished
+let bannerKey = null;     // "variant|message" of whatever's currently rendered, so a watchdog
+                           // firing again with the same reason (e.g. the connectivity retry loop)
+                           // doesn't restart the scroll animation or crossfade for no reason
+let bannerHideTimer = null;
+let bannerRepeatCount = 2; // how many copies of the message are currently in the track — see applyBannerContent
 
 const DEFAULT_MAINTENANCE_MESSAGE =
   "The database is will be offline for a scheduled maintenance - please save your work. Some pages may be briefly unavailable.";
@@ -921,6 +928,8 @@ function ensureStatusBanner() {
   statusBanner = document.createElement("div");
   statusBanner.className = "db-down-banner";
   statusBanner.hidden = true;
+  statusBanner.style.maxHeight = "0px"; // JS-driven (not the CSS default) — see renderStatusBanner/hideStatusBanner
+  statusBanner.style.opacity = "0";
   statusBanner.setAttribute("role", "alert");
   statusBannerTrack = document.createElement("div");
   statusBannerTrack.className = "db-down-track";
@@ -932,36 +941,141 @@ function ensureStatusBanner() {
 // How fast the banner text scrolls, in pixels per second. Slower =
 // smaller number. Duration is derived from this (not a fixed seconds
 // value) so a longer message doesn't go rushing past any faster than
-// a short one — see renderStatusBanner below.
+// a short one — see startScrollAnimation below.
 const BANNER_SCROLL_PX_PER_SECOND = 116;
 const BANNER_SCROLL_MIN_SECONDS = 5;
+// One reason (lockdown, maintenance, connectivity-down) handing off to
+// another shouldn't read as the old banner vanishing and a new one
+// popping in — it should read as one banner just changing what it's
+// saying. So an already-open banner crossfades in place (this timing);
+// only a genuine appear/disappear animates height (BANNER_OPEN_CLOSE_MS,
+// kept equal to the max-height transition in styles.css).
+const BANNER_CROSSFADE_MS = 220;
+const BANNER_OPEN_CLOSE_MS = 380;
 
-function renderStatusBanner(message, variant) {
-  const banner = ensureStatusBanner();
-  // A visible separator (not just spaces) between the two repeats —
-  // plain spaces collapse to one when rendered, which is what made a
-  // single message look like it had been sent twice with no gap.
-  const separator = "     •     ";
-  const loop = message + separator;
-  statusBannerTrack.textContent = loop + loop; // repeated so the scroll loop has no gap
-  banner.className = "db-down-banner"; // reset any previous variant class
-  if (variant) banner.classList.add(variant);
-  banner.hidden = false;
+function startScrollAnimation() {
+  // Restart cleanly rather than let new (probably different-width) text
+  // inherit whatever point the previous loop happened to be mid-way
+  // through — that's what used to make a swap look like a stutter.
+  statusBannerTrack.style.animation = "none";
+  void statusBannerTrack.offsetWidth; // force reflow so "none" actually takes before re-enabling
+  statusBannerTrack.style.animation = "";
   window.requestAnimationFrame(() => {
     updateHeaderHeightVar();
-    // Track width includes the doubled text, so translateX(-100%) covers
-    // exactly this many pixels per loop — pace the duration to it instead
-    // of using one flat seconds value that reads fine for a short message
-    // and flies by for a long one.
-    const width = statusBannerTrack.scrollWidth;
-    const seconds = Math.max(width / BANNER_SCROLL_PX_PER_SECOND, BANNER_SCROLL_MIN_SECONDS);
+    // scrollWidth is every copy together; the CSS translates by exactly
+    // one copy's width (--marquee-shift) per loop, however many copies
+    // that ends up being — see applyBannerContent for why the count
+    // varies. Pace the duration to that one-copy distance, not the
+    // full multi-copy width, or the loop reads far slower than it should.
+    const shift = statusBannerTrack.scrollWidth / bannerRepeatCount;
+    statusBannerTrack.style.setProperty("--marquee-shift", shift + "px");
+    const seconds = Math.max(shift / BANNER_SCROLL_PX_PER_SECOND, BANNER_SCROLL_MIN_SECONDS);
     statusBannerTrack.style.animationDuration = seconds + "s";
   });
 }
 
+function applyBannerContent(message, variant) {
+  // A visible separator (not just spaces) between repeats — plain spaces
+  // collapse to one when rendered, which is what made two repeats look
+  // like they'd been sent with no gap between them. It's a plain "·"
+  // character in the measured/accessible text, but rendered as its own
+  // <span> below so it can be styled smaller and dimmer than the
+  // message — sharing the message's own size/weight/color is what made
+  // it read as a stray typo instead of a deliberate divider.
+  const separatorChar = "·";
+  const gap = "    ";
+  const item = message + gap + separatorChar + gap;
+
+  // Two copies only tile seamlessly for as long as they're together at
+  // least as wide as the banner — for a short message on a wide banner,
+  // the two copies scroll fully past *before* the loop restarts, and
+  // that empty stretch (then a hard reset once it wraps) is exactly what
+  // "randomly spawns in a next one" was describing. So: render one copy,
+  // measure it, and repeat however many times are actually needed to
+  // keep the banner full for the whole scroll — never just a fixed two.
+  statusBannerTrack.textContent = item; // measure a single (plain-text) copy first
+  const itemWidth = statusBannerTrack.scrollWidth || 1;
+  const bannerWidth = statusBanner.clientWidth || window.innerWidth;
+  // +2 copies of buffer beyond what the banner's width alone requires,
+  // so there's always at least a full extra copy still queued up behind
+  // whatever's currently scrolling past, however narrow the message.
+  bannerRepeatCount = Math.max(2, Math.ceil(bannerWidth / itemWidth) + 2);
+
+  // Now build the real, repeated content as elements (not one big text
+  // string) so each dot can get its own styling. The dots are marked
+  // aria-hidden and the banner carries the message once via aria-label
+  // instead — a screen reader reading this element (role="alert") has
+  // no use for "message · message · message …" repeated a dozen times.
+  statusBannerTrack.textContent = "";
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < bannerRepeatCount; i++) {
+    frag.appendChild(document.createTextNode(message + gap));
+    const dot = document.createElement("span");
+    dot.className = "db-down-dot";
+    dot.textContent = separatorChar;
+    frag.appendChild(dot);
+    frag.appendChild(document.createTextNode(gap));
+  }
+  statusBannerTrack.appendChild(frag);
+  statusBannerTrack.setAttribute("aria-hidden", "true");
+  statusBanner.setAttribute("aria-label", message);
+
+  statusBanner.className = "db-down-banner"; // reset any previous variant class
+  if (variant) statusBanner.classList.add(variant);
+  startScrollAnimation();
+}
+
+function renderStatusBanner(message, variant) {
+  const banner = ensureStatusBanner();
+  const key = variant + "|" + message;
+  if (key === bannerKey && bannerShown) return; // already showing exactly this — leave it alone
+
+  if (bannerHideTimer) { window.clearTimeout(bannerHideTimer); bannerHideTimer = null; }
+  bannerKey = key;
+
+  if (!bannerShown) {
+    // Genuine appear: fill in the new content first, while still
+    // collapsed (so nothing is visible yet), then animate open.
+    banner.hidden = false;
+    applyBannerContent(message, variant);
+    bannerShown = true;
+    void banner.offsetHeight; // commit the collapsed state before animating away from it
+    window.requestAnimationFrame(() => {
+      banner.style.maxHeight = banner.scrollHeight + "px";
+      banner.style.opacity = "1";
+    });
+    return;
+  }
+
+  // Already open — crossfade to the new message/color in place instead
+  // of closing and reopening. The banner is always a single line, so
+  // height never needs to move for this; it's just a text/color dip.
+  statusBannerTrack.classList.add("db-down-fade");
+  window.setTimeout(() => {
+    applyBannerContent(message, variant);
+    statusBannerTrack.classList.remove("db-down-fade");
+  }, BANNER_CROSSFADE_MS);
+}
+
 function hideStatusBanner() {
-  if (statusBanner) statusBanner.hidden = true;
+  if (!statusBanner || !bannerShown) return;
+  bannerShown = false;
+  bannerKey = null;
+  // Pin the banner's current pixel height before collapsing it, so the
+  // transition has a real distance to cover instead of jumping straight
+  // from "auto" to 0.
+  statusBanner.style.maxHeight = statusBanner.scrollHeight + "px";
+  void statusBanner.offsetHeight;
+  statusBanner.style.maxHeight = "0px";
+  statusBanner.style.opacity = "0";
   window.requestAnimationFrame(updateHeaderHeightVar);
+  if (bannerHideTimer) window.clearTimeout(bannerHideTimer);
+  bannerHideTimer = window.setTimeout(() => {
+    // Only actually pull it out of the layout once the collapse has
+    // visibly finished — matches how it came in.
+    if (!bannerShown) statusBanner.hidden = true;
+    bannerHideTimer = null;
+  }, BANNER_OPEN_CLOSE_MS);
 }
 
 function updateStatusBanner() {

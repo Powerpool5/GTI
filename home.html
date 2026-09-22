@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="robots" content="noindex">
 <meta http-equiv="Content-Security-Policy"
   content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'sha256-vvt4KWwuNr51XfE5m+hzeNEGhiOfZzG97ccfqGsPwvE='; connect-src 'self' https://iqcwrberwzumxxjktgux.supabase.co wss://iqcwrberwzumxxjktgux.supabase.co; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data: https://iqcwrberwzumxxjktgux.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
@@ -227,8 +227,9 @@
       <h2>Lecturer &amp; course feedback</h2>
       <div class="card">
         <p class="status-message visible info" role="note">
-          This form is always open, and your submission is anonymous — we don't record who submitted it.
+          Your submission is anonymous — we don't record who submitted it.
         </p>
+        <p class="status-message" id="courseFeedbackLockNotice" hidden></p>
         <form id="courseFeedbackForm" novalidate>
           <label for="feedbackLecturer">Lecturer</label>
           <select id="feedbackLecturer" required>

@@ -54,25 +54,58 @@
     }
   }
 
-  // If requireSession()/requireAdmin() just bounced someone here because
-  // lockdown mode kicked in while they were signed in, say why.
-  try {
-    const lockoutMsg = sessionStorage.getItem('gti-lockout-message');
-    if (lockoutMsg) {
-      sessionStorage.removeItem('gti-lockout-message');
-      setStatus(document.getElementById('signInStatus'), lockoutMsg, 'error');
-    }
-  } catch {}
-
   tabSignIn.addEventListener('click', () => showForm('signin'));
   tabSignUp.addEventListener('click', () => showForm('signup'));
   document.getElementById('forgotPasswordBtn').addEventListener('click', () => showForm('reset'));
   document.getElementById('backToSignIn').addEventListener('click', () => showForm('signin'));
 
-  // Already signed in? Skip straight to the portal.
-  supabaseClient.auth.getSession().then(({ data: { session } }) => {
+  // Lockdown mode blocks students outright ("only admins can use the
+  // portal"), so this checks *before* anyone can type a password or
+  // submit, not only after a login attempt — a locked-out student is
+  // redirected on page load. Sign-up is disabled the same way (a new
+  // account is still portal access); the password-reset form is left
+  // alone, since resetting a password doesn't get anyone into the portal.
+  // (Staff aren't gated this way: lecturer-login.js only finds out after
+  // verifying who's signing in, since an admin's account must still get
+  // through.)
+  const signInSubmit = document.getElementById('signInSubmit');
+  const signUpSubmit = document.getElementById('signUpSubmit');
+  signInSubmit.disabled = true;
+  signUpSubmit.disabled = true;
+
+  (async () => {
+    let status;
+    try { status = await getSystemStatus(); } catch { status = null; }
+    if (status && status.lockdown_enabled === true) {
+      try {
+        sessionStorage.setItem('gti-lockdown', JSON.stringify({
+          message: status.lockdown_message || DEFAULT_LOCKDOWN_MESSAGE,
+          style: status.lockdown_style || 'warning',
+        }));
+      } catch {}
+      window.location.href = 'lockdown.html';
+      return;
+    }
+
+    signInSubmit.disabled = false;
+    signUpSubmit.disabled = false;
+
+    // If requireSession()/requireAdmin() just bounced someone here because
+    // lockdown mode kicked in while they were signed in, say why. (Checked
+    // only once lockdown itself is confirmed off, so this message can't
+    // flash up right before the redirect above fires instead.)
+    try {
+      const lockoutMsg = sessionStorage.getItem('gti-lockout-message');
+      if (lockoutMsg) {
+        sessionStorage.removeItem('gti-lockout-message');
+        setStatus(document.getElementById('signInStatus'), lockoutMsg, 'error');
+      }
+    } catch {}
+
+    // Already signed in? Skip straight to the portal.
+    const { data: { session } } = await supabaseClient.auth.getSession();
     if (session) window.location.href = 'home.html';
-  });
+  })();
 
   const signInThrottle = new AttemptThrottle('signin', { maxFreeAttempts: 3, baseDelayMs: 2000, maxDelayMs: 60000 });
   function secondsLeft(ms) { return Math.ceil(ms / 1000); }
@@ -81,7 +114,7 @@
   signInForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     const status = document.getElementById('signInStatus');
-    const submitBtn = document.getElementById('signInSubmit');
+    const submitBtn = signInSubmit;
 
     if (document.getElementById('companyWebsite').value) return; // honeypot
 
@@ -126,7 +159,7 @@
   signUpForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     const status = document.getElementById('signUpStatus');
-    const submitBtn = document.getElementById('signUpSubmit');
+    const submitBtn = signUpSubmit;
 
     if (document.getElementById('companyWebsite2').value) return; // honeypot
 
