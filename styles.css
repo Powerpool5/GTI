@@ -632,6 +632,81 @@ button.btn-link { background: none; border: none; color: var(--blueprint); paddi
 [data-theme="dark"] .status-message.info { color: var(--ink); }
 
 /* =========================
+   Locked feedback form (home.html — Feedback tab)
+   Shown when an admin locks "Lecturer & course feedback" from the
+   staff portal. Same warm, non-alarming tone as the lockdown page's
+   brass accent, since this is an expected admin action, not an error.
+   ========================= */
+.form-locked-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  margin: -6px 0 16px;
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--brass);
+  background: var(--blueprint-soft);
+  color: var(--ink-navy);
+  font-size: 0.9rem;
+  line-height: 1.4;
+  box-shadow: var(--shadow-sm);
+  animation: formLockedIn 0.2s var(--ease);
+}
+[data-theme="dark"] .form-locked-banner { color: var(--ink); }
+.form-locked-banner[hidden] { display: none; }
+@keyframes formLockedIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .form-locked-banner { animation: none; } }
+
+/* Round icon badge (same idea as the lockdown page's lock badge, just
+   inline-sized) instead of a bare glyph — gives the banner a bit more
+   visual weight so it reads as a deliberate state, not an afterthought. */
+.form-locked-icon-badge {
+  flex-shrink: 0;
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(184, 134, 59, 0.16);
+  color: var(--brass-dark);
+}
+[data-theme="dark"] .form-locked-icon-badge { background: rgba(184, 134, 59, 0.22); color: var(--brass); }
+.form-locked-icon { width: 15px; height: 15px; }
+
+/* Small "Locked" pill next to the Feedback tab's own heading — visible
+   the moment the tab is opened, before a student scrolls down to the
+   banner sitting above the (now-disabled) form fields. */
+h2 .locked-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: middle;
+  margin-left: 10px;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--brass-dark);
+  background: rgba(184, 134, 59, 0.14);
+  border: 1px solid var(--brass);
+  border-radius: 999px;
+  padding: 3px 9px 3px 7px;
+}
+[data-theme="dark"] h2 .locked-pill { color: var(--brass); background: rgba(184, 134, 59, 0.18); }
+h2 .locked-pill[hidden] { display: none; }
+h2 .locked-pill svg { width: 10px; height: 10px; flex-shrink: 0; }
+
+/* Reset the browser's default fieldset chrome (border/padding/min-width)
+   so it's invisible until :disabled — at which point the native
+   disabled-fieldset behaviour (every field + the submit button inside
+   stop accepting input, in one go) kicks in and this just dims it to
+   show that's what happened. */
+.feedback-fieldset { border: none; margin: 0; padding: 0; min-width: 0; }
+.feedback-fieldset:disabled { opacity: 0.55; }
+.feedback-fieldset:disabled select,
+.feedback-fieldset:disabled textarea,
+.feedback-fieldset:disabled button { cursor: not-allowed; }
+
+/* =========================
    Login / auth pages
    ========================= */
 
@@ -1400,6 +1475,7 @@ table.admin-table #gradesTbody tr:not(.grades-student-row) td:first-child {
      up there since it's positioned independently of both. */
   .app-nav {
     position: fixed;
+    top: auto;
     left: 0; right: 0; bottom: 0;
     z-index: 50;
     width: 100%;
@@ -1534,6 +1610,23 @@ table.admin-table #gradesTbody tr:not(.grades-student-row) td:first-child {
   table.admin-table th, table.admin-table td { padding: 8px 8px; }
   table.admin-table .btn-sm { padding: 7px 10px; font-size: 0.78rem; }
   table.admin-table input[type="number"] { width: 58px; }
+
+  /* Attendance table: Present/Absent/Late used to wrap onto a second
+     line per student as soon as the Status column got squeezed by
+     Name/Student ID next to it — force the three buttons to share one
+     row and split whatever width is left evenly, instead of wrapping.
+     Student ID is capped since it never needs more than a few
+     characters, freeing the rest of the row for Status. */
+  #attendanceTable th:nth-child(2), #attendanceTable td:nth-child(2) { max-width: 60px; }
+  #attendanceTable .attendance-status-group { flex-wrap: nowrap; gap: 4px; }
+  #attendanceTable .attendance-status-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 7px 2px;
+    font-size: 0.7rem;
+    text-align: center;
+    white-space: nowrap;
+  }
 
   /* Search/filter bars above tables: full-width stacked controls read
      far better on a narrow screen than several shrunken side-by-side

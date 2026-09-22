@@ -224,13 +224,34 @@
     </section>
 
     <section id="feedback" class="tab-content">
-      <h2>Lecturer &amp; course feedback</h2>
+      <h2>
+        Lecturer &amp; course feedback
+        <span class="locked-pill" id="feedbackLockedPill" hidden>
+          <svg viewBox="0 0 18 18" fill="none" aria-hidden="true"><rect x="4" y="8" width="10" height="7" rx="1.5" stroke="currentColor" stroke-width="1.6"/><path d="M6 8V5.5C6 3.6 7.6 2 9.5 2C11.4 2 13 3.6 13 5.5V8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          Locked
+        </span>
+      </h2>
       <div class="card">
         <p class="status-message visible info" role="note">
-          Your submission is anonymous — we don't record who submitted it.
+          Your submission is anonymous.
         </p>
-        <p class="status-message" id="courseFeedbackLockNotice" hidden></p>
+
+        <!-- Shown instead of (well, alongside — the fields underneath are
+             disabled via the fieldset) the form when an admin has locked
+             "Lecturer & course feedback" from the staff portal. See
+             refreshCourseFeedbackLockState() in home.js. -->
+        <div class="form-locked-banner" id="courseFeedbackLockNotice" role="alert" hidden>
+          <span class="form-locked-icon-badge">
+            <svg class="form-locked-icon" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+              <rect x="4" y="8" width="10" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/>
+              <path d="M6 8V5.5C6 3.6 7.6 2 9.5 2C11.4 2 13 3.6 13 5.5V8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <span>This form is currently locked by an administrator. You can’t submit feedback right now, check back later.</span>
+        </div>
+
         <form id="courseFeedbackForm" novalidate>
+          <fieldset id="feedbackFieldset" class="feedback-fieldset">
           <label for="feedbackLecturer">Lecturer</label>
           <select id="feedbackLecturer" required>
             <option value="">-- Select a lecturer --</option>
@@ -254,6 +275,7 @@
 
           <p class="status-message" id="feedbackStatus" role="alert"></p>
           <button type="submit" class="btn btn-block" id="feedbackSubmit">Submit feedback</button>
+          </fieldset>
         </form>
       </div>
     </section>

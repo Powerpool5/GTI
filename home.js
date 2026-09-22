@@ -612,16 +612,16 @@
     if (error) { console.error('Loading feedback lock state failed:', error); return; }
     courseFeedbackLocked = !!(data && data.lecturer_feedback_locked);
 
+    // The banner (markup in home.html) carries its own fixed message, so
+    // there's nothing to set here beyond show/hide — and disabling the
+    // fieldset disables every field and the submit button inside it in
+    // one move, natively, rather than needing to walk each control.
     const notice = document.getElementById('courseFeedbackLockNotice');
-    const submitBtn = document.getElementById('feedbackSubmit');
-    if (courseFeedbackLocked) {
-      setStatus(notice, 'This form is currently locked by an administrator. You can\u2019t submit feedback right now.', 'error');
-      submitBtn.disabled = true;
-    } else {
-      setStatus(notice, '', null);
-      notice.hidden = true;
-      submitBtn.disabled = false;
-    }
+    const fieldset = document.getElementById('feedbackFieldset');
+    const pill = document.getElementById('feedbackLockedPill');
+    notice.hidden = !courseFeedbackLocked;
+    fieldset.disabled = courseFeedbackLocked;
+    if (pill) pill.hidden = !courseFeedbackLocked;
   }
 
   document.getElementById('courseFeedbackForm').addEventListener('submit', async (event) => {

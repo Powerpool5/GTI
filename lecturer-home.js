@@ -529,14 +529,20 @@
     jobTitleWrap.hidden = roleSelect.value !== 'admin';
 
     const reactivateWrap = document.getElementById('studentReactivateWrap');
+    const deactivateWrap = document.getElementById('studentDeactivateWrap');
     if (p.deactivated_at) {
       const remaining = 30 - Math.floor((Date.now() - new Date(p.deactivated_at).getTime()) / (1000 * 60 * 60 * 24));
       document.getElementById('studentDeactivatedNote').textContent =
         `Deactivated on ${fmtDate(p.deactivated_at)}. ` +
         (remaining > 0 ? `Will be permanently deleted in ${remaining} day(s) unless reactivated.` : 'Past the reactivation window — will be deleted soon.');
       reactivateWrap.hidden = false;
+      deactivateWrap.hidden = true;
     } else {
       reactivateWrap.hidden = true;
+      // Root and admins only, and never against your own account — no
+      // reason a plain lecturer or an admin mid-edit-of-themselves
+      // should be able to start their own deletion clock.
+      deactivateWrap.hidden = !(currentUserIsAdmin || currentUserIsSuperAdmin) || p.id === currentUserId;
     }
 
     setStatus(document.getElementById('studentEditStatus'), '', null);
@@ -559,6 +565,21 @@
     if (error) { toast('Could not reactivate this account.', 'error'); return; }
     toast('Account reactivated.', 'success');
     document.getElementById('studentReactivateWrap').hidden = true;
+    await loadStudents();
+    await loadOverview();
+  });
+
+  document.getElementById('studentDeactivateBtn').addEventListener('click', async () => {
+    if (!editingStudentId) return;
+    const p = allProfiles.find((x) => x.id === editingStudentId);
+    if (!confirm(`Force ${(p && p.full_name) || 'this account'} into the 30-day pending-deletion phase? They'll keep normal access until they sign in again (which cancels it), or an admin reactivates it sooner.`)) return;
+    const btn = document.getElementById('studentDeactivateBtn');
+    btn.disabled = true;
+    const { error } = await supabaseClient.rpc('deactivate_account', { p_user_id: editingStudentId });
+    btn.disabled = false;
+    if (error) { toast(error.message || 'Could not deactivate this account.', 'error'); return; }
+    toast('Account moved into the pending-deletion phase.', 'success');
+    document.getElementById('studentDeactivateWrap').hidden = true;
     await loadStudents();
     await loadOverview();
   });

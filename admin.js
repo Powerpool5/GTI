@@ -1156,6 +1156,25 @@
           renderStudents(allStudents);
         });
         actionsTd.appendChild(reactivateBtn);
+      } else if (!isSelf) {
+        // Puts the account into the same 30-day pending-deletion state
+        // it would reach on its own after a year of inactivity —
+        // manually, rather than waiting for that to happen. Excluded
+        // for your own account so root can't start their own deletion
+        // clock by mistake.
+        const deactivateBtn = document.createElement('button');
+        deactivateBtn.className = 'btn btn-danger btn-sm';
+        deactivateBtn.textContent = 'Force pending deletion';
+        deactivateBtn.addEventListener('click', async () => {
+          if (!confirm(`Force ${s.full_name || 'this account'} into the 30-day pending-deletion phase? They'll keep normal access until they sign in again (which cancels it), or you reactivate it sooner.`)) return;
+          deactivateBtn.disabled = true;
+          const { error } = await supabaseClient.rpc('deactivate_account', { p_user_id: s.id });
+          if (error) { toast(error.message || 'Could not deactivate this account.', 'error'); deactivateBtn.disabled = false; return; }
+          s.deactivated_at = new Date().toISOString();
+          toast(`${s.full_name || 'Account'} moved into the pending-deletion phase.`, 'success');
+          renderStudents(allStudents);
+        });
+        actionsTd.appendChild(deactivateBtn);
       }
       tr.appendChild(actionsTd);
       tbody.appendChild(tr);
