@@ -1557,8 +1557,12 @@ table.admin-table #gradesTbody tr:not(.grades-student-row) td:first-child {
   [data-theme="dark"] .nav-item.active { color: var(--ink); }
 
   /* Room for the fixed bottom bar so it never covers the last bit of
-     content, plus the phone's own home-indicator inset. */
-  .app-main { padding: 20px 16px calc(76px + env(safe-area-inset-bottom, 0px)); }
+     content, plus the phone's own home-indicator inset. Top padding
+     is bumped up from a bare 20px so the first card (the hero banner
+     on the student/lecturer overview) sits with clear daylight under
+     the sticky header instead of butting right up against its brass
+     bottom border. */
+  .app-main { padding: 28px 16px calc(76px + env(safe-area-inset-bottom, 0px)); }
   .field-row { flex-direction: column; gap: 0; }
 
   /* Header: down to brand + theme toggle + avatar + sign-out. The
@@ -1616,14 +1620,24 @@ table.admin-table #gradesTbody tr:not(.grades-student-row) td:first-child {
      Name/Student ID next to it — force the three buttons to share one
      row and split whatever width is left evenly, instead of wrapping.
      Student ID is capped since it never needs more than a few
-     characters, freeing the rest of the row for Status. */
-  #attendanceTable th:nth-child(2), #attendanceTable td:nth-child(2) { max-width: 60px; }
-  #attendanceTable .attendance-status-group { flex-wrap: nowrap; gap: 4px; }
+     characters, and Name is capped too (it already wraps onto two
+     lines fine) so both hand their spare width over to Status, which
+     is the column people actually need to tap. */
+  #attendanceTable th:nth-child(1), #attendanceTable td:nth-child(1) { max-width: 88px; }
+  #attendanceTable th:nth-child(2), #attendanceTable td:nth-child(2) { max-width: 52px; }
+  /* The three buttons used to be jammed edge-to-edge with almost no
+     inner padding, so the label text sat right against the button
+     border — cramped rather than tappable. A bigger gap between
+     buttons and more horizontal padding inside each gives the text
+     real breathing room; the font size comes down slightly to make
+     room for that padding without the row wrapping again. */
+  #attendanceTable .attendance-status-group { flex-wrap: nowrap; gap: 6px; }
   #attendanceTable .attendance-status-btn {
     flex: 1 1 0;
     min-width: 0;
-    padding: 7px 2px;
-    font-size: 0.7rem;
+    padding: 8px 4px;
+    font-size: 0.66rem;
+    letter-spacing: -0.01em;
     text-align: center;
     white-space: nowrap;
   }
