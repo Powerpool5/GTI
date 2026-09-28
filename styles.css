@@ -1469,15 +1469,17 @@ table.admin-table #gradesTbody tr:not(.grades-student-row) td:first-child {
 @media (max-width: 760px) {
   .app-shell { flex-direction: column; }
 
-  /* The section nav moves to a fixed bar along the bottom of the screen
-     instead of sharing the top of the page with the header/banner —
-     a standard mobile pattern, and one that can't tangle with anything
-     up there since it's positioned independently of both. */
+  /* The section nav is a horizontal tab bar pinned to the TOP of the
+     screen, directly under the sticky header/banner. It's sticky (not
+     fixed) and sits first inside .app-shell, so it takes up its own
+     space in the flow and needs no extra top padding on .app-main.
+     --header-height is kept current by app.js (updateHeaderHeightVar). */
   .app-nav {
-    position: fixed;
-    top: auto;
-    left: 0; right: 0; bottom: 0;
-    z-index: 50;
+    position: sticky;
+    top: var(--header-height, 58px);
+    bottom: auto;
+    align-self: stretch;
+    z-index: 19; /* just under .app-header (20) / .sticky-top-wrap (21) */
     width: 100%;
     display: flex;
     align-items: center;
@@ -1485,19 +1487,12 @@ table.admin-table #gradesTbody tr:not(.grades-student-row) td:first-child {
     -webkit-overflow-scrolling: touch;
     scroll-snap-type: x proximity;
     max-height: none;
-    padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+    padding: 6px 8px;
     gap: 2px;
     border-right: none;
-    border-top: 1px solid var(--paper-line);
-    box-shadow: 0 -2px 10px rgba(16, 36, 61, 0.08);
-    /* iOS in particular can render a `position: fixed` element in the
-       wrong spot for the first paint or two — especially right after
-       load, before the address bar has settled — and only put it
-       right once a scroll forces a repaint. Promoting it to its own
-       compositor layer up front avoids that first-paint glitch instead
-       of waiting on the user to accidentally fix it by scrolling. */
-    transform: translateZ(0);
-    will-change: transform;
+    border-top: none;
+    border-bottom: 1px solid var(--paper-line);
+    box-shadow: 0 2px 10px rgba(16, 36, 61, 0.08);
   }
   /* The logo repeats the branding already shown in the header just
      above, and on a page with five or more tabs (lecturer-home.html)
@@ -1543,7 +1538,7 @@ table.admin-table #gradesTbody tr:not(.grades-student-row) td:first-child {
     scroll-snap-align: start;
     flex-direction: column;
     gap: 2px;
-    border-top: 2px solid transparent;
+    border-bottom: 2px solid transparent;
     border-radius: 0;
     padding: 6px 10px;
     white-space: nowrap;
@@ -1553,16 +1548,12 @@ table.admin-table #gradesTbody tr:not(.grades-student-row) td:first-child {
     text-align: center;
     background: transparent;
   }
-  .nav-item.active { border-top-color: var(--brass); background: transparent; color: var(--ink-navy); font-weight: 600; }
+  .nav-item.active { border-bottom-color: var(--brass); background: transparent; color: var(--ink-navy); font-weight: 600; }
   [data-theme="dark"] .nav-item.active { color: var(--ink); }
 
-  /* Room for the fixed bottom bar so it never covers the last bit of
-     content, plus the phone's own home-indicator inset. Top padding
-     is bumped up from a bare 20px so the first card (the hero banner
-     on the student/lecturer overview) sits with clear daylight under
-     the sticky header instead of butting right up against its brass
-     bottom border. */
-  .app-main { padding: 28px 16px calc(76px + env(safe-area-inset-bottom, 0px)); }
+  /* The nav no longer sits at the bottom, so no extra room is needed
+     down there beyond the phone's home-indicator inset. */
+  .app-main { padding: 20px 16px calc(40px + env(safe-area-inset-bottom, 0px)); }
   .field-row { flex-direction: column; gap: 0; }
 
   /* Header: down to brand + theme toggle + avatar + sign-out. The
