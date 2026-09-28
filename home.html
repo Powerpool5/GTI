@@ -93,9 +93,11 @@
             <span class="hero-stat-label">Status</span>
             <span class="hero-stat-value" id="heroStatusTag">—</span>
           </div>
-          <div class="hero-stat">
-            <span class="hero-stat-label">GPA</span>
-            <span class="hero-stat-value" id="heroGpaTag">—</span>
+          <!-- Only shown once staff have decided a promotion (see
+               loadPromotionResult() in home.js); stays hidden while pending. -->
+          <div class="hero-stat" id="heroResultStat" style="display:none;">
+            <span class="hero-stat-label">Result</span>
+            <span class="hero-stat-value" id="heroResultTag">—</span>
           </div>
         </div>
       </div>
@@ -122,18 +124,7 @@
 
     <section id="grades" class="tab-content">
       <h2>Grades</h2>
-      <div class="card" id="gpaCard" hidden>
-        <div class="gpa-gauge">
-          <svg viewBox="0 0 120 120" width="120" height="120" aria-hidden="true">
-            <circle class="gpa-ring-bg" cx="60" cy="60" r="52" fill="none" stroke-width="10"/>
-            <circle class="gpa-ring-fg" id="gpaRing" cx="60" cy="60" r="52" fill="none" stroke-width="10" stroke-linecap="round" transform="rotate(-90 60 60)"/>
-          </svg>
-          <div class="gpa-gauge-center">
-            <div class="gpa-gauge-value" id="gpaValue">–</div>
-            <div class="gpa-gauge-label">GPA / 4.0</div>
-          </div>
-        </div>
-      </div>
+      <div id="finalGradeSummary"></div>
       <div class="card"><ul class="record-list" id="gradesList"></ul></div>
     </section>
 
@@ -287,6 +278,6 @@
 <script src="app.js?v=5"></script>
 <script src="courses-data.js?v=2"></script>
 <script src="timetable-editor.js?v=6"></script>
-<script src="home.js?v=6"></script>
+<script src="home.js?v=9"></script>
 </body>
 </html>

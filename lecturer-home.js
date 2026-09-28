@@ -417,6 +417,16 @@
       tr.appendChild(statusTd);
 
       const actionsTd = document.createElement('td');
+      if (p.role === 'student') {
+        const gradesBtn = document.createElement('button');
+        gradesBtn.type = 'button';
+        gradesBtn.className = 'btn btn-secondary btn-sm';
+        gradesBtn.textContent = 'Grades';
+        gradesBtn.style.marginRight = '6px';
+        gradesBtn.title = 'View and enter this student\u2019s grades';
+        gradesBtn.addEventListener('click', () => openStudentGrades(p));
+        actionsTd.appendChild(gradesBtn);
+      }
       const editBtn = document.createElement('button');
       editBtn.type = 'button';
       editBtn.className = 'btn btn-secondary btn-sm';
@@ -2105,12 +2115,41 @@
   // is still suggested from whatever total you type in (unless you've
   // picked one yourself), using these thresholds.
   const LETTER_THRESHOLDS = [['A', 80], ['B', 70], ['C', 60], ['F', 0]];
-  // GPA is no longer typed in by hand — a subject's grade is now one
-  // of several per student, so a manually-entered GPA on every one of
-  // them stopped meaning anything. It's derived from the letter grade
-  // on save, and shown once per student (an average across their
-  // subjects) instead of repeated on every subject row.
-  const GPA_FOR_LETTER = { A: 4.0, B: 3.0, C: 2.0, F: 0.0 };
+
+  // Final Grade for a student = the average of their subject scores
+  // (Grade 100%) run through the same thresholds as suggestLetter().
+  function finalLetterFor(rows) {
+    const scores = rows.map((r) => r.total_grade).filter((v) => v != null).map(Number).filter((n) => !Number.isNaN(n));
+    if (!scores.length) return null;
+    return suggestLetter(scores.reduce((a, b) => a + b, 0) / scores.length);
+  }
+  // "Next level" = same course code with its trailing number + 1
+  // (ODCS1 -> ODCS2). null = there is no higher level.
+  function nextLevelFor(code) {
+    const m = /^(.*?)(\d+)$/.exec(code || '');
+    if (!m) return null;
+    const nextCode = m[1] + (Number(m[2]) + 1);
+    for (const group of COURSES) {
+      const found = group.options.find((o) => o.value === nextCode);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  // Promotion decisions: student_promotions (student_id, course_code,
+  // promoted). No row = pending. Keyed `${student_id}|${course_code}`.
+  let gradesPromotions = new Map();
+  async function fetchPromotions(studentIds) {
+    const map = new Map();
+    if (!studentIds.length) return map;
+    const { data, error } = await supabaseClient
+      .from('student_promotions')
+      .select('student_id, course_code, promoted')
+      .in('student_id', studentIds);
+    if (error) { console.warn('Loading promotions failed (has promotions.sql been run?):', error); return map; }
+    (data || []).forEach((p) => map.set(`${p.student_id}|${p.course_code}`, p));
+    return map;
+  }
 
   function suggestLetter(total) {
     for (const [letter, min] of LETTER_THRESHOLDS) {
@@ -2173,7 +2212,7 @@
         .order('full_name'),
       supabaseClient
         .from('grades')
-        .select('id, student_id, subject, attendance, class_work, home_work, examination, total_grade, gpa, letter_grade')
+        .select('id, student_id, subject, attendance, class_work, home_work, examination, total_grade, letter_grade')
         .eq('course_code', courseCode)
         .order('subject'),
     ]);
@@ -2186,6 +2225,7 @@
     if (gradesRes.error) console.error('Loading existing grades failed:', gradesRes.error);
 
     currentGradesStudents = studentsRes.data || [];
+    gradesPromotions = await fetchPromotions(currentGradesStudents.map((s) => s.id));
     currentGradesByStudent = new Map();
     (gradesRes.data || []).forEach((g) => {
       if (!currentGradesByStudent.has(g.student_id)) currentGradesByStudent.set(g.student_id, []);
@@ -2222,12 +2262,13 @@
     }
 
     gradesSearchStudents = students || [];
+    gradesPromotions = await fetchPromotions(gradesSearchStudents.map((s) => s.id));
     gradesSearchByStudent = new Map();
     if (gradesSearchStudents.length) {
       const ids = gradesSearchStudents.map((s) => s.id);
       const { data: grades, error: gradesError } = await supabaseClient
         .from('grades')
-        .select('id, student_id, subject, attendance, class_work, home_work, examination, total_grade, gpa, letter_grade')
+        .select('id, student_id, subject, attendance, class_work, home_work, examination, total_grade, letter_grade')
         .in('student_id', ids)
         .order('subject');
       if (gradesError) console.error('Loading grades for search results failed:', gradesError);
@@ -2271,7 +2312,9 @@
 
   function renderStudentGradeBlock(student, existingRows, options) {
     const courseCode = (options && options.courseCode) || currentGradesCourse;
-    const tbody = document.getElementById('gradesTbody');
+    const tbody = (options && options.tbody) || document.getElementById('gradesTbody');
+    const promoMap = (options && options.promotions) || gradesPromotions;
+    const onChange = (options && options.onChange) || reloadGradesView;
 
     const headerRow = document.createElement('tr');
     headerRow.className = 'grades-student-row';
@@ -2301,16 +2344,60 @@
       idBlock.appendChild(courseBadge);
     }
 
-    // GPA averaged from this student's saved subjects — shown once
-    // here, not repeated on every subject row below.
-    const graded = existingRows.filter((r) => r.gpa != null);
-    if (graded.length) {
-      const gpa = graded.reduce((sum, r) => sum + Number(r.gpa), 0) / graded.length;
-      const gpaBadge = document.createElement('span');
-      gpaBadge.className = 'badge badge-gpa';
-      gpaBadge.textContent = 'GPA ' + gpa.toFixed(2);
-      idBlock.appendChild(gpaBadge);
+    // Final Grade (A/B/C/F) from this student's saved subjects, shown
+    // once here rather than repeated on every subject row.
+    const finalLetter = finalLetterFor(existingRows);
+    if (finalLetter) {
+      const finalBadge = document.createElement('span');
+      finalBadge.className = 'badge badge-grade-' + finalLetter.toLowerCase();
+      finalBadge.textContent = 'Final Grade ' + finalLetter;
+      idBlock.appendChild(finalBadge);
     }
+
+    // Promotion to the next level of the course — decided by staff.
+    // Empty = pending; picking Promoted / Not promoted saves right away.
+    const nextLevel = nextLevelFor(courseCode);
+    const promoSelect = document.createElement('select');
+    promoSelect.style.width = 'auto';
+    promoSelect.setAttribute('aria-label', 'Promotion to next level');
+    [
+      ['', 'Promotion: pending'],
+      ['yes', nextLevel ? `Promoted to ${nextLevel.label}` : 'Promoted (course completed)'],
+      ['no', 'Not promoted'],
+    ].forEach(([value, label]) => {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      promoSelect.appendChild(opt);
+    });
+    const promoKey = `${student.id}|${courseCode}`;
+    const currentPromo = promoMap.get(promoKey);
+    promoSelect.value = currentPromo ? (currentPromo.promoted ? 'yes' : 'no') : '';
+    promoSelect.addEventListener('change', async () => {
+      const choice = promoSelect.value;
+      promoSelect.disabled = true;
+      const { error } = choice === ''
+        ? await supabaseClient.from('student_promotions').delete().eq('student_id', student.id).eq('course_code', courseCode)
+        : await supabaseClient.from('student_promotions').upsert({
+            student_id: student.id,
+            course_code: courseCode,
+            promoted: choice === 'yes',
+            decided_by: currentUserId,
+            decided_at: new Date().toISOString(),
+          }, { onConflict: 'student_id,course_code' });
+      promoSelect.disabled = false;
+      if (error) {
+        console.error('Saving promotion failed:', error);
+        toast('Could not save the promotion decision.', 'error');
+        const prev = promoMap.get(promoKey);
+        promoSelect.value = prev ? (prev.promoted ? 'yes' : 'no') : '';
+        return;
+      }
+      if (choice === '') promoMap.delete(promoKey);
+      else promoMap.set(promoKey, { student_id: student.id, course_code: courseCode, promoted: choice === 'yes' });
+      toast(choice === '' ? 'Promotion decision cleared.' : (choice === 'yes' ? 'Marked as promoted.' : 'Marked as not promoted.'), 'success');
+    });
+    if (courseCode !== 'STAFF') idBlock.appendChild(promoSelect);
 
     const addBtn = document.createElement('button');
     addBtn.type = 'button';
@@ -2329,20 +2416,20 @@
     const anchor = { el: headerRow };
     const rowsToRender = existingRows.length ? existingRows : [null];
     rowsToRender.forEach((existing) => {
-      const tr = renderGradeSubjectRow(student, existing, courseCode);
+      const tr = renderGradeSubjectRow(student, existing, courseCode, onChange);
       anchor.el.insertAdjacentElement('afterend', tr);
       anchor.el = tr;
     });
 
     addBtn.addEventListener('click', () => {
-      const tr = renderGradeSubjectRow(student, null, courseCode);
+      const tr = renderGradeSubjectRow(student, null, courseCode, onChange);
       anchor.el.insertAdjacentElement('afterend', tr);
       anchor.el = tr;
       tr.querySelector('input[type="text"]').focus();
     });
   }
 
-  function renderGradeSubjectRow(student, existing, courseCode) {
+  function renderGradeSubjectRow(student, existing, courseCode, onChange) {
     const tr = document.createElement('tr');
 
     const subjectTd = document.createElement('td');
@@ -2433,7 +2520,6 @@
         home_work: homeWorkInput.value === '' ? 0 : Number(homeWorkInput.value),
         examination: examInput.value === '' ? 0 : Number(examInput.value),
         total_grade: totalInput.value === '' ? 0 : Number(totalInput.value),
-        gpa: letter ? GPA_FOR_LETTER[letter] : null,
         letter_grade: letter,
         updated_by: currentUserId,
         updated_at: new Date().toISOString(),
@@ -2451,7 +2537,7 @@
         return;
       }
       toast(`Saved ${subject} for ${student.full_name || 'student'}.`, 'success');
-      reloadGradesView();
+      onChange();
     });
 
     const removeBtn = document.createElement('button');
@@ -2465,7 +2551,7 @@
       const { error } = await supabaseClient.from('grades').delete().eq('id', existing.id);
       if (error) { toast('Could not remove this subject.', 'error'); return; }
       toast('Subject removed.', 'success');
-      reloadGradesView();
+      onChange();
     });
 
     actionsTd.append(saveBtn, removeBtn);
@@ -2486,6 +2572,65 @@
       return;
     }
     gradesSearchDebounce = setTimeout(() => runGradesSearch(q), 300);
+  });
+
+  /* ---------------- Student grades popup ----------------
+     Opened from the "Grades" button on a row in the Students tab. Same
+     subject rows, Final Grade and promotion control as the Input Grades
+     tab (renderStudentGradeBlock), for just this one student and their
+     current course. Saves refresh the popup, and the Input Grades tab
+     if it has something loaded, so the two never disagree. */
+  let studentGradesToken = 0;
+  async function openStudentGrades(p) {
+    const token = ++studentGradesToken;
+    const tbody = document.getElementById('studentGradesTbody');
+    document.getElementById('studentGradesTitle').textContent = `Grades — ${p.full_name || 'Student'}`;
+    document.getElementById('studentGradesSub').textContent =
+      [p.student_id, p.course_name || (p.course_code ? courseNameFor(p.course_code) : '')].filter(Boolean).join(' · ');
+    document.getElementById('studentGradesModal').hidden = false;
+
+    if (!p.course_code || p.course_code === 'STAFF') {
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">This student has no course selected, so there are no grades to enter yet.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = '<tr><td colspan="8"><div class="skeleton skeleton-line"></div></td></tr>';
+
+    const [gradesRes, promotions] = await Promise.all([
+      supabaseClient
+        .from('grades')
+        .select('id, student_id, subject, attendance, class_work, home_work, examination, total_grade, letter_grade')
+        .eq('student_id', p.id)
+        .eq('course_code', p.course_code)
+        .order('subject'),
+      fetchPromotions([p.id]),
+    ]);
+    if (token !== studentGradesToken) return; // closed or switched to someone else meanwhile
+
+    if (gradesRes.error) {
+      console.error('Loading student grades failed:', gradesRes.error);
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Could not load this student\u2019s grades.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = '';
+    renderStudentGradeBlock(p, gradesRes.data || [], {
+      tbody,
+      courseCode: p.course_code,
+      promotions,
+      onChange: () => {
+        openStudentGrades(p);
+        // Keep the Input Grades tab in step with what was just saved.
+        if (currentGradesCourse || document.getElementById('gradesSearch').value.trim()) reloadGradesView();
+      },
+    });
+  }
+  function closeStudentGrades() {
+    studentGradesToken++;
+    document.getElementById('studentGradesModal').hidden = true;
+  }
+  document.getElementById('studentGradesClose').addEventListener('click', closeStudentGrades);
+  document.getElementById('studentGradesModal').addEventListener('click', (e) => {
+    if (e.target.id === 'studentGradesModal') closeStudentGrades();
   });
 
   /* ---------------- Attendance ----------------
@@ -2810,6 +2955,9 @@
     }
 
     const savedFor = `${currentAttendanceSubject} — ${fmtDate(currentAttendanceDate)}`;
+    logActivity('attendance', 'created',
+      `Saved attendance register for ${courseNameFor(currentAttendanceCourse)}: ${savedFor}`,
+      `${rows.length} student${rows.length === 1 ? '' : 's'} marked`);
     setStatus(status, `Attendance saved for ${savedFor}.`, 'success');
     toast(`Attendance saved for ${savedFor}.`, 'success');
     addAttendanceSubjectOption(currentAttendanceSubject);
@@ -2857,6 +3005,8 @@
       return;
     }
 
+    logActivity('attendance', 'updated',
+      `Archived ${data} attendance record${data === 1 ? '' : 's'} (${courseLabel}, ${rangeLabel})`);
     setStatus(status, `Archived ${data} record${data === 1 ? '' : 's'}.`, 'success');
     toast(`Archived ${data} attendance record${data === 1 ? '' : 's'}.`, 'success');
     // Refresh whatever's currently on screen so the archived rows drop
@@ -3079,6 +3229,9 @@
         setStatus(status, 'Could not archive. Please try again.', 'error');
         return;
       }
+      logActivity('attendance', 'updated',
+        `Archived ${data} attendance record${data === 1 ? '' : 's'} older than a year`,
+        `Before ${fmtDate(cutoffIso)}, all courses`);
       toast(`Archived ${data} old attendance record${data === 1 ? '' : 's'}.`, 'success');
       modal.hidden = true;
       if (currentAttendanceCourse) {
@@ -3568,49 +3721,100 @@
   });
 
   /* ---------------- Activity Log (admin only) ----------------
-     Reads profile_change_log, which is written automatically by a
-     database trigger whenever a profiles row changes (full name,
-     student ID, course, verified status, role, job title) — not by
-     this page. That's what lets it capture edits made by any staff
-     account, not just the ones made through this dashboard, and why
-     there's no client-side insert here. See the schema migration for
-     the trigger and the admin-only RLS policy that gates SELECT. */
-  async function loadActivityLog() {
-    const list = document.getElementById('activityLogList');
-    if (!currentUserIsAdmin) return;
-    list.innerHTML = '<li class="empty-state">Loading…</li>';
+     One feed of everything that needs a person's supervision, kept for
+     28 days. Two sources are merged:
+       - activity_log      — written by database triggers (announcements,
+                             timetable, resources, grades, account
+                             deactivation / root access, ticket replies,
+                             banner / lockdown / feedback lock) plus
+                             attendance events sent from this page via
+                             logActivity() below.
+       - profile_change_log — name / student ID / course / verified /
+                             role / job-title edits (existing trigger).
+     Both are purged after 28 days by purge_activity_log() (see
+     activity-log.sql); this page also calls it on load and never shows
+     anything older than the cutoff, so the 28-day window holds even if
+     the scheduled purge isn't running. Filtering happens in memory. */
+  const ACTIVITY_RETENTION_DAYS = 28;
+  const ACTIVITY_LOG_MAX = 2000;
+  let activityRows = [];   // merged, newest first
+  let activityPeople = new Map(); // profile id -> display name
 
-    const { data, error } = await supabaseClient
-      .from('profile_change_log')
-      .select('id, target_id, changed_by, field, old_value, new_value, created_at')
-      .order('created_at', { ascending: false })
-      .limit(100);
+  const ACTIVITY_CATEGORIES = {
+    accounts: 'Accounts', announcements: 'Announcements', timetable: 'Timetable',
+    resources: 'Resources', grades: 'Grades', attendance: 'Attendance',
+    tickets: 'Support tickets', system: 'Site settings',
+  };
+  const ACTIVITY_ICONS = {
+    accounts: 'person', announcements: 'bell', timetable: 'empty', resources: 'resource',
+    grades: 'resource', attendance: 'empty', tickets: 'bell', system: 'bell',
+  };
+  const PROFILE_FIELD_LABELS = {
+    full_name: 'name', student_id: 'student ID', course_code: 'course',
+    verified: 'verified status', role: 'role', job_title: 'job title',
+  };
 
-    if (error) {
-      console.error('Loading activity log failed:', error);
-      list.innerHTML = emptyState('Could not load the activity log.');
-      return;
-    }
+  // Fire-and-forget: record an event only the browser knows about
+  // (attendance). Never blocks or fails the action being logged.
+  function logActivity(category, action, summary, detail) {
+    supabaseClient
+      .rpc('log_client_activity', { p_category: category, p_action: action, p_summary: summary, p_detail: detail || null })
+      .then(({ error }) => { if (error) console.warn('Activity log write failed:', error); });
+  }
 
-    const rows = data || [];
-    if (!rows.length) { list.innerHTML = emptyState('No changes logged yet.'); return; }
+  const activityEls = {
+    list: document.getElementById('activityLogList'),
+    search: document.getElementById('activitySearch'),
+    category: document.getElementById('activityCategoryFilter'),
+    action: document.getElementById('activityActionFilter'),
+    actor: document.getElementById('activityActorFilter'),
+    from: document.getElementById('activityFrom'),
+    to: document.getElementById('activityTo'),
+    count: document.getElementById('activityCount'),
+  };
 
-    const ids = [...new Set(rows.flatMap((r) => [r.target_id, r.changed_by]).filter(Boolean))];
-    const names = new Map();
-    if (ids.length) {
-      const { data: people } = await supabaseClient.from('profiles').select('id, full_name, email').in('id', ids);
-      (people || []).forEach((p) => names.set(p.id, p.full_name || p.email || 'Unknown'));
-    }
+  function filteredActivityRows() {
+    const q = activityEls.search.value.trim().toLowerCase();
+    const category = activityEls.category.value;
+    const action = activityEls.action.value;
+    const actor = activityEls.actor.value;
+    const from = activityEls.from.value ? new Date(activityEls.from.value + 'T00:00:00') : null;
+    const to = activityEls.to.value ? new Date(activityEls.to.value + 'T23:59:59.999') : null;
 
-    const FIELD_LABELS = {
-      full_name: 'name', student_id: 'student ID', course_code: 'course',
-      verified: 'verified status', role: 'role', job_title: 'job title',
-    };
+    return activityRows.filter((r) => {
+      if (category && r.category !== category) return false;
+      if (action && r.action !== action) return false;
+      if (actor === '__system' ? r.actor_id : (actor && r.actor_id !== actor)) return false;
+      const created = new Date(r.created_at);
+      if (from && created < from) return false;
+      if (to && created > to) return false;
+      if (q) {
+        const hay = `${r.summary} ${r.detail || ''} ${activityPeople.get(r.actor_id) || ''}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }
 
+  function renderActivityLog() {
+    const list = activityEls.list;
+    const rows = filteredActivityRows();
     list.innerHTML = '';
+
+    const filtering = activityEls.search.value || activityEls.category.value || activityEls.action.value ||
+      activityEls.actor.value || activityEls.from.value || activityEls.to.value;
+    activityEls.count.textContent = activityRows.length
+      ? `Showing ${rows.length} of ${activityRows.length} entr${activityRows.length === 1 ? 'y' : 'ies'} from the last ${ACTIVITY_RETENTION_DAYS} days`
+      : '';
+
+    if (!activityRows.length) { list.innerHTML = emptyState('Nothing logged in the last 28 days.'); return; }
+    if (!rows.length) { list.innerHTML = emptyState(filtering ? 'No entries match these filters.' : 'No entries.'); return; }
+
+    const ACCENT_FOR_ACTION = { deleted: 'accent-danger' };
+
     rows.forEach((r) => {
       const item = document.createElement('li');
-      item.className = 'record';
+      item.className = 'record' + (ACCENT_FOR_ACTION[r.action] ? ' ' + ACCENT_FOR_ACTION[r.action] : '');
 
       const head = document.createElement('div');
       head.className = 'record-head';
@@ -3621,31 +3825,131 @@
 
       const title = document.createElement('div');
       title.className = 'record-title';
-      const changerName = names.get(r.changed_by) || 'Someone';
-      const targetName = names.get(r.target_id) || 'this account';
-      const fieldLabel = FIELD_LABELS[r.field] || r.field;
-      title.textContent = `${changerName} changed ${targetName}'s ${fieldLabel}`;
+      title.textContent = r.summary;
 
       const meta = document.createElement('div');
       meta.className = 'record-meta';
+      const badge = document.createElement('span');
+      badge.className = 'badge badge-course';
+      badge.textContent = ACTIVITY_CATEGORIES[r.category] || r.category;
       const dateSpan = document.createElement('span');
       dateSpan.textContent = new Date(r.created_at).toLocaleString();
-      meta.appendChild(dateSpan);
+      const actorSpan = document.createElement('span');
+      actorSpan.className = 'badge badge-admin';
+      actorSpan.textContent = r.actor_id ? (activityPeople.get(r.actor_id) || 'Unknown') : 'System';
+      meta.append(badge, dateSpan, actorSpan);
 
       headText.append(title, meta);
-      headMain.append(recordIcon('person'), headText);
+      headMain.append(recordIcon(ACTIVITY_ICONS[r.category] || 'bell'), headText);
       head.appendChild(headMain);
+      item.appendChild(head);
 
-      const body = document.createElement('div');
-      body.className = 'record-body';
-      const fmt = (v) => (v === null || v === undefined || v === '' ? '(empty)' : String(v));
-      body.textContent = `${fmt(r.old_value)} → ${fmt(r.new_value)}`;
-
-      item.append(head, body);
+      if (r.detail) {
+        const body = document.createElement('div');
+        body.className = 'record-body';
+        body.textContent = r.detail;
+        item.appendChild(body);
+      }
       list.appendChild(item);
     });
   }
 
+  async function loadActivityLog() {
+    if (!currentUserIsAdmin) return;
+    activityEls.list.innerHTML = '<li class="empty-state">Loading…</li>';
+
+    // Housekeeping first, so expired rows are really gone (not just hidden).
+    await supabaseClient.rpc('purge_activity_log').then(({ error }) => {
+      if (error) console.warn('Purging the activity log failed:', error);
+    });
+
+    const cutoff = new Date(Date.now() - ACTIVITY_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    const [logRes, profRes] = await Promise.all([
+      supabaseClient
+        .from('activity_log')
+        .select('id, created_at, actor_id, category, action, summary, detail, target_id')
+        .gte('created_at', cutoff)
+        .order('created_at', { ascending: false })
+        .limit(ACTIVITY_LOG_MAX),
+      supabaseClient
+        .from('profile_change_log')
+        .select('id, target_id, changed_by, field, old_value, new_value, created_at')
+        .gte('created_at', cutoff)
+        .order('created_at', { ascending: false })
+        .limit(ACTIVITY_LOG_MAX),
+    ]);
+
+    if (logRes.error && profRes.error) {
+      console.error('Loading activity log failed:', logRes.error, profRes.error);
+      activityEls.list.innerHTML = emptyState('Could not load the activity log.');
+      return;
+    }
+    if (logRes.error) console.error('Loading activity_log failed (has activity-log.sql been run?):', logRes.error);
+    if (profRes.error) console.error('Loading profile_change_log failed:', profRes.error);
+
+    const logRows = logRes.data || [];
+    const profRows = profRes.data || [];
+
+    // Names for everyone mentioned in either source.
+    const ids = [...new Set([
+      ...logRows.flatMap((r) => [r.actor_id]),
+      ...profRows.flatMap((r) => [r.changed_by, r.target_id]),
+    ].filter(Boolean))];
+    activityPeople = new Map();
+    if (ids.length) {
+      const { data: people } = await supabaseClient.from('profiles').select('id, full_name, email').in('id', ids);
+      (people || []).forEach((p) => activityPeople.set(p.id, p.full_name || p.email || 'Unknown'));
+    }
+
+    const fmt = (v) => (v === null || v === undefined || v === '' ? '(empty)' : String(v));
+    const fromProfiles = profRows.map((r) => ({
+      id: 'p' + r.id,
+      created_at: r.created_at,
+      actor_id: r.changed_by,
+      category: 'accounts',
+      action: 'updated',
+      summary: `Changed ${activityPeople.get(r.target_id) || 'an account'}'s ${PROFILE_FIELD_LABELS[r.field] || r.field}`,
+      detail: `${fmt(r.old_value)} → ${fmt(r.new_value)}`,
+    }));
+
+    activityRows = [...logRows.map((r) => ({ ...r, id: 'a' + r.id })), ...fromProfiles]
+      .sort((x, y) => new Date(y.created_at) - new Date(x.created_at))
+      .slice(0, ACTIVITY_LOG_MAX);
+
+    // Rebuild the "person" dropdown, keeping the current choice if it's still there.
+    const prevActor = activityEls.actor.value;
+    activityEls.actor.innerHTML = '<option value="">Everyone</option>';
+    const actorIds = [...new Set(activityRows.map((r) => r.actor_id).filter(Boolean))]
+      .sort((x, y) => (activityPeople.get(x) || '').localeCompare(activityPeople.get(y) || ''));
+    actorIds.forEach((id) => {
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = activityPeople.get(id) || 'Unknown';
+      activityEls.actor.appendChild(opt);
+    });
+    if (activityRows.some((r) => !r.actor_id)) {
+      const opt = document.createElement('option');
+      opt.value = '__system';
+      opt.textContent = 'System';
+      activityEls.actor.appendChild(opt);
+    }
+    if ([...activityEls.actor.options].some((o) => o.value === prevActor)) activityEls.actor.value = prevActor;
+
+    renderActivityLog();
+  }
+
+  activityEls.search.addEventListener('input', renderActivityLog);
+  [activityEls.category, activityEls.action, activityEls.actor, activityEls.from, activityEls.to]
+    .forEach((el) => el.addEventListener('change', renderActivityLog));
+  document.getElementById('activityClearFilters').addEventListener('click', () => {
+    activityEls.search.value = '';
+    activityEls.category.value = '';
+    activityEls.action.value = '';
+    activityEls.actor.value = '';
+    activityEls.from.value = '';
+    activityEls.to.value = '';
+    renderActivityLog();
+  });
   document.getElementById('activityLogRefresh').addEventListener('click', loadActivityLog);
 
   /* ---------------- Feedback ---------------- */

@@ -1261,7 +1261,8 @@ table.admin-table .grade-total { display: inline-block; min-width: 48px; font-fa
    and the next one — a light left accent on the first cell keeps them
    visually grouped under their header without repeating the name on
    every row (border-collapse ignores a border set on the <tr> itself). */
-table.admin-table #gradesTbody tr:not(.grades-student-row) td:first-child {
+table.admin-table #gradesTbody tr:not(.grades-student-row) td:first-child,
+table.admin-table #studentGradesTbody tr:not(.grades-student-row) td:first-child {
   border-left: 3px solid var(--blueprint-soft);
   padding-left: 9px;
 }
@@ -1448,6 +1449,7 @@ table.admin-table #gradesTbody tr:not(.grades-student-row) td:first-child {
   max-width: 480px; width: 100%; box-shadow: var(--shadow-lg);
   max-height: 90vh; overflow-y: auto;
 }
+.modal.modal-grades { max-width: 1040px; }
 .modal-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
 .modal-header h2, .modal-header h3 { min-width: 0; overflow-wrap: break-word; }
 .modal-close { flex-shrink: 0; background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--slate); }

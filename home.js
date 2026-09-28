@@ -132,6 +132,7 @@
       loadTimetable(account.course_code),
       loadResources(account.course_code),
       loadGrades(),
+      loadPromotionResult(account.course_code),
     ]);
   }
 
@@ -417,18 +418,138 @@
 
   /* ---------------- Grades ---------------- */
 
-  // Grade (100%) and GPA are entered directly by staff (lecturer-home.js)
+  // Grade (100%) is entered directly by staff (lecturer-home.js)
   // rather than derived from Attendance/Class work/Home work/Examination —
   // this just displays whatever was saved.
   const LETTER_LABEL = { A: 'A', B: 'B', C: 'C', F: 'F' };
 
+  // Final Grade for a course = the average of the student's subject
+  // scores (Grade 100%), turned into a letter with the same cut-offs
+  // staff use when entering grades (lecturer-home.js): A 80+, B 70+,
+  // C 60+, F below that. Kept here as its own copy — separate script.
+  const FINAL_LETTER_THRESHOLDS = [['A', 80], ['B', 70], ['C', 60], ['F', 0]];
+  function finalLetterFor(rows) {
+    const scores = rows.map((r) => r.total_grade).filter((v) => v != null).map(Number).filter((n) => !Number.isNaN(n));
+    if (!scores.length) return null;
+    const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+    for (const [letter, min] of FINAL_LETTER_THRESHOLDS) if (avg >= min) return letter;
+    return 'F';
+  }
+  function courseOption(code) {
+    for (const group of COURSES) {
+      const found = group.options.find((o) => o.value === code);
+      if (found) return found;
+    }
+    return null;
+  }
+  // "Next level" = the same course code with its trailing number + 1
+  // (ODCS1 -> ODCS2, TEC3 -> TEC4), if such a course exists. null means
+  // there's no higher level (e.g. a Part 2 / final-year course).
+  function nextLevelFor(code) {
+    const m = /^(.*?)(\d+)$/.exec(code || '');
+    if (!m) return null;
+    return courseOption(m[1] + (Number(m[2]) + 1));
+  }
+
+  // One "Final Grade" card per course: the letter (A/B/C/F) and whether
+  // staff have promoted the student to the next level of the course.
+  function renderFinalGradeSummary(rows, promotions) {
+    const wrap = document.getElementById('finalGradeSummary');
+    wrap.innerHTML = '';
+    const byCourse = new Map();
+    rows.forEach((r) => {
+      if (!byCourse.has(r.course_code)) byCourse.set(r.course_code, []);
+      byCourse.get(r.course_code).push(r);
+    });
+
+    byCourse.forEach((courseRows, courseCode) => {
+      const letter = finalLetterFor(courseRows);
+      if (!letter) return;
+      const promo = promotions.get(courseCode);
+      const next = nextLevelFor(courseCode);
+      const courseName = courseRows[0].course_name || (courseOption(courseCode) || {}).label || courseCode;
+
+      const card = document.createElement('div');
+      card.className = 'card';
+      const heading = document.createElement('h3');
+      heading.style.margin = '0 0 12px';
+      heading.textContent = 'Final Grade — ' + courseName;
+      card.appendChild(heading);
+
+      function row(label, valueNode) {
+        const d = document.createElement('div');
+        d.className = 'detail-row';
+        const l = document.createElement('span'); l.className = 'label'; l.textContent = label;
+        const v = document.createElement('span'); v.className = 'value';
+        v.appendChild(valueNode);
+        d.append(l, v);
+        card.appendChild(d);
+      }
+
+      const gradeBadge = document.createElement('span');
+      gradeBadge.className = 'badge badge-grade-' + letter.toLowerCase();
+      gradeBadge.textContent = 'Grade ' + letter;
+      row('Final Grade', gradeBadge);
+
+      let text; let cls = '';
+      if (!promo) { text = 'Pending — not decided yet'; }
+      else if (promo.promoted) {
+        text = next ? `Promoted to ${next.label}` : 'Promoted — course completed';
+        cls = 'badge-grade-a';
+      } else {
+        text = next ? `Not promoted to ${next.label}` : 'Not promoted';
+        cls = 'badge-grade-f';
+      }
+      const promoNode = document.createElement('span');
+      if (cls) promoNode.className = 'badge ' + cls;
+      promoNode.textContent = text;
+      row('Next level', promoNode);
+
+      wrap.appendChild(card);
+    });
+  }
+
+  // Overview "Result" — hidden while a promotion decision is pending
+  // (no row in student_promotions). Once staff decide:
+  //   promoted     -> "Course completed"
+  //   not promoted -> "Not promoted – course failed"
+  // Uses the student's current course; falls back to their most recent
+  // decision if there isn't one for it.
+  async function loadPromotionResult(courseCode) {
+    const stat = document.getElementById('heroResultStat');
+    const tag = document.getElementById('heroResultTag');
+    stat.style.display = 'none';
+
+    const { data, error } = await supabaseClient
+      .from('student_promotions')
+      .select('course_code, promoted, decided_at')
+      .eq('student_id', currentUserId)
+      .order('decided_at', { ascending: false });
+    if (error) { console.warn('Loading promotion result failed:', error); return; }
+
+    const rows = data || [];
+    const decision = rows.find((r) => r.course_code === courseCode) || rows[0];
+    if (!decision) return; // pending — stays hidden
+
+    tag.classList.remove('tag-verified', 'tag-pending');
+    tag.style.color = '';
+    if (decision.promoted) {
+      tag.textContent = 'Course completed';
+      tag.classList.add('tag-verified');
+    } else {
+      tag.textContent = 'Not promoted – course failed';
+      tag.style.color = '#F2B8B5';
+    }
+    stat.style.display = '';
+  }
+
   async function loadGrades() {
     const list = document.getElementById('gradesList');
-    const gpaCard = document.getElementById('gpaCard');
+    document.getElementById('finalGradeSummary').innerHTML = '';
 
     const { data, error } = await supabaseClient
       .from('grades')
-      .select('course_code, course_name, attendance, class_work, home_work, examination, total_grade, gpa, letter_grade, updated_at')
+      .select('course_code, course_name, subject, attendance, class_work, home_work, examination, total_grade, letter_grade, updated_at')
       .eq('student_id', currentUserId)
       .order('updated_at', { ascending: false });
 
@@ -436,16 +557,26 @@
     if (error) {
       console.error('Loading grades failed:', error);
       list.innerHTML = emptyState('Grades are not available right now.');
-      gpaCard.hidden = true;
       return;
     }
 
     const rows = data || [];
     if (!rows.length) {
       list.innerHTML = emptyState('No grades have been entered yet.');
-      gpaCard.hidden = true;
       return;
     }
+
+    // Promotion decisions are set by staff (student_promotions table,
+    // see promotions.sql). If the table isn't there yet, everything
+    // just reads "Pending".
+    const promotions = new Map();
+    const promoRes = await supabaseClient
+      .from('student_promotions')
+      .select('course_code, promoted')
+      .eq('student_id', currentUserId);
+    if (promoRes.error) console.warn('Loading promotion status failed:', promoRes.error);
+    (promoRes.data || []).forEach((p) => promotions.set(p.course_code, p));
+    renderFinalGradeSummary(rows, promotions);
 
     const ACCENT_FOR_LETTER = { A: 'accent-success', B: '', C: 'accent-brass', F: 'accent-danger' };
 
@@ -462,11 +593,16 @@
       headText.className = 'record-head-text';
       const title = document.createElement('div');
       title.className = 'record-title';
-      title.textContent = r.course_name || r.course_code;
+      title.textContent = r.subject || r.course_name || r.course_code;
       headText.appendChild(title);
 
       const meta = document.createElement('div');
       meta.className = 'record-meta';
+      if (r.subject && (r.course_name || r.course_code)) {
+        const courseSpan = document.createElement('span');
+        courseSpan.textContent = r.course_name || r.course_code;
+        meta.appendChild(courseSpan);
+      }
       if (r.updated_at) {
         const dateSpan = document.createElement('span');
         dateSpan.textContent = 'Updated ' + fmtDate(r.updated_at);
@@ -486,28 +622,18 @@
 
       item.appendChild(head);
 
-      // Grade (100%) and GPA are the headline numbers — always visible
-      // in their own row rather than buried among the four component
-      // scores below.
-      if (r.total_grade != null || r.gpa != null) {
+      // Grade (100%) is the headline number — always visible in its
+      // own row rather than buried among the four component scores
+      // below.
+      if (r.total_grade != null) {
         const headlineRow = document.createElement('div');
         headlineRow.className = 'headline-row';
-        if (r.total_grade != null) {
-          const stat = document.createElement('div');
-          stat.className = 'headline-stat';
-          stat.innerHTML = '<span class="label">Grade (100%)</span>';
-          const v = document.createElement('span'); v.className = 'value'; v.textContent = r.total_grade;
-          stat.appendChild(v);
-          headlineRow.appendChild(stat);
-        }
-        if (r.gpa != null) {
-          const stat = document.createElement('div');
-          stat.className = 'headline-stat';
-          stat.innerHTML = '<span class="label">GPA</span>';
-          const v = document.createElement('span'); v.className = 'value'; v.textContent = r.gpa;
-          stat.appendChild(v);
-          headlineRow.appendChild(stat);
-        }
+        const stat = document.createElement('div');
+        stat.className = 'headline-stat';
+        stat.innerHTML = '<span class="label">Grade (100%)</span>';
+        const v = document.createElement('span'); v.className = 'value'; v.textContent = r.total_grade;
+        stat.appendChild(v);
+        headlineRow.appendChild(stat);
         item.appendChild(headlineRow);
       }
 
@@ -537,29 +663,6 @@
 
       list.appendChild(item);
     });
-
-    // Overall GPA — average of the GPA staff entered across every
-    // course on record (usually just the current one, but this holds
-    // up if a student ends up with more than one row over time).
-    const graded = rows.filter((r) => r.gpa != null);
-    const heroGpaTag = document.getElementById('heroGpaTag');
-    if (graded.length) {
-      const gpa = graded.reduce((sum, r) => sum + Number(r.gpa), 0) / graded.length;
-      document.getElementById('gpaValue').textContent = gpa.toFixed(2);
-      // Radial gauge — a ring showing gpa/4.0 instead of a plain number,
-      // in the same spirit as the caliper/compass marks on the crest.
-      // Circumference of r=52: 2 * PI * 52.
-      const ring = document.getElementById('gpaRing');
-      const circumference = 2 * Math.PI * 52;
-      const fraction = Math.max(0, Math.min(1, gpa / 4));
-      ring.style.strokeDasharray = String(circumference);
-      ring.style.strokeDashoffset = String(circumference * (1 - fraction));
-      gpaCard.hidden = false;
-      if (heroGpaTag) heroGpaTag.textContent = gpa.toFixed(2);
-    } else {
-      gpaCard.hidden = true;
-      if (heroGpaTag) heroGpaTag.textContent = 'No grades yet';
-    }
   }
 
   // Lecturer picker for the Feedback tab — any staff/admin account is a

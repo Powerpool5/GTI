@@ -9,7 +9,7 @@
 <title>Staff Dashboard - GTI Staff Portal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=19">
+<link rel="stylesheet" href="styles.css?v=20">
 <script src="theme.js"></script>
 <link rel="icon" type="image/x-icon" href="gti.png">
 </head>
@@ -471,21 +471,79 @@
       </div>
     </section>
 
-    <!-- ACTIVITY LOG (admin only) -->
+    <!-- ACTIVITY LOG (admin only) — everything that needs supervision, kept 28 days -->
     <section id="activityLog" class="tab-content">
       <div class="card-row-between">
         <h2 style="margin:0;">Activity Log</h2>
         <button type="button" class="btn btn-secondary btn-sm" id="activityLogRefresh">Refresh</button>
       </div>
       <div class="card">
-        <p style="margin:0; color:var(--slate); font-size:0.9rem;">
-          Every change made to a student or staff profile — who changed it, what changed, and who it was on.
+        <p style="margin:0 0 12px; color:var(--slate); font-size:0.9rem;">
+          Changes that need supervision &mdash; account changes, announcements, timetables, resources,
+          grades, attendance, support-ticket replies and site settings &mdash; newest first.
+          Entries are kept for 28 days and then deleted automatically.
         </p>
+        <div class="search-row">
+          <input type="search" id="activitySearch" placeholder="Search the log&hellip;" aria-label="Search the activity log">
+          <select id="activityCategoryFilter" aria-label="Filter by type">
+            <option value="">All types</option>
+            <option value="accounts">Accounts</option>
+            <option value="announcements">Announcements</option>
+            <option value="timetable">Timetables</option>
+            <option value="resources">Resources</option>
+            <option value="grades">Grades</option>
+            <option value="attendance">Attendance</option>
+            <option value="tickets">Support tickets</option>
+            <option value="system">Site settings</option>
+          </select>
+          <select id="activityActionFilter" aria-label="Filter by action">
+            <option value="">All actions</option>
+            <option value="created">Added / posted</option>
+            <option value="updated">Changed</option>
+            <option value="deleted">Deleted</option>
+          </select>
+          <select id="activityActorFilter" aria-label="Filter by person"></select>
+        </div>
+        <div class="field-row">
+          <div>
+            <label for="activityFrom">From date</label>
+            <input type="date" id="activityFrom">
+          </div>
+          <div>
+            <label for="activityTo">To date</label>
+            <input type="date" id="activityTo">
+          </div>
+        </div>
+        <div class="card-row-between" style="margin:8px 0 0;">
+          <span class="field-hint" style="margin:0;" id="activityCount" aria-live="polite"></span>
+          <button type="button" class="btn btn-secondary btn-sm" id="activityClearFilters">Clear filters</button>
+        </div>
       </div>
       <div class="card"><ul class="record-list" id="activityLogList"></ul></div>
     </section>
 
   </main>
+</div>
+
+<!-- STUDENT GRADES POPUP — opened by the "Grades" button on the Students tab.
+     Same subject rows as the Input Grades tab, for one student (see
+     openStudentGrades() in lecturer-home.js). -->
+<div class="modal-backdrop" id="studentGradesModal" hidden>
+  <div class="modal modal-grades" role="dialog" aria-modal="true" aria-labelledby="studentGradesTitle">
+    <div class="modal-header">
+      <div>
+        <h2 id="studentGradesTitle" style="margin:0;">Grades</h2>
+        <p id="studentGradesSub" style="margin:4px 0 0; color:var(--slate); font-size:0.88rem;"></p>
+      </div>
+      <button type="button" class="modal-close" id="studentGradesClose" aria-label="Close">&times;</button>
+    </div>
+    <div class="table-wrap">
+      <table class="admin-table">
+        <thead><tr><th>Subject</th><th>Attendance</th><th>Class work</th><th>Home Work</th><th>Examination</th><th>Grade (100%)</th><th>Grades</th><th></th></tr></thead>
+        <tbody id="studentGradesTbody"></tbody>
+      </table>
+    </div>
+  </div>
 </div>
 
 <!-- STUDENT EDIT MODAL -->
@@ -721,6 +779,6 @@
 <script src="app.js?v=5"></script>
 <script src="courses-data.js"></script>
 <script src="timetable-editor.js?v=6"></script>
-<script src="lecturer-home.js?v=17"></script>
+<script src="lecturer-home.js?v=22"></script>
 </body>
 </html>
