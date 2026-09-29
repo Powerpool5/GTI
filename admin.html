@@ -54,6 +54,9 @@
     <button class="nav-item" role="tab" aria-selected="false" aria-controls="system" data-tab="system" id="systemNavItem" hidden>
       <span aria-hidden="true"></span> System
     </button>
+    <button class="nav-item" role="tab" aria-selected="false" aria-controls="emails" data-tab="emails">
+      <span aria-hidden="true"></span> Emails
+    </button>
     <!-- Not a tab — a real link back to home.html, same pattern as
          home.html's #staffDashboardNavLink and lecturer-home.html's
          #adminPanelLink. Used to live in the header, sharing a row
@@ -213,6 +216,12 @@
       </div>
     </section>
 
+    <!-- EMAILS (admins + root; SMTP card is root only) -->
+    <section id="emails" class="tab-content">
+      <h2>Emails</h2>
+      <div id="emailManagerRoot"></div>
+    </section>
+
   </main>
 </div>
 
@@ -331,6 +340,7 @@
 <script src="app.js?v=5"></script>
 <script src="courses-data.js?v=2"></script>
 <script src="timetable-editor.js?v=6"></script>
-<script src="admin.js?v=7"></script>
+<script src="email-tab.js?v=1"></script>
+<script src="admin.js?v=8"></script>
 </body>
 </html>

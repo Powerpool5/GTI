@@ -117,6 +117,9 @@
       loadSystemStatus();
     }
 
+    // Emails tab: root reaches this page, so it gets the SMTP card too.
+    if (window.EmailManager) EmailManager.init(document.getElementById('emailManagerRoot'), { isSuperAdmin: true });
+
     loadOverviewStats();
     loadAnnouncements();
     document.getElementById('timetableCourseSelect').addEventListener('change', (e) => loadTimetable(e.target.value));

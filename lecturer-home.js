@@ -4306,6 +4306,8 @@
         loadFeedbackLockCard(),
         loadAllCourseFeedback(),
         loadAllStudentFeedback(),
+        // Emails tab: admins edit templates; root also gets the SMTP card.
+        window.EmailManager ? EmailManager.init(document.getElementById('emailManagerRoot'), { isSuperAdmin: currentUserIsSuperAdmin }) : null,
       );
     }
     await Promise.all(loaders);
