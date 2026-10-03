@@ -135,7 +135,26 @@
     markUploadedTimetableCourses();
     loadStudents();
     document.getElementById('resourceCourseFilter').addEventListener('change', (e) => loadResources(e.target.value));
+    document.getElementById('resourceSearch').addEventListener('input', renderResourcesList);
     loadResources('');
+  }
+
+  const ICONS = {
+    bell: '<svg viewBox="0 0 18 18" width="15" height="15" fill="none" aria-hidden="true"><path d="M9 3C7.1 3 5.6 4.6 5.6 6.5V9.3L4.2 11.4H13.8L12.4 9.3V6.5C12.4 4.6 10.9 3 9 3Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M7.4 13.4C7.4 14.3 8.1 15 9 15C9.9 15 10.6 14.3 10.6 13.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
+    resource: '<svg viewBox="0 0 18 18" width="15" height="15" fill="none" aria-hidden="true"><path d="M3.5 3.5H10.5C11.6 3.5 12.5 4.4 12.5 5.5V14.5H5.5C4.4 14.5 3.5 13.6 3.5 12.5V3.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M12.5 5.5H13.5C13.5 5.5 14.5 5.5 14.5 6.5V13.5C14.5 13.5 14.5 14.5 13.5 14.5H5.5" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M6 6.5H10M6 9H10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>',
+    person: '<svg viewBox="0 0 18 18" width="15" height="15" fill="none" aria-hidden="true"><circle cx="9" cy="6.5" r="3" stroke="currentColor" stroke-width="1.4"/><path d="M3.5 15C4 12 6.3 10.5 9 10.5C11.7 10.5 14 12 14.5 15" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
+    empty: '<svg viewBox="0 0 32 32" width="28" height="28" fill="none" aria-hidden="true"><rect x="6" y="8" width="20" height="17" rx="2.5" stroke="currentColor" stroke-width="1.6"/><path d="M6 14H26M11 4V8M21 4V8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+  };
+
+  function recordIcon(name) {
+    const span = document.createElement('span');
+    span.className = 'record-icon';
+    span.innerHTML = ICONS[name] || '';
+    return span;
+  }
+
+  function emptyState(message) {
+    return '<li class="empty-state">' + ICONS.empty + '<span>' + message + '</span></li>';
   }
 
   /* ---------------- Overview ---------------- */
@@ -411,11 +430,13 @@
     list.innerHTML = '';
     if (error) { console.error('Loading announcements failed:', error); list.innerHTML = '<li class="empty-state">Could not load announcements.</li>'; return; }
     const rows = data || [];
-    if (!rows.length) { list.innerHTML = '<li class="empty-state">No announcements yet.</li>'; return; }
+    if (!rows.length) { list.innerHTML = emptyState('No announcements yet.'); return; }
+
+    const ACCENT_FOR_AUDIENCE = { everyone: 'accent-danger', all_students: 'accent-brass', staff: 'accent-ink' };
 
     rows.forEach((a) => {
       const item = document.createElement('li');
-      item.className = 'record';
+      item.className = 'record' + (ACCENT_FOR_AUDIENCE[a.audience] ? ' ' + ACCENT_FOR_AUDIENCE[a.audience] : '');
 
       const title = document.createElement('div');
       title.className = 'record-title';
@@ -460,7 +481,17 @@
       });
       actions.append(editBtn, deleteBtn);
 
-      item.append(title, meta, body, actions);
+      const head = document.createElement('div');
+      head.className = 'record-head';
+      const headMain = document.createElement('div');
+      headMain.className = 'record-head-main';
+      const headText = document.createElement('div');
+      headText.className = 'record-head-text';
+      headText.append(title, meta);
+      headMain.append(recordIcon('bell'), headText);
+      head.appendChild(headMain);
+
+      item.append(head, body, actions);
       list.appendChild(item);
     });
   }
@@ -938,10 +969,12 @@
     loadOverviewStats();
   });
 
+  let currentAllResources = []; // last fetch; the search box filters this client-side
+
   async function loadResources(department) {
     currentResourceFilter = department || '';
-    const tbody = document.getElementById('resourcesTableBody');
-    tbody.innerHTML = '<tr><td colspan="6"><div class="skeleton skeleton-line"></div></td></tr>';
+    const list = document.getElementById('resourcesList');
+    list.innerHTML = '<li><div class="skeleton skeleton-line"></div></li>';
 
     let query = supabaseClient
       .from('resources')
@@ -952,47 +985,70 @@
 
     const { data, error } = await query;
 
-    tbody.innerHTML = '';
-    if (error) { console.error('Loading resources failed:', error); tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Could not load resources.</td></tr>'; return; }
-    const rows = data || [];
-    if (!rows.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No resources uploaded yet.</td></tr>'; return; }
+    if (error) { console.error('Loading resources failed:', error); list.innerHTML = emptyState('Could not load resources.'); return; }
+    currentAllResources = data || [];
+    renderResourcesList();
+  }
+
+  function renderResourcesList() {
+    const list = document.getElementById('resourcesList');
+    const q = document.getElementById('resourceSearch').value.trim().toLowerCase();
+    const rows = q
+      ? currentAllResources.filter((r) => (r.title || '').toLowerCase().includes(q) || (r.author || '').toLowerCase().includes(q))
+      : currentAllResources;
+
+    list.innerHTML = '';
+    if (!rows.length) { list.innerHTML = emptyState(currentAllResources.length ? 'No matching resources.' : 'No resources uploaded yet.'); return; }
 
     rows.forEach((r) => {
-      const tr = document.createElement('tr');
+      const item = document.createElement('li');
+      item.className = 'record';
 
-      const courseTd = document.createElement('td');
-      courseTd.textContent = r.department;
-      tr.appendChild(courseTd);
+      const head = document.createElement('div');
+      head.className = 'record-head';
+      const headMain = document.createElement('div');
+      headMain.className = 'record-head-main';
+      const headText = document.createElement('div');
+      headText.className = 'record-head-text';
 
-      const titleTd = document.createElement('td');
-      titleTd.textContent = r.title;
-      tr.appendChild(titleTd);
+      const title = document.createElement('div');
+      title.className = 'record-title';
+      title.textContent = r.title;
 
-      const authorTd = document.createElement('td');
-      authorTd.textContent = r.author || '—';
-      tr.appendChild(authorTd);
-
-      const fileTd = document.createElement('td');
-      if (r.file_url) {
-        const link = document.createElement('a');
-        link.href = r.file_url;
-        link.target = '_blank';
-        link.rel = 'noopener noreferrer';
-        link.className = 'file-link';
-        link.textContent = 'Open';
-        fileTd.appendChild(link);
-      } else {
-        fileTd.textContent = '—';
+      const meta = document.createElement('div');
+      meta.className = 'record-meta';
+      const courseBadge = document.createElement('span');
+      courseBadge.className = 'badge badge-course';
+      courseBadge.textContent = r.department;
+      meta.appendChild(courseBadge);
+      if (r.author) {
+        const authorSpan = document.createElement('span');
+        authorSpan.textContent = r.author;
+        meta.appendChild(authorSpan);
       }
-      tr.appendChild(fileTd);
+      if (r.created_at) {
+        const dateSpan = document.createElement('span');
+        dateSpan.textContent = 'Added ' + new Date(r.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+        meta.appendChild(dateSpan);
+      }
 
-      const uploadedTd = document.createElement('td');
-      uploadedTd.textContent = r.created_at
-        ? new Date(r.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
-        : '—';
-      tr.appendChild(uploadedTd);
+      headText.append(title, meta);
+      headMain.append(recordIcon('resource'), headText);
+      head.appendChild(headMain);
 
-      const actionsTd = document.createElement('td');
+      if (r.file_url) {
+        const fileLink = document.createElement('a');
+        fileLink.className = 'record-action';
+        fileLink.href = r.file_url;
+        fileLink.target = '_blank';
+        fileLink.rel = 'noopener noreferrer';
+        fileLink.textContent = 'Open ↗';
+        head.appendChild(fileLink);
+      }
+      item.appendChild(head);
+
+      const actions = document.createElement('div');
+      actions.className = 'record-actions';
       const editBtn = document.createElement('button');
       editBtn.className = 'btn btn-secondary btn-sm';
       editBtn.textContent = 'Edit';
@@ -1000,7 +1056,6 @@
       const deleteBtn = document.createElement('button');
       deleteBtn.className = 'btn btn-danger btn-sm';
       deleteBtn.textContent = 'Remove';
-      deleteBtn.style.marginLeft = '8px';
       deleteBtn.addEventListener('click', async () => {
         if (!(await confirmAction({ title: 'Remove this resource?', text: `"${r.title}" will be removed for students. This can\'t be undone.`, confirmText: 'Remove' }))) return;
         const { error: delError } = await supabaseClient.from('resources').delete().eq('id', r.id);
@@ -1009,10 +1064,10 @@
         loadResources(currentResourceFilter);
         loadOverviewStats();
       });
-      actionsTd.append(editBtn, deleteBtn);
-      tr.appendChild(actionsTd);
+      actions.append(editBtn, deleteBtn);
+      item.appendChild(actions);
 
-      tbody.appendChild(tr);
+      list.appendChild(item);
     });
   }
 
