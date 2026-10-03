@@ -54,10 +54,17 @@
     },
   };
 
+  // The portal lives in a folder on GitHub Pages (…github.io/GTI/), not at
+  // the domain root, so window.location.origin + '/' pointed at a page that
+  // doesn't exist — and any link built from it (the button, the crest
+  // image) 404'd. Resolve against the page's own folder instead.
+  const PORTAL_URL = new URL('./', window.location.href).href;
+  const LOGO_URL = new URL('gti.png', window.location.href).href;
+
   const PLACEHOLDERS = ['first_name', 'full_name', 'course', 'student_id', 'portal_url', 'note'];
   const SAMPLE = {
     first_name: 'Alex', full_name: 'Alex Johnson', course: 'Electrical Engineering',
-    student_id: '25-1729', portal_url: window.location.origin + '/',
+    student_id: '25-1729', portal_url: PORTAL_URL,
     note: '(Any extra note you add when sending appears here.)',
   };
 
@@ -632,7 +639,7 @@
         testBtn.disabled = true;
         setStatus(status, 'Sending…', null);
         const { data: res, error: invokeErr } = await supabaseClient.functions.invoke('email-admin', {
-          body: { action: 'send_test', template: t, portal_url: window.location.origin + '/' },
+          body: { action: 'send_test', template: t, portal_url: PORTAL_URL, logo_url: LOGO_URL },
         });
         testBtn.disabled = false;
         if (invokeErr) { console.error('Test email failed:', invokeErr); setStatus(status, await invokeError(invokeErr), 'error'); return; }

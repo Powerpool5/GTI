@@ -14,7 +14,7 @@
 <link rel="icon" type="image/x-icon" href="gti.png">
 
 </head>
-<body class="staff-dashboard">
+<body class="staff-dashboard theme-admin">
 
 <header class="app-header grid-texture">
   <div class="brand">
@@ -172,15 +172,13 @@
         <button class="btn btn-sm" id="newResourceBtn">+ Add resource</button>
       </div>
       <div class="card">
-        <label for="resourceCourseFilter">Filter by department</label>
-        <select id="resourceCourseFilter"><option value="">All departments</option></select>
+        <div class="search-row">
+          <input type="search" id="resourceSearch" placeholder="Search resources by name…">
+          <select id="resourceCourseFilter" class="department-select-target"><option value="">All departments</option></select>
+        </div>
+        <p class="field-hint" style="margin:0;">Every resource is visible here regardless of department — filter and search are just to help you find one.</p>
       </div>
-      <div class="card table-wrap">
-        <table class="admin-table" id="resourcesTable">
-          <thead><tr><th>Department</th><th>Title</th><th>Author</th><th>File</th><th>Uploaded</th><th></th></tr></thead>
-          <tbody id="resourcesTableBody"></tbody>
-        </table>
-      </div>
+      <div class="card"><ul class="record-list" id="resourcesList"></ul></div>
     </section>
 
     <!-- SYSTEM (root only) -->
@@ -374,7 +372,7 @@
 <script src="app.js?v=7"></script>
 <script src="courses-data.js?v=2"></script>
 <script src="timetable-editor.js?v=6"></script>
-<script src="email-tab.js?v=4"></script>
-<script src="admin.js?v=10"></script>
+<script src="email-tab.js?v=5"></script>
+<script src="admin.js?v=11"></script>
 </body>
 </html>
