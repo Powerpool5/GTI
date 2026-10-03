@@ -470,8 +470,8 @@
       n.addEventListener('input', () => renderPreview(previewBox, draft())));
     typeSelect.addEventListener('change', () => loadKey(typeSelect.value));
 
-    resetBtn.addEventListener('click', () => {
-      if (!confirm('Reset this email to its default wording and colour? (Nothing is saved until you click Save changes.)')) return;
+    resetBtn.addEventListener('click', async () => {
+      if (!(await confirmAction({ title: 'Reset to the default?', text: 'This email goes back to its default wording and colour. Nothing is saved until you click Save changes.', confirmText: 'Reset', danger: false }))) return;
       load(DEFAULTS[typeSelect.value]);
       setStatus(status, 'Default restored — click Save changes to keep it.', 'success');
     });
@@ -480,6 +480,7 @@
       const t = draft();
       const problem = validateTemplate(t);
       if (problem) { setStatus(status, problem, 'error'); return; }
+      if (!enabled.checked && !(await confirmAction({ title: 'Stop sending this email?', text: '"Send this email" is switched off, so this email will not be sent to anyone once you save.', confirmText: 'Save and stop sending' }))) return;
       saveBtn.disabled = true;
       setStatus(status, '', null);
       const { data: session } = await supabaseClient.auth.getUser();

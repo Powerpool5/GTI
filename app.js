@@ -1,3 +1,16 @@
+/* Password-recovery links must always land on reset-password.html, whichever
+   page Supabase actually redirected to (e.g. the Site URL fallback when the
+   redirect URL isn't on the allow-list). Runs first, before createClient and
+   before any page script's "already signed in" redirect. */
+(function () {
+  const onResetPage = window.location.pathname.endsWith('reset-password.html');
+  if (!onResetPage && window.location.hash.includes('type=recovery')) {
+    window.location.replace(
+      new URL('reset-password.html', window.location.href).href + window.location.hash
+    );
+  }
+})();
+
 /* =========================================================
    GTI Student Portal — shared client script (v3)
    Loaded on index.html, home.html, lecturer-login.html, and
@@ -95,6 +108,82 @@ class AttemptThrottle {
     this._write(state);
   }
   reset() { this._write({ count: 0, lockedUntil: 0 }); }
+}
+
+/* -------------------------------------------------------
+   confirmAction() — one shared confirmation popup, used instead of the
+   browser's native confirm() everywhere in the portal (admin panel,
+   staff view, Emails tab). Resolves true if the person confirms, false
+   if they cancel, press Escape or click outside. Text is always set with
+   textContent, never as markup.
+
+     if (!(await confirmAction({
+       title: 'Delete this announcement?',
+       text: 'Students will no longer see it.',
+       confirmText: 'Delete',            // default "Confirm"
+       cancelText: 'Cancel',             // default "Cancel"
+       danger: true,                     // default true (red button)
+     }))) return;
+   ------------------------------------------------------- */
+function confirmAction(opts) {
+  const o = Object.assign({ title: "Are you sure?", text: "", confirmText: "Confirm", cancelText: "Cancel", danger: true }, opts || {});
+  return new Promise((resolve) => {
+    const previouslyFocused = document.activeElement;
+    const backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop";
+    backdrop.style.zIndex = "10000";
+    const modal = document.createElement("div");
+    modal.className = "modal";
+    modal.setAttribute("role", "alertdialog");
+    modal.setAttribute("aria-modal", "true");
+
+    const header = document.createElement("div");
+    header.className = "modal-header";
+    const h = document.createElement("h2");
+    h.style.margin = "0";
+    h.textContent = o.title;
+    header.appendChild(h);
+    modal.appendChild(header);
+
+    if (o.text) {
+      const p = document.createElement("p");
+      p.style.cssText = "margin:0 0 16px;line-height:1.5;white-space:pre-line;";
+      p.textContent = o.text;
+      modal.appendChild(p);
+    }
+
+    const row = document.createElement("div");
+    row.className = "card-row-between";
+    row.style.marginTop = "6px";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "btn btn-secondary btn-sm";
+    cancel.textContent = o.cancelText;
+    const ok = document.createElement("button");
+    ok.type = "button";
+    ok.className = "btn btn-sm" + (o.danger ? " btn-danger" : "");
+    ok.textContent = o.confirmText;
+    row.append(cancel, ok);
+    modal.appendChild(row);
+    backdrop.appendChild(modal);
+
+    function finish(result) {
+      document.removeEventListener("keydown", onKey, true);
+      backdrop.remove();
+      if (previouslyFocused && previouslyFocused.focus) { try { previouslyFocused.focus(); } catch (e) { /* ignore */ } }
+      resolve(result);
+    }
+    function onKey(e) {
+      if (e.key === "Escape") { e.stopPropagation(); finish(false); }
+    }
+    document.addEventListener("keydown", onKey, true);
+    backdrop.addEventListener("mousedown", (e) => { if (e.target === backdrop) finish(false); });
+    cancel.addEventListener("click", () => finish(false));
+    ok.addEventListener("click", () => finish(true));
+
+    document.body.appendChild(backdrop);
+    cancel.focus(); // safe default: Enter cancels rather than deletes
+  });
 }
 
 /* -------------------------------------------------------

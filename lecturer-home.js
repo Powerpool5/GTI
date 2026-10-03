@@ -385,7 +385,7 @@
         rootBadge.addEventListener('click', async () => {
           const grant = !p.is_super_admin;
           const label = grant ? 'Grant ROOT (super admin) access to' : 'Revoke root access from';
-          if (!confirm(`${label} ${p.full_name || 'this user'}? This is a temporary arrangement while root grants go through admins — treat it carefully.`)) return;
+          if (!(await confirmAction({ title: grant ? 'Grant root access?' : 'Revoke root access?', text: `${label} ${p.full_name || 'this user'}? This is a temporary arrangement while root grants go through admins — treat it carefully.`, confirmText: grant ? 'Grant root' : 'Revoke root' }))) return;
           const { error } = await supabaseClient.rpc('set_super_admin', { p_user_id: p.id, p_value: grant });
           if (error) { toast(error.message || 'Could not update root access.', 'error'); return; }
           toast(grant ? `Granted root access to ${p.full_name || 'user'}.` : `Revoked root access from ${p.full_name || 'user'}.`, 'success');
@@ -582,7 +582,7 @@
   document.getElementById('studentDeactivateBtn').addEventListener('click', async () => {
     if (!editingStudentId) return;
     const p = allProfiles.find((x) => x.id === editingStudentId);
-    if (!confirm(`Force ${(p && p.full_name) || 'this account'} into the 30-day pending-deletion phase? They'll keep normal access until they sign in again (which cancels it), or an admin reactivates it sooner.`)) return;
+    if (!(await confirmAction({ title: 'Force pending deletion?', text: `${(p && p.full_name) || 'This account'} will enter the 30-day pending-deletion phase. They'll keep normal access until they sign in again (which cancels it), or an admin reactivates it sooner.`, confirmText: 'Force pending deletion' }))) return;
     const btn = document.getElementById('studentDeactivateBtn');
     btn.disabled = true;
     const { error } = await supabaseClient.rpc('deactivate_account', { p_user_id: editingStudentId });
@@ -903,7 +903,7 @@
     const newRole = document.getElementById('studentRoleSelect').value;
 
     if (editingStudentId === currentUserId && newRole !== 'admin') {
-      const ok = window.confirm('This removes your own admin access and signs you out. Continue?');
+      const ok = await confirmAction({ title: 'Remove your own admin access?', text: 'This removes your own admin access and signs you out.', confirmText: 'Remove my admin access' });
       if (!ok) return;
     }
 
@@ -1318,9 +1318,7 @@
       }
 
       if (existingGlobal && existingGlobal.length) {
-        const proceed = window.confirm(
-          'There is already a global announcement live. Delete it and publish this one instead?'
-        );
+        const proceed = await confirmAction({ title: 'Replace the live global announcement?', text: 'There is already a global announcement live. Delete it and publish this one instead?', confirmText: 'Delete it and publish' });
         if (!proceed) {
           setStatus(status, 'Your announcement will not be posted.', 'error');
           return;
@@ -1448,7 +1446,7 @@
         deleteBtn.className = 'btn btn-danger btn-sm';
         deleteBtn.textContent = 'Delete';
         deleteBtn.addEventListener('click', async () => {
-          if (!confirm('Delete this announcement?')) return;
+          if (!(await confirmAction({ title: 'Delete this announcement?', text: 'It will disappear for everyone who can see it. This can\'t be undone.', confirmText: 'Delete' }))) return;
           const { error: delError } = await supabaseClient.from('announcements').delete().eq('id', a.id);
           if (delError) { toast('Could not delete announcement.', 'error'); return; }
           toast('Announcement deleted.', 'success');
@@ -1549,7 +1547,7 @@
     // Never silently throw away edits.
     if (timetableEditorHandle
         && JSON.stringify(timetableEditorHandle.getRows()) !== timetableBaselineJson
-        && !window.confirm('This replaces the table below with a fresh reading of the picture, and your edits to it will be lost. Continue?')) {
+        && !(await confirmAction({ title: 'Replace your edits?', text: 'This replaces the table below with a fresh reading of the picture, and your edits to it will be lost.', confirmText: 'Replace table' }))) {
       return;
     }
 
@@ -1679,7 +1677,7 @@
     if (timetableEditorHandle
         && document.getElementById('timetableDisplayModeImage').checked
         && JSON.stringify(timetableEditorHandle.getRows()) !== timetableBaselineJson) {
-      if (window.confirm('You changed the table, but this timetable is set to show students the original image/PDF, so they would not see your changes.\n\nShow the converted table instead?')) {
+      if (await confirmAction({ title: 'Show the converted table instead?', text: 'You changed the table, but this timetable is set to show students the original image/PDF, so they would not see your changes.', confirmText: 'Show converted table', cancelText: 'Keep original image', danger: false })) {
         document.getElementById('timetableDisplayModeTable').checked = true;
       }
     }
@@ -1869,7 +1867,7 @@
       deleteBtn.textContent = 'Remove';
       deleteBtn.style.marginLeft = '8px';
       deleteBtn.addEventListener('click', async () => {
-        if (!confirm(`Remove the timetable for ${entry.course_code}?`)) return;
+        if (!(await confirmAction({ title: 'Remove this timetable?', text: `The timetable for ${entry.course_code} will be removed for students. This can\'t be undone.`, confirmText: 'Remove' }))) return;
         const { error: delError } = await supabaseClient.from('timetable').delete().eq('id', entry.id);
         if (delError) { toast('Could not remove entry.', 'error'); return; }
         toast('Timetable removed.', 'success');
@@ -2093,7 +2091,7 @@
       deleteBtn.className = 'btn btn-danger btn-sm';
       deleteBtn.textContent = 'Remove';
       deleteBtn.addEventListener('click', async () => {
-        if (!confirm(`Remove "${r.title}"?`)) return;
+        if (!(await confirmAction({ title: 'Remove this resource?', text: `"${r.title}" will be removed for students. This can\'t be undone.`, confirmText: 'Remove' }))) return;
         const { error: delError } = await supabaseClient.from('resources').delete().eq('id', r.id);
         if (delError) { toast('Could not remove resource.', 'error'); return; }
         toast('Resource removed.', 'success');
@@ -2375,6 +2373,13 @@
     promoSelect.value = currentPromo ? (currentPromo.promoted ? 'yes' : 'no') : '';
     promoSelect.addEventListener('change', async () => {
       const choice = promoSelect.value;
+      const prevPromo = promoMap.get(promoKey);
+      const prevValue = prevPromo ? (prevPromo.promoted ? 'yes' : 'no') : '';
+      const promoName = student.full_name || 'this student';
+      if (!(await confirmAction({ title: choice === '' ? 'Clear the promotion decision?' : (choice === 'yes' ? 'Mark as promoted?' : 'Mark as not promoted?'), text: choice === '' ? `The promotion decision for ${promoName} will be cleared.` : `${promoName} will be marked ${choice === 'yes' ? 'promoted' : 'NOT promoted'}.`, confirmText: 'Yes, save it', danger: choice !== 'yes' }))) {
+        promoSelect.value = prevValue;
+        return;
+      }
       promoSelect.disabled = true;
       const { error } = choice === ''
         ? await supabaseClient.from('student_promotions').delete().eq('student_id', student.id).eq('course_code', courseCode)
@@ -2547,7 +2552,7 @@
     removeBtn.style.marginLeft = '8px';
     removeBtn.addEventListener('click', async () => {
       if (!existing || !existing.id) { tr.remove(); return; }
-      if (!confirm(`Remove ${existing.subject ? `"${existing.subject}"` : 'this subject'} for ${student.full_name || 'this student'}?`)) return;
+      if (!(await confirmAction({ title: 'Remove this grade?', text: `Remove ${existing.subject ? `"${existing.subject}"` : 'this subject'} for ${student.full_name || 'this student'}? This can\'t be undone.`, confirmText: 'Remove' }))) return;
       const { error } = await supabaseClient.from('grades').delete().eq('id', existing.id);
       if (error) { toast('Could not remove this subject.', 'error'); return; }
       toast('Subject removed.', 'success');
@@ -2986,7 +2991,7 @@
     const rangeLabel = dateFrom || dateTo
       ? `from ${dateFrom ? fmtDate(dateFrom) : 'the beginning'} to ${dateTo ? fmtDate(dateTo) : 'now'}`
       : 'for all dates';
-    if (!confirm(`Archive attendance for ${courseLabel}, ${rangeLabel}? Records are archived, not deleted — you'll still be able to view them below.`)) return;
+    if (!(await confirmAction({ title: 'Archive attendance?', text: `Archive attendance for ${courseLabel}, ${rangeLabel}? Records are archived, not deleted — you'll still be able to view them below.`, confirmText: 'Archive', danger: false }))) return;
 
     btn.disabled = true;
     setStatus(status, '', null);
@@ -3606,7 +3611,10 @@
       saveBtn.className = 'btn btn-sm';
       saveBtn.textContent = 'Save';
 
+      let savedStatus = t.status;
       saveBtn.addEventListener('click', async () => {
+        if (statusSelect.value === 'closed' && savedStatus !== 'closed'
+            && !(await confirmAction({ title: 'Close this ticket?', text: 'The requester is emailed the full transcript, and the ticket is removed from the portal after 30 days.', confirmText: 'Close ticket' }))) return;
         saveBtn.disabled = true;
         saveStatus.textContent = 'Saving…';
         const { error: updateError } = await supabaseClient
@@ -3624,6 +3632,7 @@
           saveStatus.textContent = 'Could not save.';
           return;
         }
+        savedStatus = statusSelect.value;
         saveStatus.textContent = 'Saved.';
         toast('Ticket updated.', 'success');
       });
@@ -4176,6 +4185,7 @@
     const status = document.getElementById('courseFeedbackLockStatus');
     const btn = document.getElementById('courseFeedbackLockToggleBtn');
     const nextValue = !courseFeedbackLocked;
+    if (!(await confirmAction({ title: nextValue ? 'Lock the feedback form?' : 'Unlock the feedback form?', text: nextValue ? 'Students will no longer be able to submit course/lecturer feedback.' : 'Students will be able to submit course/lecturer feedback again.', confirmText: nextValue ? 'Lock form' : 'Unlock form', danger: nextValue }))) return;
 
     btn.disabled = true;
     setStatus(status, '', null);

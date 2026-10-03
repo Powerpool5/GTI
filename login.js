@@ -223,7 +223,7 @@
 
     submitBtn.disabled = true;
     await supabaseClient.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin + window.location.pathname.replace('index.html', 'reset-password.html'),
+      redirectTo: new URL('reset-password.html', window.location.href).href,
     });
     submitBtn.disabled = false;
 

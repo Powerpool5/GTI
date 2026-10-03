@@ -223,6 +223,7 @@
     const message = document.getElementById('bannerMessage').value.trim();
 
     if (!message) { setStatus(status, 'Enter a message before publishing.', 'error'); return; }
+    if (!(await confirmAction({ title: 'Publish this banner?', text: 'It will show on every page, for students and staff, until you clear it.', confirmText: 'Publish banner', danger: false }))) return;
 
     btn.disabled = true;
     setStatus(status, '', null);
@@ -251,6 +252,7 @@
     const status = document.getElementById('bannerStatus');
     const btn = document.getElementById('bannerClearBtn');
 
+    if (!(await confirmAction({ title: 'Clear the site-wide banner?', text: 'It will disappear for everyone straight away.', confirmText: 'Clear banner' }))) return;
     btn.disabled = true;
     setStatus(status, '', null);
 
@@ -276,7 +278,8 @@
     const message = document.getElementById('lockdownMessage').value.trim() || null;
     const style = document.getElementById('lockdownStyle').value;
 
-    if (nextValue && !confirm('Enable lockdown? This immediately blocks sign-in for everyone except admins, and signs out anyone else currently signed in.')) return;
+    if (nextValue && !(await confirmAction({ title: 'Enable lockdown?', text: 'This immediately blocks sign-in for everyone except admins, and signs out anyone else currently signed in.', confirmText: 'Enable lockdown' }))) return;
+    if (!nextValue && !(await confirmAction({ title: 'Turn off lockdown?', text: 'Everyone will be able to sign in again straight away.', confirmText: 'Turn off lockdown', danger: false }))) return;
 
     btn.disabled = true;
     setStatus(status, '', null);
@@ -355,9 +358,7 @@
       }
 
       if (existingGlobal && existingGlobal.length) {
-        const proceed = window.confirm(
-          'There is already a global announcement live. Delete it and publish this one instead?'
-        );
+        const proceed = await confirmAction({ title: 'Replace the live global announcement?', text: 'There is already a global announcement live. Delete it and publish this one instead?', confirmText: 'Delete it and publish' });
         if (!proceed) {
           setStatus(status, 'Your announcement will not be posted.', 'error');
           return;
@@ -442,7 +443,7 @@
       deleteBtn.className = 'btn btn-danger btn-sm';
       deleteBtn.textContent = 'Delete';
       deleteBtn.addEventListener('click', async () => {
-        if (!confirm('Delete this announcement?')) return;
+        if (!(await confirmAction({ title: 'Delete this announcement?', text: 'It will disappear for everyone who can see it. This can\'t be undone.', confirmText: 'Delete' }))) return;
         const { error: delError } = await supabaseClient.from('announcements').delete().eq('id', a.id);
         if (delError) { toast('Could not delete announcement.', 'error'); return; }
         toast('Announcement deleted.', 'success');
@@ -547,7 +548,7 @@
     // Never silently throw away edits.
     if (timetableEditorHandle
         && JSON.stringify(timetableEditorHandle.getRows()) !== timetableBaselineJson
-        && !window.confirm('This replaces the table below with a fresh reading of the picture, and your edits to it will be lost. Continue?')) {
+        && !(await confirmAction({ title: 'Replace your edits?', text: 'This replaces the table below with a fresh reading of the picture, and your edits to it will be lost.', confirmText: 'Replace table' }))) {
       return;
     }
 
@@ -669,7 +670,7 @@
     if (timetableEditorHandle
         && document.getElementById('timetableDisplayModeImage').checked
         && JSON.stringify(timetableEditorHandle.getRows()) !== timetableBaselineJson) {
-      if (window.confirm('You changed the table, but this timetable is set to show students the original image/PDF, so they would not see your changes.\n\nShow the converted table instead?')) {
+      if (await confirmAction({ title: 'Show the converted table instead?', text: 'You changed the table, but this timetable is set to show students the original image/PDF, so they would not see your changes.', confirmText: 'Show converted table', cancelText: 'Keep original image', danger: false })) {
         document.getElementById('timetableDisplayModeTable').checked = true;
       }
     }
@@ -816,7 +817,7 @@
     deleteBtn.textContent = 'Remove';
     deleteBtn.style.marginLeft = '8px';
     deleteBtn.addEventListener('click', async () => {
-      if (!confirm(`Remove the timetable for ${entry.course_code}?`)) return;
+      if (!(await confirmAction({ title: 'Remove this timetable?', text: `The timetable for ${entry.course_code} will be removed for students. This can\'t be undone.`, confirmText: 'Remove' }))) return;
       const { error: delError } = await supabaseClient.from('timetable').delete().eq('id', entry.id);
       if (delError) { toast('Could not remove entry.', 'error'); return; }
       toast('Timetable removed.', 'success');
@@ -993,7 +994,7 @@
       deleteBtn.textContent = 'Remove';
       deleteBtn.style.marginLeft = '8px';
       deleteBtn.addEventListener('click', async () => {
-        if (!confirm(`Remove "${r.title}"?`)) return;
+        if (!(await confirmAction({ title: 'Remove this resource?', text: `"${r.title}" will be removed for students. This can\'t be undone.`, confirmText: 'Remove' }))) return;
         const { error: delError } = await supabaseClient.from('resources').delete().eq('id', r.id);
         if (delError) { toast('Could not remove resource.', 'error'); return; }
         toast('Resource removed.', 'success');
@@ -1093,6 +1094,8 @@
         verifiedBadge.textContent = s.verified ? 'Verified' : 'Pending';
         verifiedBadge.title = 'Click to toggle';
         verifiedBadge.addEventListener('click', async () => {
+          const markVerified = !s.verified;
+          if (!(await confirmAction({ title: markVerified ? 'Mark as verified?' : 'Mark as pending?', text: `${s.full_name || 'This student'} will be marked ${markVerified ? 'Verified' : 'Pending'}.`, confirmText: markVerified ? 'Mark verified' : 'Mark pending', danger: !markVerified }))) return;
           const { error } = await supabaseClient.from('profiles').update({ verified: !s.verified }).eq('id', s.id);
           if (error) { toast('Could not update verification status.', 'error'); return; }
           s.verified = !s.verified;
@@ -1111,7 +1114,7 @@
       roleBadge.title = 'Click to toggle';
       roleBadge.addEventListener('click', async () => {
         const makeAdmin = !s.is_admin;
-        if (!confirm(makeAdmin ? `Make ${s.full_name || 'this user'} an admin?` : `Remove admin access from ${s.full_name || 'this user'}?`)) return;
+        if (!(await confirmAction({ title: makeAdmin ? 'Make this user an admin?' : 'Remove admin access?', text: makeAdmin ? `${s.full_name || 'This user'} will be able to manage the portal.` : `${s.full_name || 'This user'} will lose admin access.`, confirmText: makeAdmin ? 'Make admin' : 'Remove admin access', danger: !makeAdmin }))) return;
         const { error } = await supabaseClient.from('profiles').update({ is_admin: makeAdmin }).eq('id', s.id);
         if (error) { toast('Could not update role.', 'error'); return; }
         s.is_admin = makeAdmin;
@@ -1135,7 +1138,7 @@
         if (isSelf) return;
         const grant = !s.is_super_admin;
         const label = grant ? 'Grant ROOT (super admin) access to' : 'Revoke root access from';
-        if (!confirm(`${label} ${s.full_name || 'this user'}? This is temporary while root grants go through admins — treat it carefully.`)) return;
+        if (!(await confirmAction({ title: grant ? 'Grant root access?' : 'Revoke root access?', text: `${label} ${s.full_name || 'this user'}? This is temporary while root grants go through admins — treat it carefully.`, confirmText: grant ? 'Grant root' : 'Revoke root' }))) return;
         const { error } = await supabaseClient.rpc('set_super_admin', { p_user_id: s.id, p_value: grant });
         if (error) { toast(error.message || 'Could not update root access.', 'error'); return; }
         s.is_super_admin = grant;
@@ -1169,7 +1172,7 @@
         deactivateBtn.className = 'btn btn-danger btn-sm';
         deactivateBtn.textContent = 'Force pending deletion';
         deactivateBtn.addEventListener('click', async () => {
-          if (!confirm(`Force ${s.full_name || 'this account'} into the 30-day pending-deletion phase? They'll keep normal access until they sign in again (which cancels it), or you reactivate it sooner.`)) return;
+          if (!(await confirmAction({ title: 'Force pending deletion?', text: `${s.full_name || 'This account'} will enter the 30-day pending-deletion phase. They'll keep normal access until they sign in again (which cancels it), or you reactivate it sooner.`, confirmText: 'Force pending deletion' }))) return;
           deactivateBtn.disabled = true;
           const { error } = await supabaseClient.rpc('deactivate_account', { p_user_id: s.id });
           if (error) { toast(error.message || 'Could not deactivate this account.', 'error'); deactivateBtn.disabled = false; return; }
