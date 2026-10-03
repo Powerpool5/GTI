@@ -108,6 +108,14 @@
     document.getElementById('headerEmail').textContent = admin.session.user.email || '';
     renderAvatar(document.getElementById('avatarSlot'), admin.profile.full_name || admin.session.user.email, admin.profile.avatar_url);
 
+    const firstName = ((admin.profile.full_name || '').trim().split(/\s+/)[0]) || '';
+    document.getElementById('heroGreeting').textContent = 'Welcome back' + (firstName ? ', ' + firstName : '');
+    document.getElementById('heroSub').textContent = admin.session.user.email || '';
+    document.getElementById('heroRoleTag').textContent = 'Root admin';
+    const heroAccessTag = document.getElementById('heroAccessTag');
+    heroAccessTag.textContent = 'Root access';
+    heroAccessTag.classList.add('tag-verified');
+
     document.getElementById('loadingMessage').hidden = true;
     document.getElementById('appShell').hidden = false;
     signOutButton.hidden = false;

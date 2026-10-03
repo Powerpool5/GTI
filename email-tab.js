@@ -92,11 +92,17 @@
   // wraps that, so dig the message back out.
   async function invokeError(error) {
     try {
-      if (error && error.context && typeof error.context.json === 'function') {
-        const body = await error.context.json();
-        if (body && body.error) return body.error;
+      const ctx = error && error.context;
+      if (ctx && typeof ctx.clone === 'function') {
+        let msg = null;
+        try { const body = await ctx.clone().json(); msg = body && (body.error || body.message); } catch (e) { /* not JSON */ }
+        if (!msg) { try { msg = (await ctx.clone().text()).trim().slice(0, 300); } catch (e) { /* no body */ } }
+        const code = ctx.status ? ' (HTTP ' + ctx.status + ')' : '';
+        if (msg) return msg + code;
+        if (ctx.status) return 'The email service returned an error' + code + '.';
       }
     } catch (e) { /* fall through */ }
+    if (error && error.name === 'FunctionsFetchError') return 'Could not reach the email-admin function. Is it deployed?';
     return 'Request failed. Please try again.';
   }
 
@@ -411,11 +417,11 @@
 
   const safeColour = (c) => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : '#1f4e8c');
 
-  function fmtUpdated(ts) {
+  function fmtUpdated(ts, by) {
     if (!ts) return 'Default wording — not edited yet';
     const d = new Date(ts);
     if (isNaN(d.getTime())) return 'Last updated: unknown';
-    return 'Last updated ' + d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    return 'Last updated ' + d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) + (by ? ' by ' + by : '');
   }
 
   function slugify(s) {
@@ -442,6 +448,18 @@
       return card;
     }
     (data || []).forEach((r) => { templates[r.key] = r; });
+
+    // updated_by is a user id — look the names up once, and again after each
+    // save so a new edit shows its editor straight away.
+    const names = {};
+    async function loadNames() {
+      const ids = [...new Set(Object.values(templates).map((r) => r.updated_by).filter((id) => id && !(id in names)))];
+      if (!ids.length) return;
+      const { data: people } = await supabaseClient.from('profiles').select('id, full_name').in('id', ids);
+      (people || []).forEach((p) => { names[p.id] = p.full_name || null; });
+      ids.forEach((id) => { if (!(id in names)) names[id] = null; });
+    }
+    await loadNames();
 
     const listView = el('div');
     const editorView = el('div', { hidden: true });
@@ -475,7 +493,7 @@
                 el('strong', { text: labelFor(key) }),
                 el('span', { class: off ? 'badge badge-unverified' : 'badge badge-verified', text: off ? 'Off' : 'On' }),
               ]),
-              el('div', { style: 'color:var(--slate);font-size:0.85rem;margin-top:3px;', text: fmtUpdated(row && row.updated_at) }),
+              el('div', { style: 'color:var(--slate);font-size:0.85rem;margin-top:3px;', text: fmtUpdated(row && row.updated_at, row && names[row.updated_by]) }),
             ]),
           ]),
           editBtn,
@@ -589,6 +607,7 @@
           if (updateErr) { console.error('Saving template failed:', updateErr); setStatus(status, 'Could not save. Please try again.', 'error'); return; }
           templates[key] = { ...(templates[key] || {}), ...patch, key };
         }
+        await loadNames();
         toast(isNew ? 'Email added.' : 'Email template saved.', 'success');
         dirty = false;
         closeEditor();
@@ -616,8 +635,9 @@
           body: { action: 'send_test', template: t, portal_url: window.location.origin + '/' },
         });
         testBtn.disabled = false;
-        if (invokeErr) { setStatus(status, await invokeError(invokeErr), 'error'); return; }
-        setStatus(status, 'Test sent to ' + ((res && res.sent_to) || 'your address') + ' (your current edits, saved or not).', 'success');
+        if (invokeErr) { console.error('Test email failed:', invokeErr); setStatus(status, await invokeError(invokeErr), 'error'); return; }
+        if (res && res.error) { setStatus(status, String(res.error), 'error'); return; }
+        setStatus(status, 'Test sent to ' + ((res && res.sent_to) || 'your address') + ' (your current edits, saved or not). If it doesn\'t arrive, check spam.', 'success');
       });
 
       const form = el('div');
