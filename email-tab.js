@@ -3,7 +3,8 @@
    window.EmailManager.init(container, { isSuperAdmin })
 
    - Everyone who reaches this (admin or root) gets the template editor:
-     Accepted / Denied / Pending / Test needed. Templates are structured
+     Approved / Pending / Rejected / Exam required, each listed on its own
+     with when it was last updated, plus "Add new email" for custom ones. Templates are structured
      fields (subject, heading, body, button, footer, colour) rather than raw
      HTML, so an admin can change how an email looks but can't inject markup
      or scripts into mail sent to students.
@@ -15,10 +16,10 @@
    email-admin/index.ts). Depends on app.js (supabaseClient, setStatus, toast). */
 (function () {
   const TYPES = [
-    { key: 'accepted', label: 'Accepted' },
-    { key: 'denied', label: 'Denied' },
+    { key: 'accepted', label: 'Approved' },
     { key: 'pending', label: 'Pending' },
-    { key: 'test_needed', label: 'Test needed' },
+    { key: 'denied', label: 'Rejected' },
+    { key: 'test_needed', label: 'Exam required' },
   ];
 
   // Keep in sync with the seed rows in email-setup.sql.
@@ -297,7 +298,7 @@
         const ok = await confirmSteps([
           {
             title: 'Change the SMTP settings?',
-            text: 'These settings control every email the portal sends — support-ticket emails and the accepted, denied, pending and test-needed emails. Only continue if you really mean to change them.',
+            text: 'These settings control every email the portal sends — support-ticket emails and the approved, pending, rejected and exam-required emails. Only continue if you really mean to change them.',
             button: 'I understand, continue',
           },
           {
@@ -401,113 +402,251 @@
   }
 
   /* ---------- Template editor (admins + root) ---------- */
+  // Starting point for a brand-new custom email.
+  const BLANK = {
+    subject: '', heading: '', body: 'Hello {{first_name}},\n\n{{note}}',
+    button_label: '', button_url: '',
+    footer: 'Government Technical Institute', accent_color: '#1f4e8c',
+  };
+
+  const safeColour = (c) => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : '#1f4e8c');
+
+  function fmtUpdated(ts) {
+    if (!ts) return 'Default wording — not edited yet';
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return 'Last updated: unknown';
+    return 'Last updated ' + d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  }
+
+  function slugify(s) {
+    return s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
+  }
+
+  // The tab is a list: one row per email (name, on/off, last updated).
+  // "Edit" opens that one email on its own; "+ Add new email" at the top
+  // opens a blank one. Custom emails are stored with a "custom_" key and a
+  // label — see email-templates-custom.sql for the database side.
   async function buildTemplatesCard() {
     const card = el('div', { class: 'card' });
+    const addBtn = el('button', { type: 'button', class: 'btn btn-sm', text: '+ Add new email' });
     card.append(
-      el('h3', { style: 'margin-top:0;', text: 'Email templates' }),
-      el('p', { style: 'margin:0 0 12px;color:var(--slate);font-size:0.9rem;', text: 'Change how each status email looks and reads. Blank lines start a new paragraph.' }),
+      el('div', { class: 'card-row-between' }, [el('h3', { style: 'margin:0;', text: 'Email templates' }), addBtn]),
+      el('p', { style: 'margin:8px 0 4px;color:var(--slate);font-size:0.9rem;', text: 'Each email is edited on its own. Pick one to change how it looks and reads. Blank lines start a new paragraph.' }),
     );
 
     const templates = {};
     const { data, error } = await supabaseClient.from('email_templates').select('*');
     if (error) {
       card.append(el('p', { class: 'status-message error visible', text: 'Could not load templates. Has email-setup.sql been run?' }));
+      addBtn.disabled = true;
       return card;
     }
     (data || []).forEach((r) => { templates[r.key] = r; });
 
-    const typeSelect = el('select', {}, TYPES.map((t) => el('option', { value: t.key, text: t.label })));
-    const enabled = el('input', { type: 'checkbox' });
-    const subject = el('input', { type: 'text', maxlength: '200' });
-    const heading = el('input', { type: 'text', maxlength: '120' });
-    const bodyBox = el('textarea', { maxlength: '4000', rows: '9' });
-    const buttonLabel = el('input', { type: 'text', maxlength: '60', placeholder: 'optional, e.g. Open the student portal' });
-    const buttonUrl = el('input', { type: 'text', maxlength: '500', placeholder: 'https://… or {{portal_url}}' });
-    const footer = el('textarea', { maxlength: '500', rows: '2' });
-    const colour = el('input', { type: 'color', value: '#1f4e8c', style: 'width:64px;height:38px;padding:2px;' });
-    const status = el('p', { class: 'status-message', role: 'alert' });
-    const saveBtn = el('button', { type: 'button', class: 'btn btn-sm', text: 'Save changes' });
-    const resetBtn = el('button', { type: 'button', class: 'btn btn-secondary btn-sm', text: 'Reset to default' });
-    const testBtn = el('button', { type: 'button', class: 'btn btn-secondary btn-sm', text: 'Send test to me' });
-    const previewBox = el('div');
+    const listView = el('div');
+    const editorView = el('div', { hidden: true });
+    card.append(listView, editorView);
 
-    const enabledLabel = el('label', { style: 'display:flex;align-items:center;gap:8px;' }, [enabled, document.createTextNode('Send this email')]);
-
-    const form = el('div');
-    form.append(
-      field('Email type', typeSelect), enabledLabel,
-      field('Subject', subject), field('Heading (coloured header bar)', heading),
-      field('Body', bodyBox, 'Placeholders: ' + PLACEHOLDERS.map((p) => '{{' + p + '}}').join('  ')),
-      field('Button label', buttonLabel), field('Button link', buttonUrl),
-      field('Footer', footer), field('Accent colour', colour), status,
-      el('div', { style: 'display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;' }, [saveBtn, resetBtn, testBtn]),
-    );
-
-    const preview = el('div', {}, [el('strong', { text: 'Preview (sample data)' }), el('div', { style: 'margin-top:8px;' }, [previewBox])]);
-    card.append(el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px;align-items:start;' }, [form, preview]));
-
-    function draft() {
-      return {
-        subject: subject.value, heading: heading.value, body: bodyBox.value,
-        button_label: buttonLabel.value.trim(), button_url: buttonUrl.value.trim(),
-        footer: footer.value, accent_color: colour.value,
-      };
-    }
-    function load(t) {
-      subject.value = t.subject; heading.value = t.heading; bodyBox.value = t.body;
-      buttonLabel.value = t.button_label || ''; buttonUrl.value = t.button_url || '';
-      footer.value = t.footer || ''; colour.value = t.accent_color;
-      renderPreview(previewBox, draft());
-    }
-    function loadKey(key) {
-      const row = templates[key] || DEFAULTS[key];
-      enabled.checked = templates[key] ? templates[key].enabled !== false : true;
-      load(row);
-      setStatus(status, '', null);
+    const builtInKeys = TYPES.map((t) => t.key);
+    function labelFor(key) {
+      const b = TYPES.find((t) => t.key === key);
+      if (b) return b.label;
+      const r = templates[key];
+      if (r && r.label) return r.label;
+      return key.replace(/^custom_/, '').replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
     }
 
-    [subject, heading, bodyBox, buttonLabel, buttonUrl, footer, colour].forEach((n) =>
-      n.addEventListener('input', () => renderPreview(previewBox, draft())));
-    typeSelect.addEventListener('change', () => loadKey(typeSelect.value));
+    /* ----- list ----- */
+    function renderList() {
+      const custom = Object.keys(templates).filter((k) => !builtInKeys.includes(k))
+        .sort((a, b) => labelFor(a).localeCompare(labelFor(b)));
+      const keys = [...builtInKeys, ...custom];
+      listView.replaceChildren(...keys.map((key) => {
+        const row = templates[key];
+        const t = row || DEFAULTS[key];
+        const off = !!row && row.enabled === false;
+        const editBtn = el('button', { type: 'button', class: 'btn btn-secondary btn-sm', text: 'Edit' });
+        editBtn.addEventListener('click', () => openEditor(key));
+        return el('div', { style: 'display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:10px;padding:12px 14px;border:1px solid var(--border, #e5e7eb);border-radius:8px;' }, [
+          el('div', { style: 'display:flex;align-items:stretch;gap:12px;min-width:0;' }, [
+            el('span', { 'aria-hidden': 'true', style: 'width:6px;border-radius:3px;background:' + safeColour(t.accent_color) + ';' }),
+            el('div', {}, [
+              el('div', { style: 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;' }, [
+                el('strong', { text: labelFor(key) }),
+                el('span', { class: off ? 'badge badge-unverified' : 'badge badge-verified', text: off ? 'Off' : 'On' }),
+              ]),
+              el('div', { style: 'color:var(--slate);font-size:0.85rem;margin-top:3px;', text: fmtUpdated(row && row.updated_at) }),
+            ]),
+          ]),
+          editBtn,
+        ]);
+      }));
+    }
 
-    resetBtn.addEventListener('click', async () => {
-      if (!(await confirmAction({ title: 'Reset to the default?', text: 'This email goes back to its default wording and colour. Nothing is saved until you click Save changes.', confirmText: 'Reset', danger: false }))) return;
-      load(DEFAULTS[typeSelect.value]);
-      setStatus(status, 'Default restored — click Save changes to keep it.', 'success');
-    });
+    function closeEditor() {
+      editorView.hidden = true;
+      editorView.replaceChildren();
+      listView.hidden = false;
+      addBtn.hidden = false;
+      renderList();
+    }
 
-    saveBtn.addEventListener('click', async () => {
-      const t = draft();
-      const problem = validateTemplate(t);
-      if (problem) { setStatus(status, problem, 'error'); return; }
-      if (!enabled.checked && !(await confirmAction({ title: 'Stop sending this email?', text: '"Send this email" is switched off, so this email will not be sent to anyone once you save.', confirmText: 'Save and stop sending' }))) return;
-      saveBtn.disabled = true;
-      setStatus(status, '', null);
-      const { data: session } = await supabaseClient.auth.getUser();
-      const patch = { ...t, enabled: enabled.checked, updated_at: new Date().toISOString(), updated_by: session && session.user ? session.user.id : null };
-      const { error: updateErr } = await supabaseClient.from('email_templates').update(patch).eq('key', typeSelect.value);
-      saveBtn.disabled = false;
-      if (updateErr) { console.error('Saving template failed:', updateErr); setStatus(status, 'Could not save. Please try again.', 'error'); return; }
-      templates[typeSelect.value] = { ...(templates[typeSelect.value] || {}), ...patch, key: typeSelect.value };
-      setStatus(status, 'Saved.', 'success');
-      toast('Email template saved.', 'success');
-    });
+    /* ----- one email's editor (key === null means a new custom email) ----- */
+    function openEditor(key) {
+      const isNew = key === null;
+      const isBuiltIn = !isNew && builtInKeys.includes(key);
+      const row = isNew ? null : templates[key];
+      const start = isNew ? BLANK : (row || DEFAULTS[key]);
 
-    testBtn.addEventListener('click', async () => {
-      const t = draft();
-      const problem = validateTemplate(t);
-      if (problem) { setStatus(status, problem, 'error'); return; }
-      testBtn.disabled = true;
-      setStatus(status, 'Sending…', null);
-      const { data: res, error: invokeErr } = await supabaseClient.functions.invoke('email-admin', {
-        body: { action: 'send_test', template: t, portal_url: window.location.origin + '/' },
+      const nameInput = el('input', { type: 'text', maxlength: '60', placeholder: 'e.g. Interview invitation' });
+      const enabled = el('input', { type: 'checkbox' });
+      const subject = el('input', { type: 'text', maxlength: '200' });
+      const heading = el('input', { type: 'text', maxlength: '120' });
+      const bodyBox = el('textarea', { maxlength: '4000', rows: '9' });
+      const buttonLabel = el('input', { type: 'text', maxlength: '60', placeholder: 'optional, e.g. Open the student portal' });
+      const buttonUrl = el('input', { type: 'text', maxlength: '500', placeholder: 'https://… or {{portal_url}}' });
+      const footer = el('textarea', { maxlength: '500', rows: '2' });
+      const colour = el('input', { type: 'color', value: '#1f4e8c', style: 'width:64px;height:38px;padding:2px;' });
+      const status = el('p', { class: 'status-message', role: 'alert' });
+      const saveBtn = el('button', { type: 'button', class: 'btn btn-sm', text: isNew ? 'Add email' : 'Save changes' });
+      const testBtn = el('button', { type: 'button', class: 'btn btn-secondary btn-sm', text: 'Send test to me' });
+      const resetBtn = el('button', { type: 'button', class: 'btn btn-secondary btn-sm', text: 'Reset to default', hidden: !isBuiltIn });
+      const deleteBtn = el('button', { type: 'button', class: 'btn btn-danger btn-sm', text: 'Delete this email', hidden: isNew || isBuiltIn });
+      const backBtn = el('button', { type: 'button', class: 'btn btn-secondary btn-sm', text: '← All emails' });
+      const previewBox = el('div');
+
+      function draft() {
+        return {
+          subject: subject.value, heading: heading.value, body: bodyBox.value,
+          button_label: buttonLabel.value.trim(), button_url: buttonUrl.value.trim(),
+          footer: footer.value, accent_color: colour.value,
+        };
+      }
+      function load(t) {
+        subject.value = t.subject; heading.value = t.heading; bodyBox.value = t.body;
+        buttonLabel.value = t.button_label || ''; buttonUrl.value = t.button_url || '';
+        footer.value = t.footer || ''; colour.value = safeColour(t.accent_color);
+        renderPreview(previewBox, draft());
+      }
+
+      enabled.checked = isNew ? true : (row ? row.enabled !== false : true);
+      nameInput.value = isNew ? '' : (isBuiltIn ? '' : labelFor(key));
+      load(start);
+
+      let dirty = false;
+      [nameInput, enabled, subject, heading, bodyBox, buttonLabel, buttonUrl, footer, colour].forEach((n) => {
+        n.addEventListener('input', () => { dirty = true; renderPreview(previewBox, draft()); });
+        n.addEventListener('change', () => { dirty = true; });
       });
-      testBtn.disabled = false;
-      if (invokeErr) { setStatus(status, await invokeError(invokeErr), 'error'); return; }
-      setStatus(status, 'Test sent to ' + ((res && res.sent_to) || 'your address') + ' (your current edits, saved or not).', 'success');
-    });
 
-    loadKey('accepted');
+      backBtn.addEventListener('click', async () => {
+        if (dirty && !(await confirmAction({ title: 'Discard your changes?', text: 'You have edits that haven\'t been saved.', confirmText: 'Discard' }))) return;
+        closeEditor();
+      });
+
+      resetBtn.addEventListener('click', async () => {
+        if (!(await confirmAction({ title: 'Reset to the default?', text: 'This email goes back to its default wording and colour. Nothing is saved until you click Save changes.', confirmText: 'Reset', danger: false }))) return;
+        load(DEFAULTS[key]);
+        dirty = true;
+        setStatus(status, 'Default restored — click Save changes to keep it.', 'success');
+      });
+
+      saveBtn.addEventListener('click', async () => {
+        const t = draft();
+        const problem = validateTemplate(t);
+        if (problem) { setStatus(status, problem, 'error'); return; }
+        let label = null;
+        if (!isBuiltIn) {
+          label = nameInput.value.trim();
+          if (!label) { setStatus(status, 'Give this email a name.', 'error'); return; }
+          if (label.length > 60) { setStatus(status, 'The name is too long (60 max).', 'error'); return; }
+        }
+        if (!enabled.checked && !(await confirmAction({ title: 'Stop sending this email?', text: '"Send this email" is switched off, so this email will not be sent to anyone once you save.', confirmText: 'Save and stop sending' }))) return;
+
+        saveBtn.disabled = true;
+        setStatus(status, '', null);
+        const { data: session } = await supabaseClient.auth.getUser();
+        const stamp = { enabled: enabled.checked, updated_at: new Date().toISOString(), updated_by: session && session.user ? session.user.id : null };
+
+        if (isNew) {
+          const base = 'custom_' + (slugify(label) || 'email');
+          let newKey = base; let n = 2;
+          while (templates[newKey]) newKey = base + '_' + (n++);
+          const newRow = { key: newKey, label, ...t, ...stamp };
+          const { error: insErr } = await supabaseClient.from('email_templates').insert(newRow);
+          saveBtn.disabled = false;
+          if (insErr) {
+            console.error('Adding template failed:', insErr);
+            setStatus(status, 'Could not add this email. The database may need email-templates-custom.sql run first.', 'error');
+            return;
+          }
+          templates[newKey] = newRow;
+        } else {
+          const patch = { ...t, ...stamp };
+          if (!isBuiltIn) patch.label = label;
+          const { error: updateErr } = await supabaseClient.from('email_templates').update(patch).eq('key', key);
+          saveBtn.disabled = false;
+          if (updateErr) { console.error('Saving template failed:', updateErr); setStatus(status, 'Could not save. Please try again.', 'error'); return; }
+          templates[key] = { ...(templates[key] || {}), ...patch, key };
+        }
+        toast(isNew ? 'Email added.' : 'Email template saved.', 'success');
+        dirty = false;
+        closeEditor();
+      });
+
+      deleteBtn.addEventListener('click', async () => {
+        if (!(await confirmAction({ title: 'Delete "' + labelFor(key) + '"?', text: 'This email template is removed permanently.', confirmText: 'Delete' }))) return;
+        deleteBtn.disabled = true;
+        const { error: delErr } = await supabaseClient.from('email_templates').delete().eq('key', key);
+        deleteBtn.disabled = false;
+        if (delErr) { console.error('Deleting template failed:', delErr); setStatus(status, 'Could not delete this email.', 'error'); return; }
+        delete templates[key];
+        toast('Email deleted.', 'success');
+        dirty = false;
+        closeEditor();
+      });
+
+      testBtn.addEventListener('click', async () => {
+        const t = draft();
+        const problem = validateTemplate(t);
+        if (problem) { setStatus(status, problem, 'error'); return; }
+        testBtn.disabled = true;
+        setStatus(status, 'Sending…', null);
+        const { data: res, error: invokeErr } = await supabaseClient.functions.invoke('email-admin', {
+          body: { action: 'send_test', template: t, portal_url: window.location.origin + '/' },
+        });
+        testBtn.disabled = false;
+        if (invokeErr) { setStatus(status, await invokeError(invokeErr), 'error'); return; }
+        setStatus(status, 'Test sent to ' + ((res && res.sent_to) || 'your address') + ' (your current edits, saved or not).', 'success');
+      });
+
+      const form = el('div');
+      if (!isBuiltIn) form.append(field('Name', nameInput, 'Only shown here, in the list of emails.'));
+      form.append(
+        el('label', { style: 'display:flex;align-items:center;gap:8px;' }, [enabled, document.createTextNode('Send this email')]),
+        field('Subject', subject), field('Heading (coloured header bar)', heading),
+        field('Body', bodyBox, 'Placeholders: ' + PLACEHOLDERS.map((p) => '{{' + p + '}}').join('  ')),
+        field('Button label', buttonLabel), field('Button link', buttonUrl),
+        field('Footer', footer), field('Accent colour', colour), status,
+        el('div', { style: 'display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;' }, [saveBtn, testBtn, resetBtn, deleteBtn]),
+      );
+      const preview = el('div', {}, [el('strong', { text: 'Preview (sample data)' }), el('div', { style: 'margin-top:8px;' }, [previewBox])]);
+
+      editorView.replaceChildren(
+        el('div', { class: 'card-row-between', style: 'margin:14px 0;' }, [
+          el('h3', { style: 'margin:0;', text: isNew ? 'New email' : labelFor(key) }),
+          backBtn,
+        ]),
+        el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px;align-items:start;' }, [form, preview]),
+      );
+      listView.hidden = true;
+      addBtn.hidden = true;
+      editorView.hidden = false;
+      (isBuiltIn ? subject : nameInput).focus();
+    }
+
+    addBtn.addEventListener('click', () => openEditor(null));
+    renderList();
     return card;
   }
 
