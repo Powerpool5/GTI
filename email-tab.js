@@ -637,14 +637,42 @@
         const problem = validateTemplate(t);
         if (problem) { setStatus(status, problem, 'error'); return; }
         testBtn.disabled = true;
-        setStatus(status, 'Sending…', null);
-        const { data: res, error: invokeErr } = await supabaseClient.functions.invoke('email-admin', {
-          body: { action: 'send_test', template: t, portal_url: PORTAL_URL, logo_url: LOGO_URL },
-        });
-        testBtn.disabled = false;
-        if (invokeErr) { console.error('Test email failed:', invokeErr); setStatus(status, await invokeError(invokeErr), 'error'); return; }
-        if (res && res.error) { setStatus(status, String(res.error), 'error'); return; }
-        setStatus(status, 'Test sent to ' + ((res && res.sent_to) || 'your address') + ' (your current edits, saved or not). If it doesn\'t arrive, check spam.', 'success');
+        setStatus(status, 'Sending… (can take up to 30 seconds)', null);
+
+        // Every way this can fail ends up here, so there's always a clear
+        // "not sent" message — never a silent success or a stuck "Sending…".
+        const fail = (why) => {
+          setStatus(status, 'Test email NOT sent: ' + why, 'error');
+          toast('The test email was not sent.', 'error');
+        };
+
+        let timer;
+        try {
+          const timedOut = new Promise((resolve) => { timer = setTimeout(() => resolve({ timedOut: true }), 30000); });
+          const result = await Promise.race([
+            supabaseClient.functions.invoke('email-admin', {
+              body: { action: 'send_test', template: t, portal_url: PORTAL_URL, logo_url: LOGO_URL },
+            }),
+            timedOut,
+          ]);
+          if (result && result.timedOut) {
+            fail('the email server gave no answer within 30 seconds. Check the SMTP host, the port (use SSL/TLS on 465), the username and the password, then try again.');
+            return;
+          }
+          const { data: res, error: invokeErr } = result;
+          if (invokeErr) { console.error('Test email failed:', invokeErr); fail(await invokeError(invokeErr)); return; }
+          if (res && (res.error || res.ok === false || res.success === false || res.sent === false || res.skipped)) {
+            fail(String(res.error || res.message || res.reason || 'the email service reported that it did not send it. Is "Sending enabled" ticked in the SMTP settings?'));
+            return;
+          }
+          setStatus(status, 'Test handed to the mail server for ' + ((res && res.sent_to) || 'your address') + ' (your current edits, saved or not). If it doesn\'t arrive within a couple of minutes, check spam.', 'success');
+        } catch (e) {
+          console.error('Test email failed:', e);
+          fail('could not reach the email service (' + ((e && e.message) || 'unknown error') + ').');
+        } finally {
+          clearTimeout(timer);
+          testBtn.disabled = false;
+        }
       });
 
       const form = el('div');
