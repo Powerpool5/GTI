@@ -3,7 +3,7 @@
    window.EmailManager.init(container, { isSuperAdmin })
 
    - Everyone who reaches this (admin or root) gets the template editor:
-     Approved / Pending / Rejected / Exam required, each listed on its own
+     Approved / Pending / Rejected / Exam required / Interview schedule, each listed on its own
      with when it was last updated, plus "Add new email" for custom ones. Templates are structured
      fields (subject, heading, body, button, footer, colour) rather than raw
      HTML, so an admin can change how an email looks but can't inject markup
@@ -20,6 +20,7 @@
     { key: 'pending', label: 'Pending' },
     { key: 'denied', label: 'Rejected' },
     { key: 'test_needed', label: 'Exam required' },
+    { key: 'interview', label: 'Interview schedule' },
   ];
 
   // Keep in sync with the seed rows in email-setup.sql.
@@ -51,6 +52,14 @@
       body: 'Hello {{first_name}},\n\nBefore we can finish reviewing your application for {{course}}, you need to sit a short test.\n\n{{note}}\n\nPlease reply to this email if you cannot attend.',
       button_label: 'Open the student portal', button_url: '{{portal_url}}',
       footer: 'Government Technical Institute', accent_color: '#1f4e8c',
+    },
+    // The date, time and place go in {{note}} when the email is sent.
+    interview: {
+      subject: 'Your GTI interview has been scheduled',
+      heading: 'Interview scheduled, {{first_name}}',
+      body: 'Hello {{first_name}},\n\nAs part of your application for {{course}}, we would like to invite you to an interview.\n\nInterview details:\n{{note}}\n\nPlease arrive a few minutes early. If you cannot attend at the time above, reply to this email as soon as possible so we can arrange another.',
+      button_label: '', button_url: '',
+      footer: 'Government Technical Institute', accent_color: '#6d4aa8',
     },
   };
 
@@ -609,9 +618,21 @@
         } else {
           const patch = { ...t, ...stamp };
           if (!isBuiltIn) patch.label = label;
-          const { error: updateErr } = await supabaseClient.from('email_templates').update(patch).eq('key', key);
+          let saveErr = null;
+          if (!row) {
+            // A built-in email that hasn't been added to the database yet
+            // (see email-interview-template.sql for Interview schedule).
+            ({ error: saveErr } = await supabaseClient.from('email_templates').insert({ key, ...patch }));
+          } else {
+            const { data: changed, error: updateErr } = await supabaseClient.from('email_templates').update(patch).eq('key', key).select('key');
+            saveErr = updateErr || ((!changed || !changed.length) ? { message: 'No row was updated.' } : null);
+          }
           saveBtn.disabled = false;
-          if (updateErr) { console.error('Saving template failed:', updateErr); setStatus(status, 'Could not save. Please try again.', 'error'); return; }
+          if (saveErr) {
+            console.error('Saving template failed:', saveErr);
+            setStatus(status, row ? 'Could not save. Please try again.' : 'Could not save: this email isn\'t in the database yet. Run email-interview-template.sql in Supabase first.', 'error');
+            return;
+          }
           templates[key] = { ...(templates[key] || {}), ...patch, key };
         }
         await loadNames();
