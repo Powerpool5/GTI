@@ -1182,12 +1182,18 @@ function updateStatusBanner() {
 /* --- 1. Connectivity watchdog (automatic) --- */
 let dbDownFailureStreak = 0;
 const DB_DOWN_FAILURE_THRESHOLD = 2; // require 2 consecutive failed checks before alarming, to ignore a single blip
-const DB_HEALTHY_RECHECK_MS = 20000; // how often to check while things look fine
-const DB_HEALTHY_RECHECK_JITTER_MS = 5000; // spread out so many open tabs don't all poll in lockstep
+const DB_HEALTHY_RECHECK_MS = 60000; // how often to check while things look fine
+const DB_HEALTHY_RECHECK_JITTER_MS = 15000; // spread out so many open tabs don't all poll in lockstep
 const DB_RETRY_RECHECK_MS = 1500;    // how often to recheck while a check just failed — fast, so both alarming and recovery happen quickly
 const DB_HEALTH_CHECK_TIMEOUT_MS = 3000;
 
 async function checkDbHealth() {
+  // A hidden tab doesn't need to ping the server: skip the request and look
+  // again at the normal interval (it re-checks within a minute of being shown).
+  if (document.visibilityState === "hidden") {
+    window.setTimeout(checkDbHealth, DB_HEALTHY_RECHECK_MS + Math.random() * DB_HEALTHY_RECHECK_JITTER_MS);
+    return;
+  }
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), DB_HEALTH_CHECK_TIMEOUT_MS);
   let healthy = false;
@@ -1231,7 +1237,7 @@ async function checkDbHealth() {
    meaningful delay AND no per-tab polling. The slow interval below
    is just a safety net (covers a missed event or a dropped
    websocket), not the primary mechanism, so it can afford to be slow. */
-const SYSTEM_STATUS_SAFETY_POLL_MS = 30000;
+const SYSTEM_STATUS_SAFETY_POLL_MS = 60000;
 
 function applySystemStatus(data) {
   maintenanceActive = !!data && data.maintenance_mode === true;
@@ -1257,19 +1263,17 @@ async function refreshSystemStatusOnce() {
 function watchSystemStatus() {
   refreshSystemStatusOnce(); // initial state on page load
 
-  supabaseClient
-    .channel("system_status_changes")
-    .on(
-      "postgres_changes",
-      { event: "UPDATE", schema: "public", table: "system_status", filter: "id=eq.1" },
-      (payload) => {
-        invalidateCache("system_status");
-        applySystemStatus(payload.new);
-      }
-    )
-    .subscribe();
-
-  window.setInterval(refreshSystemStatusOnce, SYSTEM_STATUS_SAFETY_POLL_MS);
+  // No Realtime subscription any more: keeping one open for this single
+  // row held several database connections, a WAL sender and two
+  // replication slots on a small instance. A light poll does the job
+  // instead, and only while the tab is actually visible — a hidden tab
+  // skips the request and catches up as soon as it's shown again.
+  window.setInterval(() => {
+    if (document.visibilityState === "visible") refreshSystemStatusOnce();
+  }, SYSTEM_STATUS_SAFETY_POLL_MS);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") refreshSystemStatusOnce();
+  });
 }
 
 document.addEventListener("DOMContentLoaded", () => {

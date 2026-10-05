@@ -454,22 +454,27 @@
 
   // One "Final Grade" card per course: the letter (A/B/C/F) and whether
   // staff have promoted the student to the next level of the course.
-  function renderFinalGradeSummary(rows, promotions, finals) {
+  function renderFinalGradeSummary(rows, promotions) {
     const wrap = document.getElementById('finalGradeSummary');
     wrap.innerHTML = '';
-    // Released final grades only (the database never returns the rest).
-    (finals || []).forEach((fin) => {
-      const courseCode = fin.course_code;
-      const courseRows = rows.filter((r) => r.course_code === courseCode);
+    const byCourse = new Map();
+    rows.forEach((r) => {
+      if (!byCourse.has(r.course_code)) byCourse.set(r.course_code, []);
+      byCourse.get(r.course_code).push(r);
+    });
+
+    byCourse.forEach((courseRows, courseCode) => {
+      const letter = finalLetterFor(courseRows);
+      if (!letter) return;
       const promo = promotions.get(courseCode);
       const next = nextLevelFor(courseCode);
-      const courseName = (courseRows[0] && courseRows[0].course_name) || (courseOption(courseCode) || {}).label || courseCode;
+      const courseName = courseRows[0].course_name || (courseOption(courseCode) || {}).label || courseCode;
 
       const card = document.createElement('div');
       card.className = 'card';
       const heading = document.createElement('h3');
       heading.style.margin = '0 0 12px';
-      heading.textContent = 'Final Grade \u2014 ' + courseName;
+      heading.textContent = 'Final Grade — ' + courseName;
       card.appendChild(heading);
 
       function row(label, valueNode) {
@@ -483,14 +488,14 @@
       }
 
       const gradeBadge = document.createElement('span');
-      gradeBadge.className = 'badge badge-grade-' + fin.letter_grade.toLowerCase();
-      gradeBadge.textContent = 'Grade ' + fin.letter_grade + (fin.final_score != null ? ' (' + Number(fin.final_score) + '%)' : '');
+      gradeBadge.className = 'badge badge-grade-' + letter.toLowerCase();
+      gradeBadge.textContent = 'Grade ' + letter;
       row('Final Grade', gradeBadge);
 
       let text; let cls = '';
-      if (!promo) { text = 'Pending \u2014 not decided yet'; }
+      if (!promo) { text = 'Pending — not decided yet'; }
       else if (promo.promoted) {
-        text = next ? `Promoted to ${next.label}` : 'Promoted \u2014 course completed';
+        text = next ? `Promoted to ${next.label}` : 'Promoted — course completed';
         cls = 'badge-grade-a';
       } else {
         text = next ? `Not promoted to ${next.label}` : 'Not promoted';
@@ -713,13 +718,7 @@
       .eq('student_id', currentUserId);
     if (promoRes.error) console.warn('Loading promotion status failed:', promoRes.error);
     (promoRes.data || []).forEach((p) => promotions.set(p.course_code, p));
-    const finalRes = await supabaseClient
-      .from('final_grades')
-      .select('course_code, final_score, letter_grade')
-      .eq('student_id', currentUserId)
-      .eq('released', true);
-    if (finalRes.error) console.warn('Loading final grades failed:', finalRes.error);
-    renderFinalGradeSummary(rows, promotions, finalRes.data || []);
+    renderFinalGradeSummary(rows, promotions);
 
     const ACCENT_FOR_LETTER = { A: 'accent-success', B: '', C: 'accent-brass', F: 'accent-danger' };
 

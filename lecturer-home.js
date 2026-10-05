@@ -212,7 +212,7 @@
   const OVERVIEW_COLORS = {
     male: '#1f4e8c', female: '#9c4f8a', course: '#1f4e8c',
     secondary: '#1f7a4d', other: '#b7791f', none: '#8a919c',
-    present: '#1f7a4d', late: '#b7791f', absent: '#b42318',
+    present: '#1f7a4d', absent: '#b42318',
   };
   const OV_COURSE_PREVIEW = 8;
   const OV_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -292,6 +292,7 @@
     mine: { heading: 'My students', label: 'Showing students in the courses on your weekly schedule.' },
     unverified: { heading: 'Unverified students', label: 'Showing students who are not verified yet.' },
     pending: { heading: 'Pending deletion', label: 'Showing accounts in the 30-day pending-deletion phase.' },
+    verified: { heading: 'Verified students', label: '' },
   };
   let studentViewMode = 'all';
 
@@ -299,20 +300,20 @@
     studentViewMode = STUDENT_VIEWS[mode] ? mode : 'all';
     const v = STUDENT_VIEWS[studentViewMode];
     document.getElementById('studentsHeading').textContent = v.heading;
-    document.getElementById('studentViewLabel').textContent = v.label;
-    document.getElementById('studentViewBar').hidden = studentViewMode === 'all';
+    document.getElementById('studentViewFilter').value = studentViewMode;
     renderStudents();
   }
 
   function ovOpenStudents(mode, courseCode) {
     document.getElementById('studentSearch').value = '';
+    document.getElementById('studentGenderFilter').value = '';
+    document.getElementById('studentQualFilter').value = '';
     document.getElementById('studentCourseFilter').value = courseCode || '';
     try { syncCourseSelectDisplay(document.getElementById('studentCourseFilter')); } catch (e) { /* plain select */ }
     setStudentView(mode);
     ovGoTab('students');
   }
 
-  document.getElementById('studentViewClear').addEventListener('click', () => setStudentView('all'));
   document.querySelectorAll('.ov-panel[data-go]').forEach((panel) => {
     const h = panel.querySelector('h3');
     makeActivatable(panel, () => ovGoTab(panel.dataset.go), 'ov-link', 'Open: ' + (h ? h.textContent.trim() : panel.dataset.go));
@@ -500,14 +501,13 @@
     const iso = since.getFullYear() + '-' + String(since.getMonth() + 1).padStart(2, '0') + '-' + String(since.getDate()).padStart(2, '0');
     const q = (status) => supabaseClient.from('attendance').select('id', { count: 'exact', head: true })
       .eq('archived', false).eq('status', status).gte('class_date', iso);
-    const results = await Promise.all([q('present'), q('late'), q('absent')]);
+    const results = await Promise.all([q('present'), q('absent')]);
     if (results.some((r) => r.error)) { console.warn('Overview attendance failed:', results.find((r) => r.error).error); ovFail(list); return; }
-    const [present, late, absent] = results.map((r) => r.count ?? 0);
-    const total = present + late + absent;
+    const [present, absent] = results.map((r) => r.count ?? 0);
+    const total = present + absent;
     if (!total) { list.replaceChildren(); const p = document.createElement('p'); p.className = 'ov-empty'; p.textContent = 'No attendance marked in the last 7 days.'; list.appendChild(p); return; }
     renderOverviewBars(list, [
       { label: 'Present', count: present, color: OVERVIEW_COLORS.present },
-      { label: 'Late', count: late, color: OVERVIEW_COLORS.late },
       { label: 'Absent', count: absent, color: OVERVIEW_COLORS.absent },
     ], total);
   }
@@ -535,8 +535,6 @@
     renderOverviewToday();
     await Promise.allSettled([loadOverviewStudents(), loadOverviewAttendance(), loadOverviewAnnouncements()]);
   }
-
-  document.getElementById('overviewRefresh').addEventListener('click', loadOverview);
 
   /* ---------------- Students ---------------- */
 
@@ -573,7 +571,7 @@
   async function loadStudents() {
     const { data, error } = await supabaseClient
       .from('profiles')
-      .select('id, full_name, student_id, email, course_code, course_name, role, job_title, verified, last_active_at, deactivated_at, created_at, is_super_admin')
+      .select('id, full_name, student_id, email, course_code, course_name, role, job_title, verified, last_active_at, deactivated_at, created_at, is_super_admin, gender, has_secondary_qualifications, has_other_qualifications')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -713,17 +711,45 @@
   function renderStudents() {
     const q = document.getElementById('studentSearch').value.trim().toLowerCase();
     const courseFilter = document.getElementById('studentCourseFilter').value;
+    const genderFilter = document.getElementById('studentGenderFilter').value;
+    const qualFilter = document.getElementById('studentQualFilter').value;
     const tbody = document.getElementById('studentsTbody');
     tbody.innerHTML = '';
+
+    // Qualification flags come from each student's registration: true / false,
+    // or null/undefined when they signed up without registering.
+    const isSet = (v) => v !== null && v !== undefined;
+    const matchesQual = (p) => {
+      if (!qualFilter) return true;
+      const recorded = isSet(p.has_secondary_qualifications) || isSet(p.has_other_qualifications);
+      if (qualFilter === 'secondary') return p.has_secondary_qualifications === true;
+      if (qualFilter === 'other') return p.has_other_qualifications === true;
+      if (qualFilter === 'none') return recorded && p.has_secondary_qualifications !== true && p.has_other_qualifications !== true;
+      if (qualFilter === 'unrecorded') return !recorded;
+      return true;
+    };
+    const matchesGender = (p) => {
+      if (!genderFilter) return true;
+      if (genderFilter === 'none') return p.gender !== 'Male' && p.gender !== 'Female';
+      return p.gender === genderFilter;
+    };
 
     const rows = allProfiles.filter((p) => {
       if (p.role !== 'student') return false;
       if (courseFilter && p.course_code !== courseFilter) return false;
+      if (!matchesGender(p)) return false;
+      if (!matchesQual(p)) return false;
       if (studentViewMode === 'mine' && !myPriorityCourses.has(p.course_code)) return false;
+      if (studentViewMode === 'verified' && p.verified !== true) return false;
       if (studentViewMode === 'unverified' && p.verified !== false) return false;
       if (studentViewMode === 'pending' && !p.deactivated_at) return false;
       return matchesProfileSearch(p, q);
     });
+
+    const totalStudents = allProfiles.filter((p) => p.role === 'student').length;
+    document.getElementById('studentCount').textContent = rows.length === totalStudents
+      ? totalStudents + (totalStudents === 1 ? ' student' : ' students')
+      : rows.length + ' of ' + totalStudents + ' students';
 
     if (!rows.length) {
       const empty = studentViewMode === 'mine' && !myPriorityCourses.size
@@ -874,6 +900,9 @@
 
   document.getElementById('studentSearch').addEventListener('input', renderStudents);
   document.getElementById('studentCourseFilter').addEventListener('change', renderStudents);
+  document.getElementById('studentGenderFilter').addEventListener('change', renderStudents);
+  document.getElementById('studentQualFilter').addEventListener('change', renderStudents);
+  document.getElementById('studentViewFilter').addEventListener('change', (e) => setStudentView(e.target.value));
   document.getElementById('studentRefresh').addEventListener('click', loadStudents);
   document.getElementById('staffSearch').addEventListener('input', renderStaff);
   document.getElementById('staffRefresh').addEventListener('click', loadStudents);
@@ -941,7 +970,7 @@
   }
 
   function sdPill(status) {
-    const known = status === 'present' || status === 'absent' || status === 'late';
+    const known = status === 'present' || status === 'absent';
     return sdEl('span', 'sd-pill' + (known ? ' ' + status : ''), status ? status.charAt(0).toUpperCase() + status.slice(1) : '—');
   }
 
@@ -1029,17 +1058,17 @@
       return;
     }
 
-    const totals = { present: 0, absent: 0, late: 0 };
+    const totals = { present: 0, absent: 0 };
     const bySubject = new Map();
     records.forEach((r) => {
       if (totals[r.status] != null) totals[r.status] += 1;
       const subject = r.subject || 'No subject';
-      if (!bySubject.has(subject)) bySubject.set(subject, { present: 0, absent: 0, late: 0 });
+      if (!bySubject.has(subject)) bySubject.set(subject, { present: 0, absent: 0 });
       const c = bySubject.get(subject);
       if (c[r.status] != null) c[r.status] += 1;
     });
     const pctOf = (c) => {
-      const total = c.present + c.absent + c.late;
+      const total = c.present + c.absent;
       return total ? `${Math.round((c.present / total) * 1000) / 10}%` : '—';
     };
 
@@ -1047,7 +1076,6 @@
     [
       [totals.present, 'Present', 'present'],
       [totals.absent, 'Absent', 'absent'],
-      [totals.late, 'Late', 'late'],
       [pctOf(totals), 'Attendance', 'rate'],
     ].forEach(([value, label, cls]) => {
       const stat = sdEl('div', 'sd-stat ' + cls);
@@ -1056,11 +1084,11 @@
     });
     attSection.appendChild(stats);
 
-    if (totals.present + totals.absent + totals.late > 0) {
+    if (totals.present + totals.absent > 0) {
       const bar = sdEl('div', 'sd-bar');
       bar.setAttribute('role', 'img');
-      bar.setAttribute('aria-label', `${totals.present} present, ${totals.late} late, ${totals.absent} absent`);
-      ['present', 'late', 'absent'].forEach((key) => {
+      bar.setAttribute('aria-label', `${totals.present} present, ${totals.absent} absent`);
+      ['present', 'absent'].forEach((key) => {
         if (!totals[key]) return;
         const seg = sdEl('span', key);
         seg.style.flex = String(totals[key]);
@@ -1071,10 +1099,10 @@
 
     attSection.appendChild(sdEl('h4', 'sd-subtitle', 'By subject'));
     attSection.appendChild(sdTable(
-      ['Subject', 'Present', 'Absent', 'Late', 'Attendance'],
+      ['Subject', 'Present', 'Absent', 'Attendance'],
       [...bySubject.entries()]
         .sort((a, b) => a[0].localeCompare(b[0]))
-        .map(([subject, c]) => [subject, String(c.present), String(c.absent), String(c.late), pctOf(c)]),
+        .map(([subject, c]) => [subject, String(c.present), String(c.absent), pctOf(c)]),
     ));
 
     attSection.appendChild(sdEl('h4', 'sd-subtitle', `All records (${records.length})`));
@@ -2429,6 +2457,23 @@
     return map;
   }
 
+  // Final grades: final_grades (student_id, course_code, final_score,
+  // letter_grade, released). A student only ever sees a row once
+  // `released` is true — enforced by row-level security, not just the UI.
+  // Keyed `${student_id}|${course_code}`.
+  let gradesFinals = new Map();
+  async function fetchFinalGrades(studentIds) {
+    const map = new Map();
+    if (!studentIds.length) return map;
+    const { data, error } = await supabaseClient
+      .from('final_grades')
+      .select('id, student_id, course_code, final_score, letter_grade, released')
+      .in('student_id', studentIds);
+    if (error) { console.warn('Loading final grades failed:', error); return map; }
+    (data || []).forEach((f) => map.set(`${f.student_id}|${f.course_code}`, f));
+    return map;
+  }
+
   function suggestLetter(total) {
     for (const [letter, min] of LETTER_THRESHOLDS) {
       if (total >= min) return letter;
@@ -2503,7 +2548,7 @@
     if (gradesRes.error) console.error('Loading existing grades failed:', gradesRes.error);
 
     currentGradesStudents = studentsRes.data || [];
-    gradesPromotions = await fetchPromotions(currentGradesStudents.map((s) => s.id));
+    [gradesPromotions, gradesFinals] = await Promise.all([fetchPromotions(currentGradesStudents.map((s) => s.id)), fetchFinalGrades(currentGradesStudents.map((s) => s.id))]);
     currentGradesByStudent = new Map();
     (gradesRes.data || []).forEach((g) => {
       if (!currentGradesByStudent.has(g.student_id)) currentGradesByStudent.set(g.student_id, []);
@@ -2540,7 +2585,7 @@
     }
 
     gradesSearchStudents = students || [];
-    gradesPromotions = await fetchPromotions(gradesSearchStudents.map((s) => s.id));
+    [gradesPromotions, gradesFinals] = await Promise.all([fetchPromotions(gradesSearchStudents.map((s) => s.id)), fetchFinalGrades(gradesSearchStudents.map((s) => s.id))]);
     gradesSearchByStudent = new Map();
     if (gradesSearchStudents.length) {
       const ids = gradesSearchStudents.map((s) => s.id);
@@ -2622,13 +2667,14 @@
       idBlock.appendChild(courseBadge);
     }
 
-    // Final Grade (A/B/C/F) from this student's saved subjects, shown
-    // once here rather than repeated on every subject row.
-    const finalLetter = finalLetterFor(existingRows);
-    if (finalLetter) {
+    // The final grade is now entered by hand on its own line below the
+    // subjects (see buildFinalGradeRow); this badge just mirrors what's saved.
+    const finalMap = (options && options.finals) || gradesFinals;
+    const savedFinal = finalMap.get(`${student.id}|${courseCode}`);
+    if (savedFinal) {
       const finalBadge = document.createElement('span');
-      finalBadge.className = 'badge badge-grade-' + finalLetter.toLowerCase();
-      finalBadge.textContent = 'Final Grade ' + finalLetter;
+      finalBadge.className = 'badge badge-grade-' + savedFinal.letter_grade.toLowerCase();
+      finalBadge.textContent = 'Final Grade ' + savedFinal.letter_grade + (savedFinal.released ? '' : ' (hidden)');
       idBlock.appendChild(finalBadge);
     }
 
@@ -2699,6 +2745,9 @@
     // a subject added earlier in the same session, not just the last
     // one that came from the database.
     const anchor = { el: headerRow };
+    if (courseCode !== 'STAFF') {
+      headerRow.insertAdjacentElement('afterend', buildFinalGradeRow(student, courseCode, existingRows, savedFinal, finalMap, onChange));
+    }
     const rowsToRender = existingRows.length ? existingRows : [null];
     rowsToRender.forEach((existing) => {
       const tr = renderGradeSubjectRow(student, existing, courseCode, onChange);
@@ -2712,6 +2761,141 @@
       anchor.el = tr;
       tr.querySelector('input[type="text"]').focus();
     });
+  }
+
+  // The student's final grade, on its own line under their subjects.
+  // "Release to student" is the gate: until it is ticked (and saved) the
+  // student's portal shows no final grade at all.
+  function buildFinalGradeRow(student, courseCode, subjectRows, saved, finalMap, onChange) {
+    const tr = document.createElement('tr');
+    tr.className = 'final-grade-tr';
+    const td = document.createElement('td');
+    td.colSpan = 8;
+    const box = document.createElement('div');
+    box.className = 'final-grade-box';
+
+    const title = document.createElement('strong');
+    title.textContent = 'Final grade';
+
+    const avgScores = subjectRows.map((r) => Number(r.total_grade)).filter((n) => !Number.isNaN(n));
+    const avg = avgScores.length ? avgScores.reduce((a, b) => a + b, 0) / avgScores.length : null;
+
+    const scoreInput = document.createElement('input');
+    scoreInput.type = 'number'; scoreInput.min = '0'; scoreInput.max = '100'; scoreInput.step = '0.1';
+    scoreInput.placeholder = avg == null ? 'Score %' : 'Avg ' + avg.toFixed(1);
+    scoreInput.setAttribute('aria-label', 'Final grade percent');
+    scoreInput.value = saved && saved.final_score != null ? saved.final_score : '';
+
+    const letterSelect = document.createElement('select');
+    letterSelect.setAttribute('aria-label', 'Final grade letter');
+    [['', 'Letter'], ['A', 'A'], ['B', 'B'], ['C', 'C'], ['F', 'F']].forEach(([v, l]) => {
+      const o = document.createElement('option'); o.value = v; o.textContent = l; letterSelect.appendChild(o);
+    });
+    letterSelect.value = saved ? saved.letter_grade : '';
+    if (saved) letterSelect.dataset.manual = '1';
+
+    const relLabel = document.createElement('label');
+    relLabel.className = 'final-release';
+    const release = document.createElement('input');
+    release.type = 'checkbox';
+    release.checked = !!(saved && saved.released);
+    relLabel.append(release, document.createTextNode(' Release to student'));
+
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button'; saveBtn.className = 'btn btn-sm'; saveBtn.textContent = 'Save final grade';
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button'; removeBtn.className = 'btn btn-danger btn-sm'; removeBtn.textContent = 'Remove';
+    removeBtn.hidden = !saved;
+
+    const hint = document.createElement('p');
+    hint.className = 'final-hint';
+    hint.setAttribute('aria-live', 'polite');
+
+    function hasEntry() { return scoreInput.value !== '' || letterSelect.value !== ''; }
+    function updateHint() {
+      hint.classList.remove('warn', 'ok');
+      if (release.checked) {
+        hint.classList.add('ok');
+        hint.textContent = saved && saved.released && !hasChanges()
+          ? 'Released \u2014 the student can see this final grade.'
+          : 'Will be visible to the student once you save.';
+      } else if (hasEntry()) {
+        hint.classList.add('warn');
+        hint.textContent = '\u26a0 Release is off \u2014 the student will NOT see this final grade until you tick \u201cRelease to student\u201d and save.';
+      } else {
+        hint.textContent = 'Hidden from the student. Enter the final grade, then tick \u201cRelease to student\u201d to publish it.';
+      }
+    }
+    function hasChanges() {
+      const sScore = saved && saved.final_score != null ? String(Number(saved.final_score)) : '';
+      const nScore = scoreInput.value === '' ? '' : String(Number(scoreInput.value));
+      return !saved || sScore !== nScore || (saved.letter_grade || '') !== letterSelect.value || !!saved.released !== release.checked;
+    }
+
+    scoreInput.addEventListener('input', () => {
+      const n = Number(scoreInput.value);
+      if (scoreInput.value !== '' && !Number.isNaN(n) && !letterSelect.dataset.manual) letterSelect.value = suggestLetter(n);
+      updateHint();
+    });
+    letterSelect.addEventListener('change', () => { letterSelect.dataset.manual = '1'; updateHint(); });
+    release.addEventListener('change', updateHint);
+    updateHint();
+
+    saveBtn.addEventListener('click', async () => {
+      const raw = scoreInput.value;
+      const score = raw === '' ? null : Number(raw);
+      if (score !== null && (Number.isNaN(score) || score < 0 || score > 100)) {
+        scoreInput.focus(); toast('The final grade must be between 0 and 100.', 'error'); return;
+      }
+      const letter = letterSelect.value || (score !== null ? suggestLetter(score) : '');
+      if (!letter) { scoreInput.focus(); toast('Enter a final grade first.', 'error'); return; }
+
+      if (!release.checked && !(await confirmAction({
+        title: 'This final grade will stay hidden',
+        text: `\u201cRelease to student\u201d is off, so ${student.full_name || 'the student'} will not see their final grade yet. Save it anyway?`,
+        confirmText: 'Save, keep hidden',
+        danger: false,
+      }))) return;
+
+      saveBtn.disabled = true; saveBtn.textContent = 'Saving\u2026';
+      const { error } = await supabaseClient.from('final_grades').upsert({
+        student_id: student.id,
+        course_code: courseCode,
+        final_score: score,
+        letter_grade: letter,
+        released: release.checked,
+        updated_by: currentUserId,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'student_id,course_code' });
+      saveBtn.disabled = false; saveBtn.textContent = 'Save final grade';
+      if (error) {
+        console.error('Saving final grade failed:', error);
+        toast('Could not save the final grade.', 'error');
+        return;
+      }
+      toast(release.checked
+        ? 'Final grade saved and released to the student.'
+        : 'Final grade saved, but it is hidden from the student until you release it.', 'success');
+      onChange();
+    });
+
+    removeBtn.addEventListener('click', async () => {
+      if (!(await confirmAction({ title: 'Remove the final grade?', text: `${student.full_name || 'The student'} will no longer have a final grade for this course.`, confirmText: 'Remove' }))) return;
+      removeBtn.disabled = true;
+      const { error } = await supabaseClient.from('final_grades').delete().eq('student_id', student.id).eq('course_code', courseCode);
+      removeBtn.disabled = false;
+      if (error) { console.error('Removing final grade failed:', error); toast('Could not remove the final grade.', 'error'); return; }
+      toast('Final grade removed.', 'success');
+      onChange();
+    });
+
+    const controls = document.createElement('div');
+    controls.className = 'final-controls';
+    controls.append(title, scoreInput, letterSelect, relLabel, saveBtn, removeBtn);
+    box.append(controls, hint);
+    td.appendChild(box);
+    tr.appendChild(td);
+    return tr;
   }
 
   function renderGradeSubjectRow(student, existing, courseCode, onChange) {
@@ -2880,7 +3064,7 @@
     }
     tbody.innerHTML = '<tr><td colspan="8"><div class="skeleton skeleton-line"></div></td></tr>';
 
-    const [gradesRes, promotions] = await Promise.all([
+    const [gradesRes, promotions, finals] = await Promise.all([
       supabaseClient
         .from('grades')
         .select('id, student_id, subject, attendance, class_work, home_work, examination, total_grade, letter_grade')
@@ -2888,6 +3072,7 @@
         .eq('course_code', p.course_code)
         .order('subject'),
       fetchPromotions([p.id]),
+      fetchFinalGrades([p.id]),
     ]);
     if (token !== studentGradesToken) return; // closed or switched to someone else meanwhile
 
@@ -2902,6 +3087,7 @@
       tbody,
       courseCode: p.course_code,
       promotions,
+      finals,
       onChange: () => {
         openStudentGrades(p);
         // Keep the Input Grades tab in step with what was just saved.
@@ -2919,7 +3105,7 @@
   });
 
   /* ---------------- Attendance ----------------
-     A real day-by-day present/absent/late tracker — separate from the
+     A real day-by-day present/absent tracker — separate from the
      Attendance *number* on the Input Grades tab (that one's a
      per-subject score staff type in themselves; this one is a daily
      mark per student, one row per (student, course, subject, date) —
@@ -2929,7 +3115,6 @@
   const ATTENDANCE_STATUSES = [
     { value: 'present', label: 'Present' },
     { value: 'absent', label: 'Absent' },
-    { value: 'late', label: 'Late' },
   ];
 
   let currentAttendanceCourse = '';
@@ -3093,7 +3278,6 @@
     const marked = currentAttendanceMarks.size;
     const present = [...currentAttendanceMarks.values()].filter((s) => s === 'present').length;
     const absent = [...currentAttendanceMarks.values()].filter((s) => s === 'absent').length;
-    const late = [...currentAttendanceMarks.values()].filter((s) => s === 'late').length;
 
     const courseSelect = document.getElementById('attendanceCourseSelect');
     const courseLabel = courseSelect.selectedIndex >= 0
@@ -3118,7 +3302,6 @@
     [
       ['badge-verified', `${present} present`],
       ['badge-inactive', `${absent} absent`],
-      ['badge-grade-c', `${late} late`],
     ].forEach(([cls, text]) => {
       const badge = document.createElement('span');
       badge.className = `badge ${cls}`;
@@ -3536,10 +3719,10 @@
   async function loadAttendanceOverview(courseCode) {
     const tbody = document.getElementById('attendanceOverviewTbody');
     if (!courseCode) {
-      tbody.innerHTML = '<tr><td colspan="9" class="empty-state">Select a course to see its attendance overview.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Select a course to see its attendance overview.</td></tr>';
       return;
     }
-    tbody.innerHTML = '<tr><td colspan="9"><div class="skeleton skeleton-line"></div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8"><div class="skeleton skeleton-line"></div></td></tr>';
 
     const [studentsRes, attendanceRes] = await Promise.all([
       supabaseClient
@@ -3557,7 +3740,7 @@
 
     if (studentsRes.error) {
       console.error('Loading students for attendance overview failed:', studentsRes.error);
-      tbody.innerHTML = '<tr><td colspan="9" class="empty-state">Could not load students.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Could not load students.</td></tr>';
       return;
     }
     if (attendanceRes.error) console.error('Loading attendance overview failed:', attendanceRes.error);
@@ -3567,11 +3750,11 @@
     // each subject gets its own line instead of being folded into one
     // combined total per student. Rows with no subject (saved before
     // the subject column existed) land under "No subject".
-    const bySubject = new Map(); // key -> { studentId, subject, present, absent, late, lastDate, lastMarkedBy }
+    const bySubject = new Map(); // key -> { studentId, subject, present, absent, lastDate, lastMarkedBy }
     (attendanceRes.data || []).forEach((row) => {
       const subject = row.subject || 'No subject';
       const key = `${row.student_id}||${subject}`;
-      if (!bySubject.has(key)) bySubject.set(key, { studentId: row.student_id, subject, present: 0, absent: 0, late: 0, lastDate: null, lastMarkedBy: null });
+      if (!bySubject.has(key)) bySubject.set(key, { studentId: row.student_id, subject, present: 0, absent: 0, lastDate: null, lastMarkedBy: null });
       const counts = bySubject.get(key);
       if (counts[row.status] != null) counts[row.status] += 1;
       // class_date sorts fine as a plain "yyyy-mm-dd" string, so the
@@ -3594,7 +3777,7 @@
     tbody.innerHTML = '';
 
     if (!students.length) {
-      tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No students are on this course yet.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No students are on this course yet.</td></tr>';
       return;
     }
 
@@ -3612,7 +3795,7 @@
     students.forEach((student) => {
       const subjectRows = rowsByStudent.get(student.id) || [];
       if (!subjectRows.length) {
-        appendAttendanceOverviewRow(tbody, student, { subject: 'No attendance yet', present: 0, absent: 0, late: 0, lastDate: null, lastMarkedBy: null }, true);
+        appendAttendanceOverviewRow(tbody, student, { subject: 'No attendance yet', present: 0, absent: 0, lastDate: null, lastMarkedBy: null }, true);
         rendered = true;
         return;
       }
@@ -3622,14 +3805,14 @@
       });
     });
 
-    if (!rendered) tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No attendance recorded for this class yet.</td></tr>';
+    if (!rendered) tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No attendance recorded for this class yet.</td></tr>';
   }
 
   // rowSpanCount, when set on a student's first subject row, spans the
   // Name/Student ID cells down over all of that student's subject rows
   // so the name isn't repeated on every line.
   function appendAttendanceOverviewRow(tbody, student, row, isEmptyRow, rowSpanCount) {
-    const total = row.present + row.absent + row.late;
+    const total = row.present + row.absent;
     const pct = total ? Math.round((row.present / total) * 1000) / 10 : null;
 
     const tr = document.createElement('tr');
@@ -3648,7 +3831,6 @@
       row.subject,
       isEmptyRow ? '—' : String(row.present),
       isEmptyRow ? '—' : String(row.absent),
-      isEmptyRow ? '—' : String(row.late),
       isEmptyRow || pct == null ? '—' : `${pct}%`,
       isEmptyRow || !row.lastDate ? '—' : fmtDateLong(row.lastDate),
       isEmptyRow || !row.lastMarkedBy ? '—' : row.lastMarkedBy,

@@ -1376,7 +1376,6 @@ table.admin-table #studentGradesTbody tr:not(.grades-student-row) td:first-child
 }
 .attendance-status-btn.present.active { background: #E4EFE7; border-color: #3E8558; color: #2F6B45; }
 .attendance-status-btn.absent.active { background: var(--danger-bg); border-color: var(--danger); color: var(--danger); }
-.attendance-status-btn.late.active { background: #FBF1DC; border-color: var(--brass); color: var(--brass-dark); }
 
 /* Name/Student ID cells span down over a student's subject rows in
    the Attendance overview table — top-align them so they sit level
@@ -1893,14 +1892,12 @@ button.name-link:focus-visible { outline: 2px solid var(--blueprint); outline-of
 }
 .sd-stat.present { border-left-color: var(--success); }
 .sd-stat.absent { border-left-color: var(--danger); }
-.sd-stat.late { border-left-color: var(--brass); }
 .sd-stat.rate { border-left-color: var(--blueprint); }
 .sd-stat-value { font-family: var(--font-display); font-weight: 600; font-size: 1.6rem; letter-spacing: -0.01em; color: var(--ink); line-height: 1.1; }
 .sd-stat-label { margin-top: 4px; font-size: 0.75rem; color: var(--slate); }
 
 .sd-bar { display: flex; height: 8px; margin-top: 14px; border-radius: 999px; overflow: hidden; background: var(--paper-line); }
 .sd-bar .present { background: var(--success); }
-.sd-bar .late { background: var(--brass); }
 .sd-bar .absent { background: var(--danger); }
 
 .sd-table-wrap { border: 1px solid var(--paper-line); border-radius: var(--radius-sm); }
@@ -1915,8 +1912,6 @@ table.sd-table tr:last-child td { border-bottom: none; }
 }
 .sd-pill.present { background: var(--success-bg); color: var(--success); }
 .sd-pill.absent { background: var(--danger-bg); color: var(--danger); }
-.sd-pill.late { background: #F4EAD7; color: var(--brass-dark); }
-[data-theme="dark"] .sd-pill.late { background: rgba(184, 134, 59, 0.2); color: #E0B36A; }
 .sd-pill.archived { background: transparent; border: 1px solid var(--paper-line); color: var(--slate); }
 
 @media (max-width: 560px) {
@@ -2127,3 +2122,17 @@ table.sd-table tr:last-child td { border-bottom: none; }
 .sd-section .sd-subtitle:first-of-type { margin-top: 18px; }
 .sd-section .sd-subtitle { margin-bottom: 8px; }
 .sd-section .status-message { margin: 12px 0 0; }
+/* Applications tab: accepted applicants stay in the list, tinted green. */
+.admin-table tr.app-row-accepted td { background: var(--success-bg); }
+.admin-table tr.app-row-accepted td:first-child { box-shadow: inset 4px 0 0 var(--success); }
+
+/* Applications tab: qualification badges and the "no qualifications" warning. */
+.app-quals { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.app-qual-warn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--danger-bg); color: var(--danger);
+  border: 1.5px solid var(--danger); font-weight: 700; font-size: 0.8rem; line-height: 1;
+  cursor: help;
+}
+.app-qual-none { color: var(--danger); font-size: 0.85rem; font-weight: 500; }

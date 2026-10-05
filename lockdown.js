@@ -17,7 +17,7 @@
   const SUPABASE_ANON_KEY = 'sb_publishable_bD6Za9HNb0bu72OfMylG1g_J_0yWV0K'; // public by design (RLS is the protection)
   const DEFAULT_MESSAGE = 'The portal is temporarily locked down by an administrator. Please try again shortly.';
   const STYLES = ['info', 'warning', 'danger'];
-  const POLL_MS = 5000;
+  const POLL_MS = 15000;
   const REDIRECT_SECONDS = 3;
 
   const $ = (id) => document.getElementById(id);
@@ -140,5 +140,5 @@
   });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
   check();
-  pollTimer = window.setInterval(check, POLL_MS);
+  pollTimer = window.setInterval(() => { if (!document.hidden) check(); }, POLL_MS); // hidden tabs skip; they re-check as soon as they're shown
 })();

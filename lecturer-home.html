@@ -203,7 +203,6 @@
 
       <div class="ov-head">
         <h2>At a glance</h2>
-        <button type="button" class="btn btn-secondary btn-sm" id="overviewRefresh">Refresh</button>
       </div>
 
       <div class="ov-kpis" id="ovKpis"></div>
@@ -252,16 +251,33 @@
     <!-- STUDENTS -->
     <section id="students" class="tab-content">
       <h2 id="studentsHeading">Students</h2>
-      <div class="ov-viewbar" id="studentViewBar" hidden>
-        <span id="studentViewLabel"></span>
-        <button type="button" class="btn btn-secondary btn-sm" id="studentViewClear">Show all students</button>
-      </div>
       <div class="card">
         <div class="search-row">
           <input type="search" id="studentSearch" placeholder="Search by name, email, or student ID…">
           <select id="studentCourseFilter" style="max-width:260px;"></select>
+          <select id="studentGenderFilter" aria-label="Filter by gender">
+            <option value="">All genders</option>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+            <option value="none">Gender not recorded</option>
+          </select>
+          <select id="studentQualFilter" aria-label="Filter by qualifications">
+            <option value="">All qualifications</option>
+            <option value="secondary">Secondary (CSEC / CAPE)</option>
+            <option value="other">Other qualifications</option>
+            <option value="none">No qualifications</option>
+            <option value="unrecorded">Qualifications not recorded</option>
+          </select>
+          <select id="studentViewFilter" aria-label="Filter by account">
+            <option value="all">All students</option>
+            <option value="mine">My classes</option>
+            <option value="verified">Verified</option>
+            <option value="unverified">Unverified</option>
+            <option value="pending">Pending deletion</option>
+          </select>
           <button type="button" class="btn btn-secondary btn-sm" id="studentRefresh">Refresh</button>
         </div>
+        <p class="field-hint" id="studentCount" aria-live="polite" style="margin:0 0 10px;"></p>
         <div class="table-wrap">
           <table class="admin-table">
             <thead><tr><th>Name</th><th>Student ID</th><th>Email</th><th>Course</th><th>Role</th><th>Root</th><th>Status</th><th></th></tr></thead>
@@ -513,7 +529,7 @@
       <p class="field-hint" style="margin:0 0 10px;">Every date recorded for this class, broken down by subject per student.</p>
       <div class="card table-wrap">
         <table class="admin-table" id="attendanceOverviewTable">
-          <thead><tr><th>Name</th><th>Student ID</th><th>Subject</th><th>Present</th><th>Absent</th><th>Late</th><th>Attendance %</th><th>Last recorded</th><th>Marked by</th></tr></thead>
+          <thead><tr><th>Name</th><th>Student ID</th><th>Subject</th><th>Present</th><th>Absent</th><th>Attendance %</th><th>Last recorded</th><th>Marked by</th></tr></thead>
           <tbody id="attendanceOverviewTbody"></tbody>
         </table>
       </div>
@@ -907,7 +923,7 @@
 <script src="courses-data.js"></script>
 <script src="timetable-editor.js?v=6"></script>
 <script src="email-tab.js?v=7"></script>
-<script src="applications-tab.js?v=2"></script>
+<script src="applications-tab.js?v=3"></script>
 <script src="lecturer-home.js?v=30"></script>
 </body>
 </html>

@@ -107,7 +107,17 @@
     else if (d.email_skipped === 'smtp_disabled') msg += ' No email sent: sending is switched off in the SMTP settings.';
     else msg += ' No email was sent.';
     if (!d.course_mapped) msg += ' Their course has no portal match, so they will pick it at sign-up.';
-    return msg + ' Application removed.';
+    return msg + ' They stay in the list, marked Accepted.';
+  }
+
+  // What happened with the email that goes out with Exam Required / Denied (same SMTP + templates as the Emails tab).
+  function decisionEmailNote(d) {
+    if (!d || typeof d.emailed !== 'boolean') return { text: '', failed: false };
+    if (d.emailed) return { text: ' Email sent to the applicant.', failed: false };
+    if (d.email_skipped === 'already_sent') return { text: '', failed: false };
+    if (d.email_skipped === 'template_disabled') return { text: ' No email sent: that email template is switched off.', failed: false };
+    if (d.email_skipped === 'smtp_disabled') return { text: ' No email sent: sending is switched off in the SMTP settings.', failed: false };
+    return { text: ' The email could not be sent. Check the SMTP settings in the Emails tab.', failed: true };
   }
 
   function isNotAuthorized(error) {
@@ -127,7 +137,7 @@
     return 'Something went wrong. Please try again.';
   }
 
-  const FIRST_STATUS = 'Interview Required';
+  const FIRST_STATUS = 'Pending'; // new applications start here (the Pending email is sent automatically on submit)
 
   function statusOf(a) { return a.status || FIRST_STATUS; }
 
@@ -146,6 +156,50 @@
       : h('span', { class: 'badge badge-unverified', text: 'Not interviewed' });
   }
 
+  /* ---------------- qualifications ---------------- */
+
+  // Which kinds of qualification an applicant listed: any of 'csec', 'cape', 'other'.
+  // An empty set means none at all.
+  function qualKinds(a) {
+    const kinds = new Set();
+    (a.secondary_qualifications || []).forEach((q) => {
+      if (q.exam === 'CSEC') kinds.add('csec');
+      else if (q.exam === 'CAPE') kinds.add('cape');
+    });
+    if ((a.other_qualifications || []).length) kinds.add('other');
+    return kinds;
+  }
+
+  function matchesQual(a, f) {
+    if (!f || f === 'all') return true;
+    const kinds = qualKinds(a);
+    return f === 'none' ? kinds.size === 0 : kinds.has(f);
+  }
+
+  // CSEC / CAPE / Other badges, or a red "!" icon + "None" when there are no qualifications.
+  function qualCell(a) {
+    const kinds = qualKinds(a);
+    if (!kinds.size) {
+      return h('span', { class: 'app-quals' },
+        h('span', { class: 'app-qual-warn', title: 'No qualifications listed on this application', 'aria-label': 'Warning: no qualifications', role: 'img', text: '!' }),
+        h('span', { class: 'app-qual-none', text: 'None' }));
+    }
+    return h('span', { class: 'app-quals' },
+      kinds.has('csec') ? h('span', { class: 'badge badge-verified', text: 'CSEC' }) : null,
+      kinds.has('cape') ? h('span', { class: 'badge badge-verified', text: 'CAPE' }) : null,
+      kinds.has('other') ? h('span', { class: 'badge badge-unverified', text: 'Other' }) : null);
+  }
+
+  // Department choices come from the applications themselves.
+  function refreshDeptOptions() {
+    if (!ui.dept) return;
+    const keep = ui.dept.value || 'all';
+    const depts = [...new Set(apps.map((a) => a.dept1).filter(Boolean))].sort((x, y) => x.localeCompare(y));
+    ui.dept.replaceChildren(h('option', { value: 'all', text: 'All departments' }),
+      ...depts.map((d) => h('option', { value: d, text: d })));
+    ui.dept.value = depts.includes(keep) ? keep : 'all';
+  }
+
   /* ---------------- list view ---------------- */
 
   function renderWorkspace() {
@@ -159,22 +213,37 @@
       h('option', { value: 'exam', text: 'Exam required' }),
       h('option', { value: 'accepted', text: 'Accepted' }),
       h('option', { value: 'denied', text: 'Denied' }));
+    ui.qual = h('select', { 'aria-label': 'Filter by qualifications' },
+      h('option', { value: 'all', text: 'All qualifications' }),
+      h('option', { value: 'csec', text: 'CSEC' }),
+      h('option', { value: 'cape', text: 'CAPE' }),
+      h('option', { value: 'other', text: 'Other qualifications' }),
+      h('option', { value: 'none', text: 'None (no qualifications)' }));
+    ui.gender = h('select', { 'aria-label': 'Filter by gender' },
+      h('option', { value: 'all', text: 'All genders' }),
+      h('option', { value: 'Male', text: 'Male' }),
+      h('option', { value: 'Female', text: 'Female' }));
+    ui.dept = h('select', { 'aria-label': 'Filter by department' },
+      h('option', { value: 'all', text: 'All departments' }));
     ui.refresh = h('button', { type: 'button', class: 'btn btn-secondary btn-sm', text: 'Refresh' });
     ui.count = h('p', { class: 'field-hint', 'aria-live': 'polite', style: 'margin:0 0 10px;' });
     ui.tbody = h('tbody');
 
     ui.search.addEventListener('input', renderRows);
     ui.filter.addEventListener('change', renderRows);
+    ui.qual.addEventListener('change', renderRows);
+    ui.gender.addEventListener('change', renderRows);
+    ui.dept.addEventListener('change', renderRows);
     ui.refresh.addEventListener('click', () => loadApplications(true));
 
     rootEl.append(
       h('div', { class: 'card' },
-        h('div', { class: 'search-row' }, ui.search, ui.filter, ui.refresh),
+        h('div', { class: 'search-row' }, ui.search, ui.filter, ui.qual, ui.gender, ui.dept, ui.refresh),
         ui.count,
         h('div', { class: 'table-wrap' },
           h('table', { class: 'admin-table' },
             h('thead', null, h('tr', null,
-              h('th', { text: 'Reference' }), h('th', { text: 'Applicant' }), h('th', { text: 'First choice' }),
+              h('th', { text: 'Reference' }), h('th', { text: 'Applicant' }), h('th', { text: 'First choice' }), h('th', { text: 'Qualifications' }),
               h('th', { text: 'Submitted' }), h('th', { text: 'Interview' }), h('th', { text: 'Status' }), h('th'))),
             ui.tbody))));
   }
@@ -197,6 +266,12 @@
     const f = ui.filter.value;
     const rows = apps.filter((a) => {
       if (!matchesFilter(a, f)) return false;
+      if (!matchesQual(a, ui.qual.value)) return false;
+      if (ui.gender.value !== 'all') {
+        const g = ui.gender.value;
+        if (g === 'none' ? (a.gender === 'Male' || a.gender === 'Female') : a.gender !== g) return false;
+      }
+      if (ui.dept.value !== 'all' && a.dept1 !== ui.dept.value) return false;
       if (!q) return true;
       return [fullName(a), a.reference, a.email, a.course1, a.course2, a.dept1]
         .some((v) => v && String(v).toLowerCase().includes(q));
@@ -208,14 +283,15 @@
 
     ui.tbody.replaceChildren();
     if (!rows.length) {
-      ui.tbody.append(h('tr', null, h('td', { colspan: '7', class: 'app-empty', text: apps.length ? 'No applications match your search.' : 'No applications have been submitted yet.' })));
+      ui.tbody.append(h('tr', null, h('td', { colspan: '8', class: 'app-empty', text: apps.length ? 'No applications match your search.' : 'No applications have been submitted yet.' })));
       return;
     }
     rows.forEach((a) => {
-      ui.tbody.append(h('tr', null,
+      ui.tbody.append(h('tr', { class: a.status === 'Accepted' ? 'app-row-accepted' : null },
         h('td', null, h('code', { text: a.reference || '—' })),
         h('td', null, h('button', { type: 'button', class: 'btn-link app-name-link', text: fullName(a), onclick: () => openDetail(a.id) })),
         h('td', { text: a.course1 || '—' }),
+        h('td', null, qualCell(a)),
         h('td', { text: fmtDate(a.submitted_at) }),
         h('td', null, interviewBadge(a)),
         h('td', null, statusBadge(a.status)),
@@ -234,6 +310,7 @@
       return;
     }
     apps = Array.isArray(data) ? data : [];
+    refreshDeptOptions();
     renderRows();
     if (openId) renderDetail();
     if (showToast) toast('Applications refreshed.', 'success', 2000);
@@ -370,21 +447,14 @@
       }
       setBusy(false);
 
-      // Accepting emails the applicant, saves their student ID + course for sign-up,
-      // and deletes the application from the registration database.
-      if (data && data.removed) {
-        apps = apps.filter((x) => x.id !== a.id);
+      // Accepting emails the applicant and saves their student ID + course for sign-up.
+      // The application stays in the list, marked Accepted (shown in a different colour).
+      if (data && data.accepted) {
+        const idx2 = apps.findIndex((x) => x.id === a.id);
+        if (idx2 >= 0) apps[idx2] = Object.assign({}, apps[idx2], data);
         closeModal();
         renderRows();
         toast(acceptedMessage(a, data), data.emailed || data.email_skipped ? 'success' : 'error', 6000);
-        return;
-      }
-      if (data && data.cleanup_failed) {
-        const idx2 = apps.findIndex((x) => x.id === a.id);
-        if (idx2 >= 0) apps[idx2] = Object.assign({}, apps[idx2], { status: 'Accepted' });
-        renderRows();
-        renderDetail();
-        setStatus(status, 'Accepted and emailed, but the application could not be fully deleted. Click Accept again to retry the deletion (no second email is sent).', 'error');
         return;
       }
 
@@ -392,7 +462,8 @@
       if (idx >= 0 && data) apps[idx] = Object.assign({}, apps[idx], data);
       renderRows();
       renderDetail();
-      toast(okMessage, 'success');
+      const note = decisionEmailNote(data);
+      toast(okMessage + note.text, note.failed ? 'error' : 'success', note.text ? 6000 : undefined);
     }
 
     function button(label, cls, locked, onClick) {
@@ -430,20 +501,18 @@
 
     // ---- Decision ----
     function decisionBtn(label, decision, cls, danger) {
-      return button(label, cls, !interviewed, async () => {
+      return button(label, cls, !interviewed || a.status === 'Accepted', async () => {
         const accepting = decision === 'Accepted';
         const ok = await confirmAction({
           title: label + '?',
           text: accepting
-            ? fullName(a) + ' (' + a.reference + ') will be emailed their acceptance, and their student ID and course will be saved so their account is set up when they sign up. This application will then be permanently deleted from the registration database.'
-            : fullName(a) + ' (' + a.reference + ') will be set to "' + decision + '". Applicants see this status when they check their application.',
+            ? fullName(a) + ' (' + a.reference + ') will be emailed their acceptance, and their student ID and course will be saved so their account is set up when they sign up. The application stays in the list, marked as Accepted.'
+            : fullName(a) + ' (' + a.reference + ') will be set to "' + decision + '" and emailed the matching message from the Emails tab. Applicants also see this status when they check their application.',
           confirmText: label, danger: danger || accepting,
         });
         if (!ok) return;
         run(
-          api('decide', accepting
-            ? { id: a.id, decision: decision, portal_url: PORTAL_URL }
-            : { id: a.id, decision: decision }),
+          api('decide', { id: a.id, decision: decision, portal_url: PORTAL_URL }),
           'Application set to "' + decision + '".');
       });
     }
@@ -459,11 +528,13 @@
     const statusSection = section('Status',
       facts(
         fact('Status', statusBadge(a.status)),
+        fact('Qualifications', qualCell(a)),
         fact('Interview', interviewed ? 'Done · ' + fmtDate(a.interviewed_at, true) : 'Not done yet'),
         interviewed ? fact('Interviewed by', a.interviewed_by) : null,
         a.reviewed_at ? fact('Last decision', fmtDate(a.reviewed_at, true) + ' · ' + (a.reviewed_by || 'unknown')) : null),
       el('h4', 'sd-subtitle', '1. Interview'), interviewRow,
       el('h4', 'sd-subtitle', '2. Decision'), decisionRow,
+      a.status === 'Accepted' ? el('p', 'sd-note sd-note-gap', 'This applicant has been accepted, so the decision is final.') : null,
       interviewed ? null : el('p', 'sd-note sd-note-gap', 'Accept, Exam required and Deny unlock once the applicant has been marked as interviewed.'),
       status);
 
