@@ -102,18 +102,60 @@
         </div>
       </div>
 
-      <h2>Your record</h2>
-      <div class="card">
+      <style>
+        .so-kpis { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:14px; margin:0 0 14px; }
+        .so-kpi { margin:0; padding:16px 18px; min-width:0; display:flex; flex-direction:column; gap:4px; }
+        .so-label { font-size:0.72rem; letter-spacing:0.06em; text-transform:uppercase; color:var(--slate); }
+        .so-value { font-family:var(--font-display); font-size:2rem; font-weight:700; line-height:1.1; font-variant-numeric:tabular-nums; }
+        .so-sub { font-size:0.8rem; color:var(--slate); }
+        .so-row { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:14px; margin:0 0 8px; align-items:stretch; }
+        .so-row .card { margin:0; min-width:0; }
+        .so-panel h3 { margin:0 0 14px; font-size:1rem; }
+        .so-link { position:relative; cursor:pointer; transition:border-color 0.15s ease, transform 0.15s ease; }
+        .so-link::after { content:"→"; position:absolute; top:14px; right:16px; color:var(--slate); }
+        .so-link:hover { border-color:var(--slate); transform:translateY(-1px); }
+        .so-link:focus-visible { outline:2px solid var(--blueprint); outline-offset:2px; }
+        .so-bars { list-style:none; margin:0; padding:0; display:grid; gap:14px; }
+        .so-bar-top { display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:0.92rem; margin-bottom:6px; }
+        .so-bar-top span:first-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+        .so-bar-top .so-score { display:flex; align-items:center; gap:8px; flex:none; font-variant-numeric:tabular-nums; }
+        .so-track { height:8px; border-radius:999px; background:var(--paper-line); overflow:hidden; }
+        .so-fill { height:100%; width:0; border-radius:999px; transition:width 0.5s ease; }
+        .so-empty { color:var(--slate); font-size:0.9rem; margin:0; }
+        @media (max-width: 760px) {
+          .so-kpis { grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; }
+          .so-kpi { padding:12px 14px; }
+          .so-value { font-size:1.6rem; }
+          .so-label { font-size:0.68rem; }
+        }
+        @media (max-width: 600px) {
+          .so-row { grid-template-columns:minmax(0, 1fr); gap:10px; }
+        }
+        @media (prefers-reduced-motion: reduce) { .so-fill, .so-link { transition:none; } }
+      </style>
+
+      <div class="card" id="profileWarningCard" hidden>
+        <p style="margin:0; color:var(--danger); font-size:0.88rem;" id="profileWarningText"></p>
+      </div>
+
+      <div class="so-kpis" id="soKpis"></div>
+
+      <div class="so-row">
+        <div class="card so-panel" id="soGradesPanel" data-go="grades">
+          <h3>Latest grades</h3>
+          <ul class="so-bars" id="soGrades"></ul>
+        </div>
+        <div class="card so-panel">
+          <h3>Your record</h3>
         <div class="detail-row"><span class="label">Name</span><span class="value" id="studentName"></span></div>
         <div class="detail-row"><span class="label">Student ID</span><span class="value" id="studentId"></span></div>
         <div class="detail-row"><span class="label">Email</span><span class="value" id="studentEmail"></span></div>
         <div class="detail-row"><span class="label">Course</span><span class="value" id="studentCourse"></span></div>
         <div class="detail-row"><span class="label">Status</span><span class="value" id="studentVerified"></span></div>
+        </div>
       </div>
-      <div class="card" id="profileWarningCard" hidden>
-        <p style="margin:0; color:var(--danger); font-size:0.88rem;" id="profileWarningText"></p>
-      </div>
-      <h2>Announcements</h2>
+
+      <h2 id="announcementsSection">Announcements</h2>
       <div class="card"><ul class="record-list" id="announcementsList"></ul></div>
     </section>
 
@@ -278,6 +320,6 @@
 <script src="app.js?v=7"></script>
 <script src="courses-data.js?v=2"></script>
 <script src="timetable-editor.js?v=6"></script>
-<script src="home.js?v=9"></script>
+<script src="home.js?v=10"></script>
 </body>
 </html>

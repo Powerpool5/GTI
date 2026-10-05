@@ -202,69 +202,341 @@
     return '<li class="empty-state">' + ICONS.empty + '<span>' + message + '</span></li>';
   }
 
-  /* ---------------- Overview ---------------- */
+  /* ---------------- Overview ----------------
+     Every panel loads independently (Promise.allSettled), so one failing
+     query only blanks its own card. Student rows are fetched in pages of
+     1000 — Supabase's default row cap — so counts stay right as the school
+     grows, and the per-course bars scale to the largest course rather than
+     to the total, so small courses stay readable. */
 
-  async function loadOverview() {
-    const [students, staff, admins, anns, tt, res, inactive, recent] = await Promise.all([
-      supabaseClient.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'student'),
-      supabaseClient.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'staff'),
-      supabaseClient.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'admin'),
-      supabaseClient.from('announcements').select('id', { count: 'exact', head: true }),
-      supabaseClient.from('timetable').select('id', { count: 'exact', head: true }),
-      supabaseClient.from('resources').select('id', { count: 'exact', head: true }),
-      supabaseClient.from('profiles').select('id', { count: 'exact', head: true }).not('deactivated_at', 'is', null),
-      supabaseClient.from('profiles').select('full_name, email, created_at').order('created_at', { ascending: false }).limit(5),
-    ]);
+  const OVERVIEW_COLORS = {
+    male: '#1f4e8c', female: '#9c4f8a', course: '#1f4e8c',
+    secondary: '#1f7a4d', other: '#b7791f', none: '#8a919c',
+    present: '#1f7a4d', late: '#b7791f', absent: '#b42318',
+  };
+  const OV_COURSE_PREVIEW = 8;
+  const OV_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  let ovCourseRows = [];
+  let ovCoursesExpanded = false;
 
-    document.getElementById('statStudents').textContent = students.count ?? '—';
-    document.getElementById('statStaff').textContent = staff.count ?? '—';
-    document.getElementById('statAdmins').textContent = admins.count ?? '—';
-    document.getElementById('statAnnouncements').textContent = anns.count ?? '—';
-    document.getElementById('statTimetable').textContent = tt.count ?? '—';
-    document.getElementById('statResources').textContent = res.count ?? '—';
-    document.getElementById('statInactive').textContent = inactive.count ?? '—';
+  const ovNum = (n) => Number(n || 0).toLocaleString();
+  const ovEl = (id) => document.getElementById(id);
 
-    if (students.error) console.error('Overview stat query failed (students):', students.error);
-    if (staff.error) console.error('Overview stat query failed (staff):', staff.error);
-    if (admins.error) console.error('Overview stat query failed (admins):', admins.error);
-    if (anns.error) console.error('Overview stat query failed (announcements):', anns.error);
-    if (tt.error) console.error('Overview stat query failed (timetable):', tt.error);
-    if (res.error) console.error('Overview stat query failed (resources):', res.error);
-    if (inactive.error) console.error('Overview stat query failed (inactive):', inactive.error);
-    if (recent.error) console.error('Overview stat query failed (recent):', recent.error);
-
-    const list = document.getElementById('recentList');
-    list.innerHTML = '';
-    const rows = recent.data || [];
+  // scaleTo: what a 100% bar means. Defaults to the sum of the rows' total.
+  function renderOverviewBars(listEl, rows, total, scaleTo) {
+    listEl.replaceChildren();
     if (!rows.length) {
-      list.innerHTML = emptyState('No one has signed up yet.');
+      const li = document.createElement('li');
+      li.className = 'ov-empty';
+      li.textContent = 'Nothing to show yet.';
+      listEl.appendChild(li);
       return;
     }
-    rows.forEach((p) => {
+    const scale = scaleTo || total;
+    rows.forEach((row) => {
+      const pct = total > 0 ? Math.round((row.count / total) * 100) : 0;
+      const width = scale > 0 ? Math.max(row.count > 0 ? 2 : 0, Math.round((row.count / scale) * 100)) : 0;
+
       const li = document.createElement('li');
-      li.className = 'record';
+      const top = document.createElement('div');
+      top.className = 'ov-bar-top';
+      const label = document.createElement('span');
+      label.textContent = row.label;
+      label.title = row.label;
+      const value = document.createElement('strong');
+      value.textContent = ovNum(row.count);
+      const pctEl = document.createElement('span');
+      pctEl.className = 'ov-pct';
+      pctEl.textContent = pct + '%';
+      value.appendChild(pctEl);
+      top.append(label, value);
 
-      const head = document.createElement('div');
-      head.className = 'record-head';
-      const headMain = document.createElement('div');
-      headMain.className = 'record-head-main';
-      const headText = document.createElement('div');
-      headText.className = 'record-head-text';
+      const track = document.createElement('div');
+      track.className = 'ov-track';
+      track.setAttribute('aria-hidden', 'true');
+      const fill = document.createElement('div');
+      fill.className = 'ov-fill';
+      fill.style.background = row.color;
+      track.appendChild(fill);
 
-      const title = document.createElement('div');
-      title.className = 'record-title';
-      title.textContent = p.full_name || p.email || 'Unnamed';
-      const meta = document.createElement('div');
-      meta.className = 'record-meta';
-      meta.textContent = fmtDate(p.created_at);
-      headText.append(title, meta);
+      li.append(top, track);
+      if (row.go) makeActivatable(li, row.go, 'ov-bar-link', 'View students: ' + row.label);
+      listEl.appendChild(li);
+      requestAnimationFrame(() => { fill.style.width = width + '%'; });
+    });
+  }
 
-      headMain.append(recordIcon('person'), headText);
-      head.appendChild(headMain);
-      li.appendChild(head);
+  // Divs (not <button>) so the existing .card styling is untouched; still
+  // reachable and usable from the keyboard.
+  function makeActivatable(el, handler, cls, ariaLabel) {
+    el.classList.add(cls);
+    el.setAttribute('role', 'link');
+    el.tabIndex = 0;
+    if (ariaLabel) el.setAttribute('aria-label', ariaLabel);
+    el.addEventListener('click', handler);
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); }
+    });
+  }
+
+  function ovGoTab(tabId) {
+    const btn = document.querySelector('.nav-item[data-tab="' + tabId + '"]');
+    if (!btn || btn.hidden) return;
+    switchTab(tabId, btn);
+    window.scrollTo(0, 0);
+  }
+
+  // The Students tab doubles as the "My students" / "Unverified" / etc. page.
+  const STUDENT_VIEWS = {
+    all: { heading: 'Students', label: '' },
+    mine: { heading: 'My students', label: 'Showing students in the courses on your weekly schedule.' },
+    unverified: { heading: 'Unverified students', label: 'Showing students who are not verified yet.' },
+    pending: { heading: 'Pending deletion', label: 'Showing accounts in the 30-day pending-deletion phase.' },
+  };
+  let studentViewMode = 'all';
+
+  function setStudentView(mode) {
+    studentViewMode = STUDENT_VIEWS[mode] ? mode : 'all';
+    const v = STUDENT_VIEWS[studentViewMode];
+    document.getElementById('studentsHeading').textContent = v.heading;
+    document.getElementById('studentViewLabel').textContent = v.label;
+    document.getElementById('studentViewBar').hidden = studentViewMode === 'all';
+    renderStudents();
+  }
+
+  function ovOpenStudents(mode, courseCode) {
+    document.getElementById('studentSearch').value = '';
+    document.getElementById('studentCourseFilter').value = courseCode || '';
+    try { syncCourseSelectDisplay(document.getElementById('studentCourseFilter')); } catch (e) { /* plain select */ }
+    setStudentView(mode);
+    ovGoTab('students');
+  }
+
+  document.getElementById('studentViewClear').addEventListener('click', () => setStudentView('all'));
+  document.querySelectorAll('.ov-panel[data-go]').forEach((panel) => {
+    const h = panel.querySelector('h3');
+    makeActivatable(panel, () => ovGoTab(panel.dataset.go), 'ov-link', 'Open: ' + (h ? h.textContent.trim() : panel.dataset.go));
+  });
+
+  function renderKpis(items) {
+    const wrap = ovEl('ovKpis');
+    wrap.replaceChildren();
+    items.forEach((k) => {
+      const card = document.createElement('div');
+      card.className = 'card ov-kpi';
+      if (k.go) makeActivatable(card, k.go, 'ov-link', 'Open: ' + k.label);
+      const label = document.createElement('div');
+      label.className = 'ov-label';
+      label.textContent = k.label;
+      const value = document.createElement('div');
+      value.className = 'ov-kpi-value';
+      value.textContent = k.value;
+      card.append(label, value);
+      if (k.sub) {
+        const sub = document.createElement('div');
+        sub.className = 'ov-kpi-sub';
+        sub.textContent = k.sub;
+        card.appendChild(sub);
+      }
+      wrap.appendChild(card);
+    });
+  }
+
+  async function fetchAllStudents() {
+    const PAGE = 1000;
+    const cols = 'id, course_code, gender, has_secondary_qualifications, has_other_qualifications, verified, deactivated_at, last_active_at, created_at';
+    let all = [];
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await supabaseClient
+        .from('profiles').select(cols).eq('role', 'student')
+        .order('created_at', { ascending: false }).range(from, from + PAGE - 1);
+      if (error) throw error;
+      all = all.concat(data || []);
+      if (!data || data.length < PAGE) break;
+    }
+    return all;
+  }
+
+  function renderCourseBars() {
+    const list = ovEl('ovCourses');
+    const toggle = ovEl('ovCoursesToggle');
+    const rows = ovCoursesExpanded ? ovCourseRows : ovCourseRows.slice(0, OV_COURSE_PREVIEW);
+    const max = ovCourseRows.length ? ovCourseRows[0].count : 0;
+    const total = ovCourseRows.reduce((sum, r) => sum + r.count, 0);
+    renderOverviewBars(list, rows, total, max);
+    list.classList.toggle('scroll', ovCoursesExpanded);
+    const hidden = ovCourseRows.length - OV_COURSE_PREVIEW;
+    toggle.hidden = hidden <= 0;
+    toggle.textContent = ovCoursesExpanded ? 'Show fewer' : 'Show all ' + ovCourseRows.length + ' courses';
+  }
+  ovEl('ovCoursesToggle').addEventListener('click', () => {
+    ovCoursesExpanded = !ovCoursesExpanded;
+    renderCourseBars();
+  });
+
+  function renderOverviewToday() {
+    const day = new Date().getDay();
+    ovEl('ovTodayDay').textContent = OV_DAYS[day];
+    const box = ovEl('ovToday');
+    box.replaceChildren();
+    const codes = (typeof mySchedule !== 'undefined' && mySchedule && mySchedule.get(day)) || [];
+    if (!codes.length) {
+      const p = document.createElement('p');
+      p.className = 'ov-empty';
+      p.textContent = 'No classes scheduled for today. Set your weekly schedule under My Classes.';
+      box.appendChild(p);
+      return;
+    }
+    codes.forEach((code) => {
+      const chip = document.createElement('span');
+      chip.className = 'ov-chip';
+      chip.textContent = courseNameFor(code);
+      box.appendChild(chip);
+    });
+  }
+
+  function ovFail(listEl) { listEl.replaceChildren(); const p = document.createElement('p'); p.className = 'ov-empty'; p.textContent = 'Could not load right now.'; listEl.appendChild(p); }
+
+  async function loadOverviewStudents() {
+    let students;
+    try { students = await fetchAllStudents(); } catch (err) {
+      console.error('Overview student query failed:', err);
+      renderKpis([{ label: 'Students', value: '—' }]);
+      ['ovGender', 'ovQuals', 'ovCourses'].forEach((id) => ovFail(ovEl(id)));
+      return;
+    }
+    const n = students.length;
+    ovStudents = students;
+    renderOverviewKpis();
+    loadOverviewExtras();
+
+    const male = students.filter((s) => s.gender === 'Male').length;
+    const female = students.filter((s) => s.gender === 'Female').length;
+    renderOverviewBars(ovEl('ovGender'), [
+      { label: 'Male', count: male, color: OVERVIEW_COLORS.male },
+      { label: 'Female', count: female, color: OVERVIEW_COLORS.female },
+      { label: 'Not recorded', count: Math.max(0, n - male - female), color: OVERVIEW_COLORS.none },
+    ], n);
+
+    const secondary = students.filter((s) => s.has_secondary_qualifications === true).length;
+    const other = students.filter((s) => s.has_other_qualifications === true).length;
+    const recorded = students.filter((s) => s.has_secondary_qualifications !== null && s.has_secondary_qualifications !== undefined).length;
+    renderOverviewBars(ovEl('ovQuals'), [
+      { label: 'Secondary (CSEC / CAPE)', count: secondary, color: OVERVIEW_COLORS.secondary },
+      { label: 'Other qualifications', count: other, color: OVERVIEW_COLORS.other },
+      { label: 'Not recorded', count: Math.max(0, n - recorded), color: OVERVIEW_COLORS.none },
+    ], n);
+
+    const byCourse = new Map();
+    students.forEach((s) => {
+      const key = s.course_code || '';
+      byCourse.set(key, (byCourse.get(key) || 0) + 1);
+    });
+    ovCourseRows = [...byCourse.entries()]
+      .map(([code, count]) => ({ label: code ? courseNameFor(code) : 'No course set', count, color: code ? OVERVIEW_COLORS.course : OVERVIEW_COLORS.none, go: code ? () => ovOpenStudents('all', code) : null }))
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+    ovEl('ovCourseSummary').textContent = byCourse.size + (byCourse.size === 1 ? ' course' : ' courses') + ' \u00b7 ' + ovNum(n) + ' students \u00b7 ' + ovNum(ovMeta.new30) + ' new in 30 days';
+    renderCourseBars();
+  }
+
+  let ovStudents = null;
+  let ovExtras = {};
+  let ovMeta = { active30: 0, new30: 0 };
+
+  function renderOverviewKpis() {
+    if (!ovStudents) return;
+    const n = ovStudents.length;
+    const now = Date.now();
+    const DAY = 24 * 60 * 60 * 1000;
+    const within30 = (v) => v && now - new Date(v).getTime() <= 30 * DAY;
+    const active30 = ovStudents.filter((s) => within30(s.last_active_at)).length;
+    const new30 = ovStudents.filter((s) => within30(s.created_at)).length;
+    const fmt = (v) => (v === undefined || v === null ? '\u2014' : ovNum(v));
+
+    ovMeta = { active30, new30 };
+    const totalSub = active30 + ' active in 30 days';
+    let kpis;
+    if (currentUserIsAdmin) {
+      // Needs-attention items first, then the headline total.
+      kpis = [
+        { label: 'Open tickets', value: fmt(ovExtras.openTickets), sub: 'support requests', go: () => ovGoTab('support') },
+        { label: 'Unverified', value: ovNum(ovStudents.filter((s) => s.verified === false).length), sub: 'awaiting verification', go: () => ovOpenStudents('unverified') },
+        { label: 'Pending deletion', value: ovNum(ovStudents.filter((s) => s.deactivated_at).length), sub: 'in the 30-day phase', go: () => ovOpenStudents('pending') },
+        { label: 'Total students', value: ovNum(n), sub: totalSub, go: () => ovOpenStudents('all') },
+      ];
+    } else {
+      const mine = typeof myPriorityCourses !== 'undefined' && myPriorityCourses ? myPriorityCourses : new Set();
+      const todayCodes = (typeof mySchedule !== 'undefined' && mySchedule && mySchedule.get(new Date().getDay())) || [];
+      kpis = [
+        { label: 'Classes today', value: ovNum(todayCodes.length), sub: OV_DAYS[new Date().getDay()], go: () => ovGoTab('myClasses') },
+        { label: 'My students', value: mine.size ? ovNum(ovStudents.filter((s) => mine.has(s.course_code)).length) : '\u2014', sub: mine.size ? 'in ' + mine.size + (mine.size === 1 ? ' course' : ' courses') : 'Set up My Classes', go: () => (mine.size ? ovOpenStudents('mine') : ovGoTab('myClasses')) },
+        { label: 'Marked by me', value: fmt(ovExtras.myMarked), sub: 'attendance, last 7 days', go: () => ovGoTab('attendance') },
+        { label: 'My open tickets', value: fmt(ovExtras.myTickets), sub: 'support requests', go: () => ovGoTab('support') },
+      ];
+    }
+    renderKpis(kpis);
+  }
+
+  async function loadOverviewExtras() {
+    if (currentUserIsAdmin) {
+      const r = await supabaseClient.from('support_tickets').select('id', { count: 'exact', head: true }).neq('status', 'closed');
+      if (r.error) console.warn('Overview ticket count failed:', r.error); else ovExtras.openTickets = r.count ?? 0;
+    } else {
+      const d = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000);
+      const iso = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      const [marked, tickets] = await Promise.all([
+        supabaseClient.from('attendance').select('id', { count: 'exact', head: true }).eq('marked_by', currentUserId).eq('archived', false).gte('class_date', iso),
+        supabaseClient.from('support_tickets').select('id', { count: 'exact', head: true }).eq('user_id', currentUserId).neq('status', 'closed'),
+      ]);
+      if (marked.error) console.warn('Overview marked count failed:', marked.error); else ovExtras.myMarked = marked.count ?? 0;
+      if (tickets.error) console.warn('Overview my tickets failed:', tickets.error); else ovExtras.myTickets = tickets.count ?? 0;
+    }
+    renderOverviewKpis();
+  }
+
+  async function loadOverviewAttendance() {
+    const list = ovEl('ovAttendance');
+    const since = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000);
+    const iso = since.getFullYear() + '-' + String(since.getMonth() + 1).padStart(2, '0') + '-' + String(since.getDate()).padStart(2, '0');
+    const q = (status) => supabaseClient.from('attendance').select('id', { count: 'exact', head: true })
+      .eq('archived', false).eq('status', status).gte('class_date', iso);
+    const results = await Promise.all([q('present'), q('late'), q('absent')]);
+    if (results.some((r) => r.error)) { console.warn('Overview attendance failed:', results.find((r) => r.error).error); ovFail(list); return; }
+    const [present, late, absent] = results.map((r) => r.count ?? 0);
+    const total = present + late + absent;
+    if (!total) { list.replaceChildren(); const p = document.createElement('p'); p.className = 'ov-empty'; p.textContent = 'No attendance marked in the last 7 days.'; list.appendChild(p); return; }
+    renderOverviewBars(list, [
+      { label: 'Present', count: present, color: OVERVIEW_COLORS.present },
+      { label: 'Late', count: late, color: OVERVIEW_COLORS.late },
+      { label: 'Absent', count: absent, color: OVERVIEW_COLORS.absent },
+    ], total);
+  }
+
+  async function loadOverviewAnnouncements() {
+    const list = ovEl('ovAnnouncements');
+    const { data, error } = await supabaseClient
+      .from('announcements').select('id, title, audience, course_code, created_at')
+      .order('created_at', { ascending: false }).limit(5);
+    if (error) { console.warn('Overview announcements failed:', error); ovFail(list); return; }
+    list.replaceChildren();
+    if (!data || !data.length) { const p = document.createElement('p'); p.className = 'ov-empty'; p.textContent = 'No announcements yet.'; list.appendChild(p); return; }
+    data.forEach((a) => {
+      const li = document.createElement('li');
+      const title = document.createElement('span');
+      title.textContent = a.title || 'Untitled';
+      const when = document.createElement('span');
+      when.textContent = new Date(a.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      li.append(title, when);
       list.appendChild(li);
     });
   }
+
+  async function loadOverview() {
+    renderOverviewToday();
+    await Promise.allSettled([loadOverviewStudents(), loadOverviewAttendance(), loadOverviewAnnouncements()]);
+  }
+
+  document.getElementById('overviewRefresh').addEventListener('click', loadOverview);
 
   /* ---------------- Students ---------------- */
 
@@ -447,11 +719,17 @@
     const rows = allProfiles.filter((p) => {
       if (p.role !== 'student') return false;
       if (courseFilter && p.course_code !== courseFilter) return false;
+      if (studentViewMode === 'mine' && !myPriorityCourses.has(p.course_code)) return false;
+      if (studentViewMode === 'unverified' && p.verified !== false) return false;
+      if (studentViewMode === 'pending' && !p.deactivated_at) return false;
       return matchesProfileSearch(p, q);
     });
 
     if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No matching students.</td></tr>';
+      const empty = studentViewMode === 'mine' && !myPriorityCourses.size
+        ? 'You have no classes scheduled yet. Add them under My Classes.'
+        : 'No matching students.';
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">' + empty + '</td></tr>';
       return;
     }
 
@@ -972,6 +1250,8 @@
     }
 
     renderMyClassesForm();
+    renderOverviewToday();
+    renderOverviewKpis();
     renderScheduleQuickPicks('timetableQuickPicks', 'timetableQuickPicksCard', (courseCode) => {
       const select = document.getElementById('timetableCourseSelect');
       select.value = courseCode;
@@ -4316,6 +4596,8 @@
         loadFeedbackLockCard(),
         loadAllCourseFeedback(),
         loadAllStudentFeedback(),
+        // Applications tab (admin only): lives in the separate Registration database, behind its own sign-in.
+        window.ApplicationsManager ? ApplicationsManager.init(document.getElementById('applicationsRoot')).catch(() => {}) : null,
         // Emails tab: admins edit templates; root also gets the SMTP card.
         window.EmailManager ? EmailManager.init(document.getElementById('emailManagerRoot'), { isSuperAdmin: currentUserIsSuperAdmin }) : null,
       );

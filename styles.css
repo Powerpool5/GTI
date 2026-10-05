@@ -2117,3 +2117,13 @@ table.sd-table tr:last-child td { border-bottom: none; }
 .error-retry-status { margin: 4px 0 10px; font-family: var(--font-mono); font-size: 0.75rem; color: var(--slate); min-height: 1.1em; }
 .error-retry-status[hidden] { display: none; }
 #errorCopyBtn { display: block; margin: 2px 0 0; }
+
+/* ---------- Applications tab (staff dashboard) ---------- */
+.app-empty { text-align: center; color: var(--slate); padding: 22px 12px; }
+.app-name-link { font-weight: 600; text-align: left; }
+.app-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.app-actions .btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+.app-doc-row + .app-doc-row { margin-top: 8px; }
+.sd-section .sd-subtitle:first-of-type { margin-top: 18px; }
+.sd-section .sd-subtitle { margin-bottom: 8px; }
+.sd-section .status-message { margin: 12px 0 0; }

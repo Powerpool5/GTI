@@ -133,6 +133,7 @@
       loadResources(account.course_code),
       loadGrades(),
       loadPromotionResult(account.course_code),
+      loadOverviewSummary(account.course_code),
     ]);
   }
 
@@ -542,6 +543,147 @@
     }
     stat.style.display = '';
   }
+
+  /* ---------------- Overview summary ----------------
+     Four click-through cards (average grade, new announcements, resources,
+     timetable) plus a "Latest grades" panel. Own light queries so the
+     existing tab loaders stay untouched; each one fails on its own. */
+
+  const SO_LETTER_COLOR = { A: 'var(--success)', B: 'var(--blueprint)', C: 'var(--brass)', F: 'var(--danger)' };
+
+  function soActivatable(el, handler, label) {
+    el.classList.add('so-link');
+    el.setAttribute('role', 'link');
+    el.tabIndex = 0;
+    if (label) el.setAttribute('aria-label', label);
+    el.addEventListener('click', handler);
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); }
+    });
+  }
+
+  function soGoTab(tabId) {
+    const btn = document.querySelector('.nav-item[data-tab="' + tabId + '"]');
+    if (!btn) return;
+    switchTab(tabId, btn);
+    window.scrollTo(0, 0);
+  }
+
+  function soScrollToAnnouncements() {
+    const el = document.getElementById('announcementsSection');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function soRenderKpis(k) {
+    const wrap = document.getElementById('soKpis');
+    wrap.replaceChildren();
+    k.forEach((item) => {
+      const card = document.createElement('div');
+      card.className = 'card so-kpi';
+      if (item.go) soActivatable(card, item.go, 'Open: ' + item.label);
+      const l = document.createElement('div'); l.className = 'so-label'; l.textContent = item.label;
+      const v = document.createElement('div'); v.className = 'so-value'; v.textContent = item.value;
+      const s = document.createElement('div'); s.className = 'so-sub'; s.textContent = item.sub || '';
+      card.append(l, v, s);
+      wrap.appendChild(card);
+    });
+  }
+
+  function soRenderGrades(rows, failed) {
+    const list = document.getElementById('soGrades');
+    list.replaceChildren();
+    const note = (text) => { const p = document.createElement('p'); p.className = 'so-empty'; p.textContent = text; list.appendChild(p); };
+    if (failed) { note('Grades are not available right now.'); return; }
+    if (!rows.length) { note('No grades have been entered yet.'); return; }
+    rows.slice(0, 4).forEach((r) => {
+      const li = document.createElement('li');
+      const top = document.createElement('div');
+      top.className = 'so-bar-top';
+      const name = document.createElement('span');
+      name.textContent = r.subject || r.course_name || r.course_code || 'Subject';
+      name.title = name.textContent;
+      const score = document.createElement('span');
+      score.className = 'so-score';
+      const num = document.createElement('strong');
+      num.textContent = r.total_grade == null ? '\u2014' : String(r.total_grade);
+      score.appendChild(num);
+      if (r.letter_grade) {
+        const badge = document.createElement('span');
+        badge.className = 'badge badge-grade-' + String(r.letter_grade).toLowerCase();
+        badge.textContent = r.letter_grade;
+        score.appendChild(badge);
+      }
+      top.append(name, score);
+      const track = document.createElement('div');
+      track.className = 'so-track';
+      track.setAttribute('aria-hidden', 'true');
+      const fill = document.createElement('div');
+      fill.className = 'so-fill';
+      fill.style.background = SO_LETTER_COLOR[r.letter_grade] || 'var(--blueprint)';
+      track.appendChild(fill);
+      li.append(top, track);
+      list.appendChild(li);
+      const pct = Math.max(0, Math.min(100, Number(r.total_grade) || 0));
+      requestAnimationFrame(() => { fill.style.width = pct + '%'; });
+    });
+  }
+
+  async function loadOverviewSummary(courseCode) {
+    const state = { avg: null, graded: 0, newAnn: null, resources: null, timetable: undefined };
+    const since = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+    const filter = courseCode
+      ? `audience.eq.everyone,audience.eq.all_students,and(audience.eq.course,course_code.eq.${courseCode})`
+      : 'audience.eq.everyone,audience.eq.all_students';
+
+    const [gradesRes, annRes, resRes, ttRes] = await Promise.allSettled([
+      supabaseClient.from('grades')
+        .select('course_code, course_name, subject, total_grade, letter_grade, updated_at')
+        .eq('student_id', currentUserId).order('updated_at', { ascending: false }).limit(100),
+      supabaseClient.from('announcements').select('id', { count: 'exact', head: true }).or(filter).gte('created_at', since),
+      courseCode
+        ? supabaseClient.from('resources').select('id', { count: 'exact', head: true }).eq('department', departmentFor(courseCode))
+        : Promise.resolve({ count: null, error: null }),
+      courseCode
+        ? supabaseClient.from('timetable').select('updated_at, file_url, table_data, display_mode').eq('course_code', courseCode).maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+    ]);
+    const ok = (r) => r.status === 'fulfilled' && !r.value.error;
+
+    let gradeRows = [];
+    const gradesFailed = !ok(gradesRes);
+    if (!gradesFailed) {
+      gradeRows = gradesRes.value.data || [];
+      const scored = gradeRows.filter((r) => r.total_grade != null && !Number.isNaN(Number(r.total_grade)));
+      state.graded = gradeRows.length;
+      if (scored.length) state.avg = scored.reduce((sum, r) => sum + Number(r.total_grade), 0) / scored.length;
+    }
+    if (ok(annRes)) state.newAnn = annRes.value.count ?? 0;
+    if (ok(resRes)) state.resources = resRes.value.count ?? 0;
+    if (ok(ttRes)) {
+      const t = ttRes.value.data;
+      const has = t && (t.file_url || (t.display_mode === 'table' && t.table_data && t.table_data.length));
+      state.timetable = has ? (t.updated_at || true) : null;
+    }
+
+    const dash = '\u2014';
+    const shortDate = (iso) => new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    soRenderKpis([
+      { label: 'Average grade', value: state.avg == null ? dash : Math.round(state.avg) + '%',
+        sub: gradesFailed ? 'Not available' : (state.graded ? 'across ' + state.graded + (state.graded === 1 ? ' subject' : ' subjects') : 'No grades yet'),
+        go: () => soGoTab('grades') },
+      { label: 'New announcements', value: state.newAnn == null ? dash : String(state.newAnn), sub: 'in the last 3 days', go: soScrollToAnnouncements },
+      { label: 'Resources', value: state.resources == null ? dash : String(state.resources), sub: courseCode ? 'for your department' : 'Pick a course first', go: () => soGoTab('resources') },
+      { label: 'Timetable',
+        value: state.timetable === undefined ? dash : (state.timetable === null ? 'None' : (state.timetable === true ? 'Ready' : shortDate(state.timetable))),
+        sub: state.timetable === null ? 'not uploaded yet' : (state.timetable ? 'last updated' : ''), go: () => soGoTab('timetable') },
+    ]);
+    soRenderGrades(gradeRows, gradesFailed);
+  }
+
+  (function wireGradesPanel() {
+    const panel = document.getElementById('soGradesPanel');
+    if (panel) soActivatable(panel, () => soGoTab('grades'), 'Open: Latest grades');
+  })();
 
   async function loadGrades() {
     const list = document.getElementById('gradesList');

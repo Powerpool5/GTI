@@ -46,7 +46,7 @@
       tabSignUp.classList.add('active');
       tabSignUp.setAttribute('aria-selected', 'true');
       heading.textContent = 'Create your account';
-      subtitle.textContent = 'Register with the email your department has on file.';
+      subtitle.textContent = 'Register to get started.';
     } else {
       resetForm.classList.add('active');
       heading.textContent = 'Reset your password';
