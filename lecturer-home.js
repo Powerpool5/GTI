@@ -2130,4 +2130,2495 @@
     }
     tr.appendChild(fileTd);
 
-    const updatedTd = document.crea
+    const updatedTd = document.createElement('td');
+    updatedTd.dataset.label = 'Updated';
+    updatedTd.textContent = entry.updated_at ? fmtDate(entry.updated_at) : '—';
+    tr.appendChild(updatedTd);
+
+    const actionsTd = document.createElement('td');
+    actionsTd.dataset.label = '';
+    if (entry.id) {
+      const editBtn = document.createElement('button');
+      editBtn.className = 'btn btn-secondary btn-sm';
+      editBtn.textContent = 'Edit';
+      editBtn.addEventListener('click', () => openTimetableModal(entry));
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'btn btn-danger btn-sm';
+      deleteBtn.textContent = 'Remove';
+      deleteBtn.style.marginLeft = '8px';
+      deleteBtn.addEventListener('click', async () => {
+        if (!(await confirmAction({ title: 'Remove this timetable?', text: `The timetable for ${entry.course_code} will be removed for students. This can\'t be undone.`, confirmText: 'Remove' }))) return;
+        const { error: delError } = await supabaseClient.from('timetable').delete().eq('id', entry.id);
+        if (delError) { toast('Could not remove entry.', 'error'); return; }
+        toast('Timetable removed.', 'success');
+        loadAllTimetables();
+        loadOverview();
+        markUploadedTimetableCourses();
+      });
+      actionsTd.append(editBtn, deleteBtn);
+    } else {
+      const addBtn = document.createElement('button');
+      addBtn.className = 'btn btn-sm';
+      addBtn.textContent = 'Add';
+      addBtn.addEventListener('click', () => openTimetableModal(null, entry.course_code));
+      actionsTd.appendChild(addBtn);
+    }
+    tr.appendChild(actionsTd);
+
+    return tr;
+  }
+
+  // Prefixes a ✓ onto the course options that already have a timetable
+  // uploaded, so it's visible at a glance before you even pick one.
+  async function markUploadedTimetableCourses() {
+    const sel = document.getElementById('timetableCourseSelect');
+    const { data, error } = await supabaseClient.from('timetable').select('course_code');
+    if (error) { console.error('Could not load uploaded-timetable list:', error); return; }
+    const uploaded = new Set((data || []).map((r) => r.course_code));
+    sel.querySelectorAll('option').forEach((opt) => {
+      const label = opt.textContent.replace(/^✓ /, '');
+      opt.textContent = uploaded.has(opt.value) ? `✓ ${label}` : label;
+    });
+    syncCourseSelectDisplay(sel); // the ✓ above may have just changed the currently-selected option's text
+  }
+
+  /* ---------------- Resources ----------------
+     Same table (`resources`) and storage bucket (`resource-files`) as
+     admin.html's Resources tab — this just brings the same management
+     UI to plain staff accounts, matching how Announcements and
+     Timetable already work here without needing full admin access.
+     Uploaded per department rather than per specific course (see
+     departmentFor()/DEPARTMENTS above) — several courses in the same
+     department share the same textbooks/links, so one upload covers
+     everyone in that department instead of needing one per course. */
+  let currentResourceFilter = '';
+  let currentAllResources = [];
+  const resourceModal = document.getElementById('resourceModal');
+  const resourceForm = document.getElementById('resourceForm');
+
+  function openResourceModal(existing) {
+    resourceForm.reset();
+    document.getElementById('resourceId').value = existing ? existing.id : '';
+    document.getElementById('resourceModalTitle').textContent = existing ? 'Edit resource' : 'New resource';
+    if (existing) {
+      document.getElementById('resourceCourse').value = existing.department;
+      document.getElementById('resourceTitle').value = existing.title;
+      document.getElementById('resourceAuthor').value = existing.author || '';
+      document.getElementById('resourceFileUrl').value = existing.file_url || '';
+    } else if (currentResourceFilter) {
+      document.getElementById('resourceCourse').value = currentResourceFilter;
+    }
+    document.getElementById('resourceUploadStatus').textContent = '';
+    setStatus(document.getElementById('resourceFormStatus'), '', null);
+    resourceModal.hidden = false;
+  }
+  document.getElementById('newResourceBtn').addEventListener('click', () => openResourceModal(null));
+  document.getElementById('resourceModalClose').addEventListener('click', () => resourceModal.hidden = true);
+
+  resourceForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const status = document.getElementById('resourceFormStatus');
+    const submitBtn = document.getElementById('resourceSubmit');
+
+    const id = document.getElementById('resourceId').value;
+    const department = document.getElementById('resourceCourse').value;
+
+    const title = document.getElementById('resourceTitle').value.trim();
+    const author = document.getElementById('resourceAuthor').value.trim() || null;
+    let fileUrl = document.getElementById('resourceFileUrl').value.trim() || null;
+
+    const uploadInput = document.getElementById('resourceFileUpload');
+    const uploadStatus = document.getElementById('resourceUploadStatus');
+    const chosenFile = uploadInput.files && uploadInput.files[0];
+
+    if (!department) {
+      setStatus(status, 'Choose a department.', 'error');
+      return;
+    }
+    if (!fileUrl && !chosenFile) {
+      setStatus(status, 'Provide a link or upload a file.', 'error');
+      return;
+    }
+
+    submitBtn.disabled = true;
+
+    if (chosenFile) {
+      uploadStatus.textContent = 'Uploading…';
+      // Storage keys — unlike the department name shown in the UI,
+      // spaces/slashes cause path issues, so slugify it here only.
+      const deptSlug = department.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+      const path = `${deptSlug}/${Date.now()}-${chosenFile.name}`;
+      const { error: uploadError } = await supabaseClient.storage
+        .from('resource-files')
+        .upload(path, chosenFile, { upsert: false });
+
+      if (uploadError) {
+        console.error('Resource file upload failed:', uploadError);
+        uploadStatus.textContent = '';
+        submitBtn.disabled = false;
+        setStatus(status, 'Could not upload the file.', 'error');
+        return;
+      }
+
+      const { data: publicUrlData } = supabaseClient.storage.from('resource-files').getPublicUrl(path);
+      fileUrl = publicUrlData.publicUrl;
+      uploadStatus.textContent = 'Uploaded.';
+    }
+
+    const payload = { department, title, author, file_url: fileUrl };
+    if (!id) payload.created_by = currentUserId;
+
+    const { error } = id
+      ? await supabaseClient.from('resources').update(payload).eq('id', id).select().single()
+      : await supabaseClient.from('resources').insert(payload).select().single();
+
+    submitBtn.disabled = false;
+
+    if (error) { setStatus(status, 'Could not save resource. Please try again.', 'error'); console.error('Saving resource failed:', error); return; }
+
+    uploadInput.value = '';
+    uploadStatus.textContent = '';
+    resourceModal.hidden = true;
+    toast('Resource saved.', 'success');
+    loadResources(currentResourceFilter);
+    loadOverview();
+  });
+
+  async function loadResources(department) {
+    currentResourceFilter = department || '';
+    const list = document.getElementById('resourcesList');
+    list.innerHTML = '';
+
+    let query = supabaseClient
+      .from('resources')
+      .select('id, department, title, author, file_url, created_at')
+      .order('department')
+      .order('title');
+    if (department) query = query.eq('department', department);
+
+    const { data, error } = await query;
+
+    if (error) { console.error('Loading resources failed:', error); list.innerHTML = emptyState('Could not load resources.'); return; }
+    currentAllResources = data || [];
+    renderResourcesList();
+  }
+
+  function renderResourcesList() {
+    const list = document.getElementById('resourcesList');
+    const q = document.getElementById('resourceSearch').value.trim().toLowerCase();
+    const rows = q
+      ? currentAllResources.filter((r) => (r.title || '').toLowerCase().includes(q) || (r.author || '').toLowerCase().includes(q))
+      : currentAllResources;
+
+    list.innerHTML = '';
+    if (!rows.length) { list.innerHTML = emptyState(currentAllResources.length ? 'No matching resources.' : 'No resources uploaded yet.'); return; }
+
+    rows.forEach((r) => {
+      const item = document.createElement('li');
+      item.className = 'record';
+
+      const head = document.createElement('div');
+      head.className = 'record-head';
+      const headMain = document.createElement('div');
+      headMain.className = 'record-head-main';
+      const headText = document.createElement('div');
+      headText.className = 'record-head-text';
+
+      const title = document.createElement('div');
+      title.className = 'record-title';
+      title.textContent = r.title;
+
+      const meta = document.createElement('div');
+      meta.className = 'record-meta';
+      const courseBadge = document.createElement('span');
+      courseBadge.className = 'badge badge-course';
+      courseBadge.textContent = r.department;
+      meta.appendChild(courseBadge);
+      if (r.author) {
+        const authorSpan = document.createElement('span');
+        authorSpan.textContent = r.author;
+        meta.appendChild(authorSpan);
+      }
+      if (r.created_at) {
+        const dateSpan = document.createElement('span');
+        dateSpan.textContent = 'Added ' + fmtDate(r.created_at);
+        meta.appendChild(dateSpan);
+      }
+
+      headText.append(title, meta);
+      headMain.append(recordIcon('resource'), headText);
+      head.appendChild(headMain);
+
+      if (r.file_url) {
+        const fileLink = document.createElement('a');
+        fileLink.className = 'record-action';
+        fileLink.href = r.file_url;
+        fileLink.target = '_blank';
+        fileLink.rel = 'noopener noreferrer';
+        fileLink.textContent = 'Open ↗';
+        head.appendChild(fileLink);
+      }
+
+      item.appendChild(head);
+
+      const actions = document.createElement('div');
+      actions.className = 'record-actions';
+      const editBtn = document.createElement('button');
+      editBtn.className = 'btn btn-secondary btn-sm';
+      editBtn.textContent = 'Edit';
+      editBtn.addEventListener('click', () => openResourceModal(r));
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'btn btn-danger btn-sm';
+      deleteBtn.textContent = 'Remove';
+      deleteBtn.addEventListener('click', async () => {
+        if (!(await confirmAction({ title: 'Remove this resource?', text: `"${r.title}" will be removed for students. This can\'t be undone.`, confirmText: 'Remove' }))) return;
+        const { error: delError } = await supabaseClient.from('resources').delete().eq('id', r.id);
+        if (delError) { toast('Could not remove resource.', 'error'); return; }
+        toast('Resource removed.', 'success');
+        loadResources(currentResourceFilter);
+        loadOverview();
+      });
+      actions.append(editBtn, deleteBtn);
+      item.appendChild(actions);
+
+      list.appendChild(item);
+    });
+  }
+
+  /* ---------------- Grades ---------------- */
+
+  // Grade (100%) is entered directly by staff, not derived from
+  // Attendance/Class work/Home work/Examination — those four stay as
+  // their own record but don't feed into the total. The letter grade
+  // is still suggested from whatever total you type in (unless you've
+  // picked one yourself), using these thresholds.
+  const LETTER_THRESHOLDS = [['A', 80], ['B', 70], ['C', 60], ['F', 0]];
+
+  // Final Grade for a student = the average of their subject scores
+  // (Grade 100%) run through the same thresholds as suggestLetter().
+  function finalLetterFor(rows) {
+    const scores = rows.map((r) => r.total_grade).filter((v) => v != null).map(Number).filter((n) => !Number.isNaN(n));
+    if (!scores.length) return null;
+    return suggestLetter(scores.reduce((a, b) => a + b, 0) / scores.length);
+  }
+  // "Next level" = same course code with its trailing number + 1
+  // (ODCS1 -> ODCS2). null = there is no higher level.
+  function nextLevelFor(code) {
+    const m = /^(.*?)(\d+)$/.exec(code || '');
+    if (!m) return null;
+    const nextCode = m[1] + (Number(m[2]) + 1);
+    for (const group of COURSES) {
+      const found = group.options.find((o) => o.value === nextCode);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  // Promotion decisions: student_promotions (student_id, course_code,
+  // promoted). No row = pending. Keyed `${student_id}|${course_code}`.
+  let gradesPromotions = new Map();
+  async function fetchPromotions(studentIds) {
+    const map = new Map();
+    if (!studentIds.length) return map;
+    const { data, error } = await supabaseClient
+      .from('student_promotions')
+      .select('student_id, course_code, promoted')
+      .in('student_id', studentIds);
+    if (error) { console.warn('Loading promotions failed (has promotions.sql been run?):', error); return map; }
+    (data || []).forEach((p) => map.set(`${p.student_id}|${p.course_code}`, p));
+    return map;
+  }
+
+  function suggestLetter(total) {
+    for (const [letter, min] of LETTER_THRESHOLDS) {
+      if (total >= min) return letter;
+    }
+    return 'F';
+  }
+
+  // Live-formats a subject name as the person types: collapses runs of
+  // spaces down to one, drops a leading space, and title-cases each
+  // word — so "computer  SCIENCE" becomes "Computer Science" without
+  // staff having to clean it up themselves. Keeps the cursor where it
+  // was rather than jumping to the end on every keystroke.
+  function formatSubjectValue(raw) {
+    let formatted = raw.replace(/ {2,}/g, ' ');
+    if (formatted.startsWith(' ')) formatted = formatted.slice(1);
+    formatted = formatted.replace(/\w\S*/g, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+    return formatted;
+  }
+  function wireSubjectFormatting(input) {
+    input.addEventListener('input', () => {
+      const raw = input.value;
+      const cursor = input.selectionStart;
+      const formatted = formatSubjectValue(raw);
+      if (formatted === raw) return;
+      const diff = raw.length - formatted.length;
+      input.value = formatted;
+      const pos = Math.max(0, cursor - diff);
+      input.setSelectionRange(pos, pos);
+    });
+    input.addEventListener('blur', () => { input.value = input.value.trim(); });
+  }
+
+  let currentGradesCourse = '';
+  let currentGradesStudents = [];
+  let currentGradesByStudent = new Map(); // student_id -> array of grade rows (one per subject)
+
+  // While the search box has text in it, results come from here instead —
+  // matched by name/ID across every course, not just the one picked above.
+  // Null means "not searching"; an array (possibly empty) means a search
+  // has completed. Cleared back to null when the box is emptied.
+  let gradesSearchStudents = null;
+  let gradesSearchByStudent = new Map();
+  let gradesSearchDebounce = null;
+
+  async function loadGrades(courseCode) {
+    currentGradesCourse = courseCode;
+    const tbody = document.getElementById('gradesTbody');
+    currentGradesStudents = [];
+    currentGradesByStudent = new Map();
+    if (!courseCode) { tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Select a course to input grades.</td></tr>'; return; }
+    tbody.innerHTML = '<tr><td colspan="8"><div class="skeleton skeleton-line"></div></td></tr>';
+
+    const [studentsRes, gradesRes] = await Promise.all([
+      supabaseClient
+        .from('profiles')
+        .select('id, full_name, student_id, course_code')
+        .eq('course_code', courseCode)
+        .eq('role', 'student')
+        .order('full_name'),
+      supabaseClient
+        .from('grades')
+        .select('id, student_id, subject, attendance, class_work, home_work, examination, total_grade, letter_grade')
+        .eq('course_code', courseCode)
+        .order('subject'),
+    ]);
+
+    if (studentsRes.error) {
+      console.error('Loading students for grades failed:', studentsRes.error);
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Could not load students.</td></tr>';
+      return;
+    }
+    if (gradesRes.error) console.error('Loading existing grades failed:', gradesRes.error);
+
+    currentGradesStudents = studentsRes.data || [];
+    gradesPromotions = await fetchPromotions(currentGradesStudents.map((s) => s.id));
+    currentGradesByStudent = new Map();
+    (gradesRes.data || []).forEach((g) => {
+      if (!currentGradesByStudent.has(g.student_id)) currentGradesByStudent.set(g.student_id, []);
+      currentGradesByStudent.get(g.student_id).push(g);
+    });
+    renderGradesTable();
+  }
+
+  // Cross-course search — a name or student ID could belong to a student
+  // on any course, so this ignores gradesCourseSelect entirely rather
+  // than filtering within whatever course happens to be picked. Grades
+  // for each match still come back scoped to that student's own course,
+  // via renderStudentGradeBlock/renderGradeSubjectRow's courseCode param.
+  async function runGradesSearch(query) {
+    const tbody = document.getElementById('gradesTbody');
+    tbody.innerHTML = '<tr><td colspan="8"><div class="skeleton skeleton-line"></div></td></tr>';
+
+    const escaped = query.replace(/[%,]/g, '');
+    const { data: students, error } = await supabaseClient
+      .from('profiles')
+      .select('id, full_name, student_id, course_code')
+      .eq('role', 'student')
+      .or(`full_name.ilike.%${escaped}%,student_id.ilike.%${escaped}%`)
+      .order('full_name');
+
+    // The box may have been cleared or retyped while this was in flight —
+    // only apply a result if it's still the query currently in the box.
+    if (document.getElementById('gradesSearch').value.trim() !== query) return;
+
+    if (error) {
+      console.error('Searching students failed:', error);
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Could not search students.</td></tr>';
+      return;
+    }
+
+    gradesSearchStudents = students || [];
+    gradesPromotions = await fetchPromotions(gradesSearchStudents.map((s) => s.id));
+    gradesSearchByStudent = new Map();
+    if (gradesSearchStudents.length) {
+      const ids = gradesSearchStudents.map((s) => s.id);
+      const { data: grades, error: gradesError } = await supabaseClient
+        .from('grades')
+        .select('id, student_id, subject, attendance, class_work, home_work, examination, total_grade, letter_grade')
+        .in('student_id', ids)
+        .order('subject');
+      if (gradesError) console.error('Loading grades for search results failed:', gradesError);
+      (grades || []).forEach((g) => {
+        if (!gradesSearchByStudent.has(g.student_id)) gradesSearchByStudent.set(g.student_id, []);
+        gradesSearchByStudent.get(g.student_id).push(g);
+      });
+    }
+    renderGradesTable();
+  }
+
+  // Re-loads whichever view is currently on screen after a save/remove —
+  // the search results if the box has text, otherwise the picked course.
+  function reloadGradesView() {
+    const q = document.getElementById('gradesSearch').value.trim();
+    if (q) runGradesSearch(q);
+    else loadGrades(currentGradesCourse);
+  }
+
+  function renderGradesTable() {
+    const tbody = document.getElementById('gradesTbody');
+    tbody.innerHTML = '';
+
+    const q = document.getElementById('gradesSearch').value.trim();
+    const searching = q.length > 0;
+    if (searching && gradesSearchStudents === null) return; // search in flight; skeleton is already showing
+
+    const students = searching ? gradesSearchStudents : currentGradesStudents;
+    const byStudent = searching ? gradesSearchByStudent : currentGradesByStudent;
+
+    if (!students.length) {
+      tbody.innerHTML = `<tr><td colspan="8" class="empty-state">${searching ? 'No matching students.' : 'No students are on this course yet.'}</td></tr>`;
+      return;
+    }
+
+    students.forEach((s) => renderStudentGradeBlock(s, byStudent.get(s.id) || [], {
+      showCourse: searching,
+      courseCode: s.course_code || currentGradesCourse,
+    }));
+  }
+
+  function renderStudentGradeBlock(student, existingRows, options) {
+    const courseCode = (options && options.courseCode) || currentGradesCourse;
+    const tbody = (options && options.tbody) || document.getElementById('gradesTbody');
+    const promoMap = (options && options.promotions) || gradesPromotions;
+    const onChange = (options && options.onChange) || reloadGradesView;
+
+    const headerRow = document.createElement('tr');
+    headerRow.className = 'grades-student-row';
+    const headerTd = document.createElement('td');
+    headerTd.colSpan = 8;
+
+    const inner = document.createElement('div');
+    inner.className = 'grades-student-row-inner';
+
+    const idBlock = document.createElement('div');
+    idBlock.className = 'grades-student-id-block';
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'grades-student-name';
+    nameSpan.textContent = student.full_name || '—';
+    const idSpan = document.createElement('span');
+    idSpan.className = 'grades-student-idtext';
+    idSpan.textContent = student.student_id ? `ID ${student.student_id}` : '';
+    idBlock.append(nameSpan, idSpan);
+
+    // Only shown for cross-course search results — in the normal
+    // course-scoped view every row is already on the picked course, so
+    // this would just repeat the same tag on every row for no reason.
+    if (options && options.showCourse) {
+      const courseBadge = document.createElement('span');
+      courseBadge.className = 'badge badge-course';
+      courseBadge.textContent = courseNameFor(courseCode);
+      idBlock.appendChild(courseBadge);
+    }
+
+    // Final Grade (A/B/C/F) from this student's saved subjects, shown
+    // once here rather than repeated on every subject row.
+    const finalLetter = finalLetterFor(existingRows);
+    if (finalLetter) {
+      const finalBadge = document.createElement('span');
+      finalBadge.className = 'badge badge-grade-' + finalLetter.toLowerCase();
+      finalBadge.textContent = 'Final Grade ' + finalLetter;
+      idBlock.appendChild(finalBadge);
+    }
+
+    // Promotion to the next level of the course — decided by staff.
+    // Empty = pending; picking Promoted / Not promoted saves right away.
+    const nextLevel = nextLevelFor(courseCode);
+    const promoSelect = document.createElement('select');
+    promoSelect.style.width = 'auto';
+    promoSelect.setAttribute('aria-label', 'Promotion to next level');
+    [
+      ['', 'Promotion: pending'],
+      ['yes', nextLevel ? `Promoted to ${nextLevel.label}` : 'Promoted (course completed)'],
+      ['no', 'Not promoted'],
+    ].forEach(([value, label]) => {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      promoSelect.appendChild(opt);
+    });
+    const promoKey = `${student.id}|${courseCode}`;
+    const currentPromo = promoMap.get(promoKey);
+    promoSelect.value = currentPromo ? (currentPromo.promoted ? 'yes' : 'no') : '';
+    promoSelect.addEventListener('change', async () => {
+      const choice = promoSelect.value;
+      const prevPromo = promoMap.get(promoKey);
+      const prevValue = prevPromo ? (prevPromo.promoted ? 'yes' : 'no') : '';
+      const promoName = student.full_name || 'this student';
+      if (!(await confirmAction({ title: choice === '' ? 'Clear the promotion decision?' : (choice === 'yes' ? 'Mark as promoted?' : 'Mark as not promoted?'), text: choice === '' ? `The promotion decision for ${promoName} will be cleared.` : `${promoName} will be marked ${choice === 'yes' ? 'promoted' : 'NOT promoted'}.`, confirmText: 'Yes, save it', danger: choice !== 'yes' }))) {
+        promoSelect.value = prevValue;
+        return;
+      }
+      promoSelect.disabled = true;
+      const { error } = choice === ''
+        ? await supabaseClient.from('student_promotions').delete().eq('student_id', student.id).eq('course_code', courseCode)
+        : await supabaseClient.from('student_promotions').upsert({
+            student_id: student.id,
+            course_code: courseCode,
+            promoted: choice === 'yes',
+            decided_by: currentUserId,
+            decided_at: new Date().toISOString(),
+          }, { onConflict: 'student_id,course_code' });
+      promoSelect.disabled = false;
+      if (error) {
+        console.error('Saving promotion failed:', error);
+        toast('Could not save the promotion decision.', 'error');
+        const prev = promoMap.get(promoKey);
+        promoSelect.value = prev ? (prev.promoted ? 'yes' : 'no') : '';
+        return;
+      }
+      if (choice === '') promoMap.delete(promoKey);
+      else promoMap.set(promoKey, { student_id: student.id, course_code: courseCode, promoted: choice === 'yes' });
+      toast(choice === '' ? 'Promotion decision cleared.' : (choice === 'yes' ? 'Marked as promoted.' : 'Marked as not promoted.'), 'success');
+    });
+    if (courseCode !== 'STAFF') idBlock.appendChild(promoSelect);
+
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'btn btn-secondary btn-sm';
+    addBtn.textContent = '+ Add subject';
+
+    inner.append(idBlock, addBtn);
+    headerTd.appendChild(inner);
+    headerRow.appendChild(headerTd);
+    tbody.appendChild(headerRow);
+
+    // Tracks the most recently inserted row for this student, so
+    // "+ Add subject" always inserts right after it — including after
+    // a subject added earlier in the same session, not just the last
+    // one that came from the database.
+    const anchor = { el: headerRow };
+    const rowsToRender = existingRows.length ? existingRows : [null];
+    rowsToRender.forEach((existing) => {
+      const tr = renderGradeSubjectRow(student, existing, courseCode, onChange);
+      anchor.el.insertAdjacentElement('afterend', tr);
+      anchor.el = tr;
+    });
+
+    addBtn.addEventListener('click', () => {
+      const tr = renderGradeSubjectRow(student, null, courseCode, onChange);
+      anchor.el.insertAdjacentElement('afterend', tr);
+      anchor.el = tr;
+      tr.querySelector('input[type="text"]').focus();
+    });
+  }
+
+  function renderGradeSubjectRow(student, existing, courseCode, onChange) {
+    const tr = document.createElement('tr');
+
+    const subjectTd = document.createElement('td');
+    const subjectInput = document.createElement('input');
+    subjectInput.type = 'text';
+    subjectInput.maxLength = 100;
+    subjectInput.placeholder = 'e.g., Computer Programming';
+    subjectInput.value = (existing && existing.subject) || '';
+    wireSubjectFormatting(subjectInput);
+    subjectTd.appendChild(subjectInput);
+    tr.appendChild(subjectTd);
+
+    function numberInput(value, { max = '100', step = '0.1' } = {}) {
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.min = '0';
+      input.max = max;
+      input.step = step;
+      input.value = value == null ? '' : value;
+      return input;
+    }
+
+    const attendanceInput = numberInput(existing && existing.attendance);
+    const classWorkInput = numberInput(existing && existing.class_work);
+    const homeWorkInput = numberInput(existing && existing.home_work);
+    const examInput = numberInput(existing && existing.examination);
+    const totalInput = numberInput(existing && existing.total_grade);
+
+    [attendanceInput, classWorkInput, homeWorkInput, examInput, totalInput].forEach((input) => {
+      const td = document.createElement('td');
+      td.appendChild(input);
+      tr.appendChild(td);
+    });
+
+    const letterTd = document.createElement('td');
+    const letterSelect = document.createElement('select');
+    letterSelect.style.width = 'auto';
+    ['A', 'B', 'C', 'F'].forEach((letter) => {
+      const opt = document.createElement('option');
+      opt.value = letter;
+      opt.textContent = letter;
+      letterSelect.appendChild(opt);
+    });
+    letterTd.appendChild(letterSelect);
+    tr.appendChild(letterTd);
+
+    // Suggest a letter from whatever Grade (100%) you type in, unless
+    // you've picked one yourself — once you touch the dropdown, this
+    // stops overwriting it.
+    totalInput.addEventListener('input', () => {
+      if (letterSelect.dataset.manual) return;
+      if (totalInput.value === '') return;
+      const total = Number(totalInput.value);
+      if (!Number.isNaN(total)) letterSelect.value = suggestLetter(total);
+    });
+    letterSelect.addEventListener('change', () => { letterSelect.dataset.manual = '1'; });
+
+    if (existing && existing.letter_grade) {
+      letterSelect.dataset.manual = '1';
+      letterSelect.value = existing.letter_grade;
+    } else if (totalInput.value !== '') {
+      letterSelect.value = suggestLetter(Number(totalInput.value));
+    }
+
+    const actionsTd = document.createElement('td');
+    actionsTd.style.whiteSpace = 'nowrap';
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'btn btn-sm';
+    saveBtn.textContent = 'Save';
+    saveBtn.addEventListener('click', async () => {
+      const subject = subjectInput.value.trim();
+      if (!subject) {
+        subjectInput.focus();
+        toast('Enter a subject first.', 'error');
+        return;
+      }
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving…';
+      const letter = letterSelect.value;
+      const payload = {
+        student_id: student.id,
+        course_code: courseCode,
+        course_name: courseNameFor(courseCode),
+        subject,
+        attendance: attendanceInput.value === '' ? 0 : Number(attendanceInput.value),
+        class_work: classWorkInput.value === '' ? 0 : Number(classWorkInput.value),
+        home_work: homeWorkInput.value === '' ? 0 : Number(homeWorkInput.value),
+        examination: examInput.value === '' ? 0 : Number(examInput.value),
+        total_grade: totalInput.value === '' ? 0 : Number(totalInput.value),
+        letter_grade: letter,
+        updated_by: currentUserId,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = existing && existing.id
+        ? await supabaseClient.from('grades').update(payload).eq('id', existing.id)
+        : await supabaseClient.from('grades').insert(payload);
+
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save';
+      if (error) {
+        console.error('Saving grade failed:', error);
+        toast('Could not save this grade.', 'error');
+        return;
+      }
+      toast(`Saved ${subject} for ${student.full_name || 'student'}.`, 'success');
+      onChange();
+    });
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn btn-danger btn-sm';
+    removeBtn.textContent = 'Remove';
+    removeBtn.style.marginLeft = '8px';
+    removeBtn.addEventListener('click', async () => {
+      if (!existing || !existing.id) { tr.remove(); return; }
+      if (!(await confirmAction({ title: 'Remove this grade?', text: `Remove ${existing.subject ? `"${existing.subject}"` : 'this subject'} for ${student.full_name || 'this student'}? This can\'t be undone.`, confirmText: 'Remove' }))) return;
+      const { error } = await supabaseClient.from('grades').delete().eq('id', existing.id);
+      if (error) { toast('Could not remove this subject.', 'error'); return; }
+      toast('Subject removed.', 'success');
+      onChange();
+    });
+
+    actionsTd.append(saveBtn, removeBtn);
+    tr.appendChild(actionsTd);
+
+    return tr;
+  }
+
+  document.getElementById('gradesCourseSelect').addEventListener('change', (e) => loadGrades(e.target.value));
+  document.getElementById('gradesRefresh').addEventListener('click', () => reloadGradesView());
+  document.getElementById('gradesSearch').addEventListener('input', () => {
+    const q = document.getElementById('gradesSearch').value.trim();
+    clearTimeout(gradesSearchDebounce);
+    if (!q) {
+      gradesSearchStudents = null;
+      gradesSearchByStudent = new Map();
+      renderGradesTable();
+      return;
+    }
+    gradesSearchDebounce = setTimeout(() => runGradesSearch(q), 300);
+  });
+
+  /* ---------------- Student grades popup ----------------
+     Opened from the "Grades" button on a row in the Students tab. Same
+     subject rows, Final Grade and promotion control as the Input Grades
+     tab (renderStudentGradeBlock), for just this one student and their
+     current course. Saves refresh the popup, and the Input Grades tab
+     if it has something loaded, so the two never disagree. */
+  let studentGradesToken = 0;
+  async function openStudentGrades(p) {
+    const token = ++studentGradesToken;
+    const tbody = document.getElementById('studentGradesTbody');
+    document.getElementById('studentGradesTitle').textContent = `Grades — ${p.full_name || 'Student'}`;
+    document.getElementById('studentGradesSub').textContent =
+      [p.student_id, p.course_name || (p.course_code ? courseNameFor(p.course_code) : '')].filter(Boolean).join(' · ');
+    document.getElementById('studentGradesModal').hidden = false;
+
+    if (!p.course_code || p.course_code === 'STAFF') {
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">This student has no course selected, so there are no grades to enter yet.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = '<tr><td colspan="8"><div class="skeleton skeleton-line"></div></td></tr>';
+
+    const [gradesRes, promotions] = await Promise.all([
+      supabaseClient
+        .from('grades')
+        .select('id, student_id, subject, attendance, class_work, home_work, examination, total_grade, letter_grade')
+        .eq('student_id', p.id)
+        .eq('course_code', p.course_code)
+        .order('subject'),
+      fetchPromotions([p.id]),
+    ]);
+    if (token !== studentGradesToken) return; // closed or switched to someone else meanwhile
+
+    if (gradesRes.error) {
+      console.error('Loading student grades failed:', gradesRes.error);
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Could not load this student\u2019s grades.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = '';
+    renderStudentGradeBlock(p, gradesRes.data || [], {
+      tbody,
+      courseCode: p.course_code,
+      promotions,
+      onChange: () => {
+        openStudentGrades(p);
+        // Keep the Input Grades tab in step with what was just saved.
+        if (currentGradesCourse || document.getElementById('gradesSearch').value.trim()) reloadGradesView();
+      },
+    });
+  }
+  function closeStudentGrades() {
+    studentGradesToken++;
+    document.getElementById('studentGradesModal').hidden = true;
+  }
+  document.getElementById('studentGradesClose').addEventListener('click', closeStudentGrades);
+  document.getElementById('studentGradesModal').addEventListener('click', (e) => {
+    if (e.target.id === 'studentGradesModal') closeStudentGrades();
+  });
+
+  /* ---------------- Attendance ----------------
+     A real day-by-day present/absent/late tracker — separate from the
+     Attendance *number* on the Input Grades tab (that one's a
+     per-subject score staff type in themselves; this one is a daily
+     mark per student, one row per (student, course, subject, date) —
+     the same class can be marked separately for each subject taught
+     on it). */
+
+  const ATTENDANCE_STATUSES = [
+    { value: 'present', label: 'Present' },
+    { value: 'absent', label: 'Absent' },
+    { value: 'late', label: 'Late' },
+  ];
+
+  let currentAttendanceCourse = '';
+  let currentAttendanceSubject = '';
+  let currentAttendanceDate = '';
+  let currentAttendanceStudents = [];
+  let currentAttendanceMarks = new Map(); // student_id -> status
+
+  const attendanceSubjectInput = document.getElementById('attendanceSubject');
+  wireSubjectFormatting(attendanceSubjectInput);
+
+  // Datalist of subjects already used for the selected course, so a
+  // subject only has to be typed out in full once — after that it's a
+  // "quick complete" pick from the list for every date going forward.
+  // Seeded from both this class's existing attendance rows and its
+  // Input Grades subjects (which are usually entered first), then
+  // topped up with whatever gets saved here in this session.
+  async function refreshAttendanceSubjectOptions(courseCode) {
+    const list = document.getElementById('attendanceSubjectList');
+    list.innerHTML = '';
+    if (!courseCode) return;
+
+    const [attendanceRes, gradesRes] = await Promise.all([
+      supabaseClient.from('attendance').select('subject').eq('course_code', courseCode),
+      supabaseClient.from('grades').select('subject').eq('course_code', courseCode),
+    ]);
+    if (attendanceRes.error) console.error('Loading attendance subjects failed:', attendanceRes.error);
+    if (gradesRes.error) console.error('Loading grade subjects failed:', gradesRes.error);
+
+    const subjects = new Set();
+    (attendanceRes.data || []).forEach((r) => { if (r.subject) subjects.add(r.subject); });
+    (gradesRes.data || []).forEach((r) => { if (r.subject) subjects.add(r.subject); });
+
+    [...subjects].sort((a, b) => a.localeCompare(b)).forEach((subject) => {
+      const option = document.createElement('option');
+      option.value = subject;
+      list.appendChild(option);
+    });
+  }
+
+  // Adds a freshly-saved subject to the datalist immediately, so it's
+  // available to "quick complete" right away rather than only after
+  // switching courses and back.
+  function addAttendanceSubjectOption(subject) {
+    const list = document.getElementById('attendanceSubjectList');
+    if ([...list.options].some((o) => o.value === subject)) return;
+    const option = document.createElement('option');
+    option.value = subject;
+    list.appendChild(option);
+  }
+
+  // Fires whenever the selected class changes — from the dropdown, a
+  // quick pick, or the "today's class" default. A new class means a
+  // different set of subjects, so the subject field is cleared rather
+  // than carrying over a subject that may not apply here.
+  function onAttendanceCourseChange(courseCode) {
+    attendanceSubjectInput.value = '';
+    refreshAttendanceSubjectOptions(courseCode);
+    loadAttendance(courseCode, document.getElementById('attendanceDate').value, '');
+    loadAttendanceOverview(courseCode);
+  }
+
+  function todayIso() {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+  // Parsed as a local date (not via `new Date(dateStr)`, which reads
+  // yyyy-mm-dd as UTC midnight and can print the wrong weekday for
+  // anyone west of UTC) so it always matches the day shown in the
+  // native date picker next to it.
+  function weekdayLabel(dateStr) {
+    if (!dateStr) return '';
+    const [y, m, d] = dateStr.split('-').map(Number);
+    if (!y || !m || !d) return '';
+    return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'long' });
+  }
+  // Same local-date parsing as weekdayLabel above, but spells the
+  // month and includes the year in full — "16 September 2026" — for
+  // the Attendance overview table, rather than the short "Sep 16,
+  // 2026" style fmtDate() uses elsewhere.
+  function fmtDateLong(dateStr) {
+    if (!dateStr) return '';
+    const [y, m, d] = dateStr.split('-').map(Number);
+    if (!y || !m || !d) return '';
+    return new Date(y, m - 1, d).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+  }
+  function updateAttendanceDateWeekday() {
+    document.getElementById('attendanceDateWeekday').textContent =
+      weekdayLabel(document.getElementById('attendanceDate').value);
+  }
+  document.getElementById('attendanceDate').value = todayIso();
+  updateAttendanceDateWeekday();
+
+  async function loadAttendance(courseCode, dateStr, subject) {
+    currentAttendanceCourse = courseCode || '';
+    currentAttendanceSubject = subject != null ? subject : attendanceSubjectInput.value.trim();
+    currentAttendanceDate = dateStr || todayIso();
+    document.getElementById('attendanceDate').value = currentAttendanceDate;
+    updateAttendanceDateWeekday();
+
+    const tbody = document.getElementById('attendanceTbody');
+    const summary = document.getElementById('attendanceSummary');
+    currentAttendanceStudents = [];
+    currentAttendanceMarks = new Map();
+
+    if (!currentAttendanceCourse) {
+      tbody.innerHTML = '<tr><td colspan="3" class="empty-state">Select a course to take attendance.</td></tr>';
+      summary.hidden = true;
+      summary.innerHTML = '';
+      return;
+    }
+    tbody.innerHTML = '<tr><td colspan="3"><div class="skeleton skeleton-line"></div></td></tr>';
+
+    // The class list only depends on the course, so it loads as soon
+    // as one is picked — marking can start right away. Only the
+    // existing-marks lookup needs a subject too (a mark without one
+    // has nowhere to be saved), so that query is skipped until a
+    // subject is entered, rather than holding up the whole roster.
+    const [studentsRes, attendanceRes] = await Promise.all([
+      supabaseClient
+        .from('profiles')
+        .select('id, full_name, student_id')
+        .eq('course_code', currentAttendanceCourse)
+        .eq('role', 'student')
+        .order('full_name'),
+      currentAttendanceSubject
+        ? supabaseClient
+            .from('attendance')
+            .select('student_id, status')
+            .eq('course_code', currentAttendanceCourse)
+            .eq('subject', currentAttendanceSubject)
+            .eq('class_date', currentAttendanceDate)
+            .eq('archived', false)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    if (studentsRes.error) {
+      console.error('Loading students for attendance failed:', studentsRes.error);
+      tbody.innerHTML = '<tr><td colspan="3" class="empty-state">Could not load students.</td></tr>';
+      return;
+    }
+    if (attendanceRes.error) console.error('Loading existing attendance failed:', attendanceRes.error);
+
+    currentAttendanceStudents = studentsRes.data || [];
+    (attendanceRes.data || []).forEach((row) => currentAttendanceMarks.set(row.student_id, row.status));
+
+    renderAttendanceTable();
+  }
+
+  function updateAttendanceSummary() {
+    const summary = document.getElementById('attendanceSummary');
+    const total = currentAttendanceStudents.length;
+
+    if (!total) {
+      summary.hidden = true;
+      summary.innerHTML = '';
+      return;
+    }
+
+    const marked = currentAttendanceMarks.size;
+    const present = [...currentAttendanceMarks.values()].filter((s) => s === 'present').length;
+    const absent = [...currentAttendanceMarks.values()].filter((s) => s === 'absent').length;
+    const late = [...currentAttendanceMarks.values()].filter((s) => s === 'late').length;
+
+    const courseSelect = document.getElementById('attendanceCourseSelect');
+    const courseLabel = courseSelect.selectedIndex >= 0
+      ? (courseSelect.options[courseSelect.selectedIndex].textContent || '').trim()
+      : '';
+
+    summary.innerHTML = '';
+
+    const left = document.createElement('div');
+    const title = document.createElement('span');
+    title.className = 'attendance-summary-title';
+    title.textContent = currentAttendanceSubject
+      ? `${currentAttendanceSubject} — ${courseLabel || 'Attendance'}`
+      : (courseLabel || 'Attendance');
+    const markedNote = document.createElement('span');
+    markedNote.className = 'attendance-summary-marked';
+    markedNote.textContent = `${marked} of ${total} marked · ${fmtDate(currentAttendanceDate)}`;
+    left.append(title, markedNote);
+
+    const counts = document.createElement('div');
+    counts.className = 'attendance-summary-counts';
+    [
+      ['badge-verified', `${present} present`],
+      ['badge-inactive', `${absent} absent`],
+      ['badge-grade-c', `${late} late`],
+    ].forEach(([cls, text]) => {
+      const badge = document.createElement('span');
+      badge.className = `badge ${cls}`;
+      badge.textContent = text;
+      counts.appendChild(badge);
+    });
+
+    summary.append(left, counts);
+    summary.hidden = false;
+  }
+
+  function renderAttendanceTable() {
+    const tbody = document.getElementById('attendanceTbody');
+    tbody.innerHTML = '';
+
+    if (!currentAttendanceStudents.length) {
+      tbody.innerHTML = '<tr><td colspan="3" class="empty-state">No students are on this course yet.</td></tr>';
+      updateAttendanceSummary();
+      return;
+    }
+
+    currentAttendanceStudents.forEach((student) => {
+      const tr = document.createElement('tr');
+
+      const nameTd = document.createElement('td');
+      nameTd.textContent = student.full_name || '—';
+      tr.appendChild(nameTd);
+
+      const idTd = document.createElement('td');
+      idTd.textContent = student.student_id || '—';
+      tr.appendChild(idTd);
+
+      const statusTd = document.createElement('td');
+      const group = document.createElement('div');
+      group.className = 'attendance-status-group';
+
+      ATTENDANCE_STATUSES.forEach(({ value, label }) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `attendance-status-btn ${value}` + (currentAttendanceMarks.get(student.id) === value ? ' active' : '');
+        btn.textContent = label;
+        btn.addEventListener('click', () => {
+          currentAttendanceMarks.set(student.id, value);
+          group.querySelectorAll('.attendance-status-btn').forEach((b) => b.classList.remove('active'));
+          btn.classList.add('active');
+          updateAttendanceSummary();
+        });
+        group.appendChild(btn);
+      });
+
+      statusTd.appendChild(group);
+      tr.appendChild(statusTd);
+      tbody.appendChild(tr);
+    });
+
+    updateAttendanceSummary();
+  }
+
+  document.getElementById('attendanceCourseSelect').addEventListener('change', (e) =>
+    onAttendanceCourseChange(e.target.value)
+  );
+  // 'change' (not 'input') so this fires once the subject is settled —
+  // picked from the datalist, or typed and left — rather than on every
+  // keystroke while formatting is still happening.
+  attendanceSubjectInput.addEventListener('change', () => {
+    loadAttendance(currentAttendanceCourse, document.getElementById('attendanceDate').value, attendanceSubjectInput.value.trim());
+  });
+  document.getElementById('attendanceDate').addEventListener('change', (e) =>
+    loadAttendance(currentAttendanceCourse, e.target.value, currentAttendanceSubject)
+  );
+  document.getElementById('attendanceRefresh').addEventListener('click', () =>
+    loadAttendance(document.getElementById('attendanceCourseSelect').value, document.getElementById('attendanceDate').value, attendanceSubjectInput.value.trim())
+  );
+
+  document.getElementById('attendanceSaveAll').addEventListener('click', async () => {
+    const status = document.getElementById('attendanceStatus');
+    const btn = document.getElementById('attendanceSaveAll');
+
+    if (!currentAttendanceCourse) { setStatus(status, 'Select a course first.', 'error'); return; }
+    if (!currentAttendanceSubject) { setStatus(status, 'Enter a subject first.', 'error'); return; }
+    if (!currentAttendanceMarks.size) { setStatus(status, 'Mark at least one student before saving.', 'error'); return; }
+
+    const rows = [...currentAttendanceMarks.entries()].map(([studentId, markStatus]) => ({
+      student_id: studentId,
+      course_code: currentAttendanceCourse,
+      subject: currentAttendanceSubject,
+      class_date: currentAttendanceDate,
+      status: markStatus,
+      marked_by: currentUserId,
+      // Explicit, not just relying on the column default — an upsert
+      // only touches columns it's given, so if this date/subject was
+      // previously archived, re-marking it here needs to say so
+      // itself or the old row would silently stay archived.
+      archived: false,
+      archived_at: null,
+    }));
+
+    btn.disabled = true;
+    setStatus(status, '', null);
+
+    const { error } = await supabaseClient
+      .from('attendance')
+      .upsert(rows, { onConflict: 'student_id,course_code,subject,class_date' });
+
+    btn.disabled = false;
+
+    if (error) {
+      console.error('Saving attendance failed:', error);
+      // 23505 (unique_violation) here almost always means the table's
+      // constraint doesn't match this upsert's onConflict target (e.g.
+      // an old, pre-subject constraint is still sitting alongside the
+      // new one) — that's a schema issue, not something re-clicking
+      // Save fixes, so say so rather than the generic message.
+      const message = error.code === '23505'
+        ? "Could not save — the attendance table's constraints need updating (contact your admin)."
+        : 'Could not save attendance. Please try again.';
+      setStatus(status, message, 'error');
+      return;
+    }
+
+    const savedFor = `${currentAttendanceSubject} — ${fmtDate(currentAttendanceDate)}`;
+    logActivity('attendance', 'created',
+      `Saved attendance register for ${courseNameFor(currentAttendanceCourse)}: ${savedFor}`,
+      `${rows.length} student${rows.length === 1 ? '' : 's'} marked`);
+    setStatus(status, `Attendance saved for ${savedFor}.`, 'success');
+    toast(`Attendance saved for ${savedFor}.`, 'success');
+    addAttendanceSubjectOption(currentAttendanceSubject);
+    loadAttendanceOverview(currentAttendanceCourse);
+  });
+
+  /* ---------------- Attendance reset / archive ----------
+     "Reset" (admin/root only) never deletes — it calls the
+     archive_attendance() RPC, which flags matching rows as archived so
+     they drop out of the register and the overview above but stay
+     readable in the viewer below. The archived viewer itself is
+     read-only and visible to ALL staff. See attendance-archive.sql for
+     the RPC + archived column. */
+
+  document.getElementById('attendanceResetBtn').addEventListener('click', async () => {
+    if (!currentUserIsAdmin) return; // staff can view archives, not create them
+    const status = document.getElementById('attendanceResetStatus');
+    const btn = document.getElementById('attendanceResetBtn');
+    const courseCode = document.getElementById('attendanceResetCourse').value || null;
+    const dateFrom = document.getElementById('attendanceResetFrom').value || null;
+    const dateTo = document.getElementById('attendanceResetTo').value || null;
+
+    const courseLabel = courseCode
+      ? document.getElementById('attendanceResetCourse').selectedOptions[0].textContent
+      : 'every course';
+    const rangeLabel = dateFrom || dateTo
+      ? `from ${dateFrom ? fmtDate(dateFrom) : 'the beginning'} to ${dateTo ? fmtDate(dateTo) : 'now'}`
+      : 'for all dates';
+    if (!(await confirmAction({ title: 'Archive attendance?', text: `Archive attendance for ${courseLabel}, ${rangeLabel}? Records are archived, not deleted — you'll still be able to view them below.`, confirmText: 'Archive', danger: false }))) return;
+
+    btn.disabled = true;
+    setStatus(status, '', null);
+
+    const { data, error } = await supabaseClient.rpc('archive_attendance', {
+      p_course_code: courseCode,
+      p_date_from: dateFrom,
+      p_date_to: dateTo,
+    });
+
+    btn.disabled = false;
+
+    if (error) {
+      console.error('Archiving attendance failed:', error);
+      setStatus(status, 'Could not archive attendance. Please try again.', 'error');
+      return;
+    }
+
+    logActivity('attendance', 'updated',
+      `Archived ${data} attendance record${data === 1 ? '' : 's'} (${courseLabel}, ${rangeLabel})`);
+    setStatus(status, `Archived ${data} record${data === 1 ? '' : 's'}.`, 'success');
+    toast(`Archived ${data} attendance record${data === 1 ? '' : 's'}.`, 'success');
+    // Refresh whatever's currently on screen so the archived rows drop
+    // out of view immediately rather than waiting for the next reload.
+    if (currentAttendanceCourse) {
+      loadAttendance(currentAttendanceCourse, currentAttendanceDate, currentAttendanceSubject);
+      loadAttendanceOverview(currentAttendanceCourse);
+    }
+  });
+
+  // Course code -> display label, for the per-week course filters.
+  // Falls back to the raw code for anything not found (e.g. if a
+  // record's course was since renamed or removed from COURSES).
+  function courseLabel(code) {
+    for (const group of COURSES) {
+      const match = group.options.find((o) => o.value === code);
+      if (match) return match.label;
+    }
+    return code;
+  }
+
+  // Monday-start week bucket for a class_date, with friendly labels
+  // for the two most recent weeks and a date range for anything older.
+  function weekBucketFor(dateStr) {
+    const d = new Date(`${dateStr}T00:00:00`);
+    const monday = new Date(d);
+    monday.setDate(d.getDate() + (d.getDay() === 0 ? -6 : 1 - d.getDay()));
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    const mondayIso = monday.toISOString().slice(0, 10);
+
+    const now = new Date();
+    const thisMonday = new Date(now);
+    thisMonday.setDate(now.getDate() + (now.getDay() === 0 ? -6 : 1 - now.getDay()));
+    const thisMondayIso = thisMonday.toISOString().slice(0, 10);
+    const lastMonday = new Date(thisMonday);
+    lastMonday.setDate(thisMonday.getDate() - 7);
+    const lastMondayIso = lastMonday.toISOString().slice(0, 10);
+
+    let label;
+    if (mondayIso === thisMondayIso) label = 'This week';
+    else if (mondayIso === lastMondayIso) label = 'Last week';
+    else label = `${fmtDateLong(mondayIso)} – ${fmtDateLong(sunday.toISOString().slice(0, 10))}`;
+
+    return { key: mondayIso, label };
+  }
+
+  async function loadAttendanceArchive() {
+    const container = document.getElementById('attendanceArchiveGroups');
+    const dateFrom = document.getElementById('attendanceArchiveFrom').value || null;
+    const dateTo = document.getElementById('attendanceArchiveTo').value || null;
+
+    container.innerHTML = '<div class="card"><div class="skeleton skeleton-line"></div></div>';
+
+    // Aliased ("student:"/"marker:") since both embeds point at
+    // profiles via different foreign keys (student_id vs marked_by) —
+    // without distinct aliases they'd collide under the same key.
+    let query = supabaseClient
+      .from('attendance')
+      .select(`
+        course_code, subject, class_date, status, archived_at,
+        student:profiles!attendance_student_id_fkey(full_name, student_id),
+        marker:profiles!attendance_marked_by_fkey(full_name)
+      `)
+      .eq('archived', true)
+      .order('class_date', { ascending: false })
+      .limit(1000);
+    if (dateFrom) query = query.gte('class_date', dateFrom);
+    if (dateTo) query = query.lte('class_date', dateTo);
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Loading archived attendance failed:', error);
+      container.innerHTML = '<div class="card empty-state">Could not load archived attendance.</div>';
+      return;
+    }
+
+    const rows = data || [];
+    if (!rows.length) {
+      const filtered = !!(dateFrom || dateTo);
+      container.innerHTML = `<div class="card empty-state">${filtered ? 'No archived records in that date range.' : 'No archived attendance yet.'}</div>`;
+      return;
+    }
+
+    // Group by the week each record's class was held, newest week
+    // first — courses within a week are filtered client-side (below)
+    // once a group is opened, rather than re-querying per click.
+    const weeks = new Map(); // key -> { label, rows: [] }
+    rows.forEach((row) => {
+      const { key, label } = weekBucketFor(row.class_date);
+      if (!weeks.has(key)) weeks.set(key, { label, rows: [] });
+      weeks.get(key).rows.push(row);
+    });
+
+    container.innerHTML = '';
+    [...weeks.entries()]
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .forEach(([key, week], i) => {
+        container.appendChild(renderArchiveWeekGroup(key, week, i === 0));
+      });
+  }
+
+  function renderArchiveWeekGroup(key, week, openByDefault) {
+    const details = document.createElement('details');
+    details.className = 'card archive-week-group';
+    if (openByDefault) details.open = true;
+
+    const summary = document.createElement('summary');
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'archive-week-label';
+    labelSpan.innerHTML = `<strong>${week.label}</strong>`;
+    const countSpan = document.createElement('span');
+    countSpan.className = 'record-meta';
+    countSpan.textContent = `${week.rows.length} record${week.rows.length === 1 ? '' : 's'}`;
+    summary.append(labelSpan, countSpan);
+
+    const body = document.createElement('div');
+    body.className = 'archive-week-group-body';
+
+    // Course filter, scoped to this one week — options are only the
+    // courses that actually appear in this group, not the full list.
+    const courses = [...new Set(week.rows.map((r) => r.course_code).filter(Boolean))]
+      .sort((a, b) => courseLabel(a).localeCompare(courseLabel(b)));
+
+    const filterWrap = document.createElement('div');
+    filterWrap.style.marginBottom = '12px';
+    const filterLabel = document.createElement('label');
+    filterLabel.textContent = 'Filter this week by course';
+    const select = document.createElement('select');
+    const allOption = document.createElement('option');
+    allOption.value = '';
+    allOption.textContent = `All courses (${week.rows.length})`;
+    select.appendChild(allOption);
+    courses.forEach((code) => {
+      const option = document.createElement('option');
+      option.value = code;
+      const count = week.rows.filter((r) => r.course_code === code).length;
+      option.textContent = `${courseLabel(code)} (${count})`;
+      select.appendChild(option);
+    });
+    filterWrap.append(filterLabel, select);
+
+    const tableWrap = document.createElement('div');
+    tableWrap.className = 'table-wrap';
+    const table = document.createElement('table');
+    table.className = 'admin-table';
+    table.innerHTML = '<thead><tr><th>Name</th><th>Student ID</th><th>Course</th><th>Subject</th><th>Date</th><th>Status</th><th>Marked by</th><th>Archived on</th></tr></thead><tbody></tbody>';
+    tableWrap.appendChild(table);
+
+    function renderRows(courseFilter) {
+      const tbody = table.querySelector('tbody');
+      tbody.innerHTML = '';
+      const filteredRows = courseFilter ? week.rows.filter((r) => r.course_code === courseFilter) : week.rows;
+      filteredRows.forEach((row) => {
+        const student = row.student || {};
+        const tr = document.createElement('tr');
+        [
+          student.full_name || '—',
+          student.student_id || '—',
+          row.course_code || '—',
+          row.subject || '—',
+          fmtDate(row.class_date),
+          row.status || '—',
+          row.marker?.full_name || '—',
+          row.archived_at ? fmtDate(row.archived_at) : '—',
+        ].forEach((text) => {
+          const td = document.createElement('td');
+          td.textContent = text;
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+    }
+    select.addEventListener('change', () => renderRows(select.value));
+    renderRows('');
+
+    body.append(filterWrap, tableWrap);
+    details.append(summary, body);
+    return details;
+  }
+
+  document.getElementById('attendanceArchiveRefresh').addEventListener('click', loadAttendanceArchive);
+
+  /* ---------------- Yearly attendance-archive prompt (admin only) ---
+     Shown once per login (not repeated within the same page load) when
+     unarchived records exist from over a year ago. "Not now" just
+     closes it for this session — it's asked again next time there's
+     something to ask about. */
+
+  async function offerAttendanceArchivePrompt() {
+    if (!currentUserIsAdmin) return; // archiving is admin/root only
+    const cutoff = new Date();
+    cutoff.setFullYear(cutoff.getFullYear() - 1);
+    const cutoffIso = cutoff.toISOString().slice(0, 10);
+
+    const { data: count, error } = await supabaseClient.rpc('count_unarchived_attendance_older_than', { p_cutoff: cutoffIso });
+    if (error) { console.error('Checking for old attendance failed:', error); return; }
+    if (!count) return;
+
+    const modal = document.getElementById('attendanceArchivePromptModal');
+    document.getElementById('attendanceArchivePromptText').textContent =
+      `You have ${count} attendance record${count === 1 ? '' : 's'} from over a year ago (before ${fmtDate(cutoffIso)}) that haven't been archived yet.`;
+    setStatus(document.getElementById('attendanceArchivePromptStatus'), '', null);
+    modal.hidden = false;
+
+    document.getElementById('attendanceArchivePromptDismiss').onclick = () => { modal.hidden = true; };
+    document.getElementById('attendanceArchivePromptConfirm').onclick = async () => {
+      const status = document.getElementById('attendanceArchivePromptStatus');
+      const confirmBtn = document.getElementById('attendanceArchivePromptConfirm');
+      confirmBtn.disabled = true;
+      const { data, error: archiveError } = await supabaseClient.rpc('archive_attendance', {
+        p_course_code: null,
+        p_date_from: null,
+        p_date_to: cutoffIso,
+      });
+      confirmBtn.disabled = false;
+      if (archiveError) {
+        console.error('Archiving old attendance failed:', archiveError);
+        setStatus(status, 'Could not archive. Please try again.', 'error');
+        return;
+      }
+      logActivity('attendance', 'updated',
+        `Archived ${data} attendance record${data === 1 ? '' : 's'} older than a year`,
+        `Before ${fmtDate(cutoffIso)}, all courses`);
+      toast(`Archived ${data} old attendance record${data === 1 ? '' : 's'}.`, 'success');
+      modal.hidden = true;
+      if (currentAttendanceCourse) {
+        loadAttendance(currentAttendanceCourse, currentAttendanceDate, currentAttendanceSubject);
+        loadAttendanceOverview(currentAttendanceCourse);
+      }
+    };
+  }
+
+  /* ---------------- Attendance overview ----------------
+     A per-class rollup — every date recorded for the selected course,
+     broken down by subject per student (so "Computer Programming" and
+     "Data Structures" show as separate lines for the same student)
+     rather than the single subject/date view above. Refreshes
+     whenever the class changes or attendance is saved. */
+
+  async function loadAttendanceOverview(courseCode) {
+    const tbody = document.getElementById('attendanceOverviewTbody');
+    if (!courseCode) {
+      tbody.innerHTML = '<tr><td colspan="9" class="empty-state">Select a course to see its attendance overview.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = '<tr><td colspan="9"><div class="skeleton skeleton-line"></div></td></tr>';
+
+    const [studentsRes, attendanceRes] = await Promise.all([
+      supabaseClient
+        .from('profiles')
+        .select('id, full_name, student_id')
+        .eq('course_code', courseCode)
+        .eq('role', 'student')
+        .order('full_name'),
+      supabaseClient
+        .from('attendance')
+        .select('student_id, subject, status, class_date, profiles!attendance_marked_by_fkey(full_name)')
+        .eq('course_code', courseCode)
+        .eq('archived', false),
+    ]);
+
+    if (studentsRes.error) {
+      console.error('Loading students for attendance overview failed:', studentsRes.error);
+      tbody.innerHTML = '<tr><td colspan="9" class="empty-state">Could not load students.</td></tr>';
+      return;
+    }
+    if (attendanceRes.error) console.error('Loading attendance overview failed:', attendanceRes.error);
+
+    const students = studentsRes.data || [];
+    // Keyed by "student_id||subject" rather than just student_id, so
+    // each subject gets its own line instead of being folded into one
+    // combined total per student. Rows with no subject (saved before
+    // the subject column existed) land under "No subject".
+    const bySubject = new Map(); // key -> { studentId, subject, present, absent, late, lastDate, lastMarkedBy }
+    (attendanceRes.data || []).forEach((row) => {
+      const subject = row.subject || 'No subject';
+      const key = `${row.student_id}||${subject}`;
+      if (!bySubject.has(key)) bySubject.set(key, { studentId: row.student_id, subject, present: 0, absent: 0, late: 0, lastDate: null, lastMarkedBy: null });
+      const counts = bySubject.get(key);
+      if (counts[row.status] != null) counts[row.status] += 1;
+      // class_date sorts fine as a plain "yyyy-mm-dd" string, so the
+      // latest date for this subject can just be tracked with a string
+      // comparison rather than parsing dates on every row. Whoever
+      // marked that latest date travels with it, same idea as
+      // "Last recorded" — it's the most recent marker, not a list of
+      // everyone who's ever touched this subject/student.
+      if (row.class_date && (!counts.lastDate || row.class_date > counts.lastDate)) {
+        counts.lastDate = row.class_date;
+        counts.lastMarkedBy = row.profiles?.full_name || null;
+      }
+    });
+
+    renderAttendanceOverviewTable(students, bySubject);
+  }
+
+  function renderAttendanceOverviewTable(students, bySubject) {
+    const tbody = document.getElementById('attendanceOverviewTbody');
+    tbody.innerHTML = '';
+
+    if (!students.length) {
+      tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No students are on this course yet.</td></tr>';
+      return;
+    }
+
+    // Group this class's subject rows by student, in the same order as
+    // the (name-sorted) student list, so a student's subjects stay
+    // together rather than being interleaved with other students'.
+    const rowsByStudent = new Map(students.map((s) => [s.id, []]));
+    [...bySubject.values()]
+      .sort((a, b) => a.subject.localeCompare(b.subject))
+      .forEach((row) => {
+        if (rowsByStudent.has(row.studentId)) rowsByStudent.get(row.studentId).push(row);
+      });
+
+    let rendered = false;
+    students.forEach((student) => {
+      const subjectRows = rowsByStudent.get(student.id) || [];
+      if (!subjectRows.length) {
+        appendAttendanceOverviewRow(tbody, student, { subject: 'No attendance yet', present: 0, absent: 0, late: 0, lastDate: null, lastMarkedBy: null }, true);
+        rendered = true;
+        return;
+      }
+      subjectRows.forEach((row, i) => {
+        appendAttendanceOverviewRow(tbody, student, row, false, i === 0 ? subjectRows.length : 0);
+        rendered = true;
+      });
+    });
+
+    if (!rendered) tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No attendance recorded for this class yet.</td></tr>';
+  }
+
+  // rowSpanCount, when set on a student's first subject row, spans the
+  // Name/Student ID cells down over all of that student's subject rows
+  // so the name isn't repeated on every line.
+  function appendAttendanceOverviewRow(tbody, student, row, isEmptyRow, rowSpanCount) {
+    const total = row.present + row.absent + row.late;
+    const pct = total ? Math.round((row.present / total) * 1000) / 10 : null;
+
+    const tr = document.createElement('tr');
+
+    if (rowSpanCount) {
+      const nameTd = document.createElement('td');
+      nameTd.textContent = student.full_name || '—';
+      nameTd.rowSpan = rowSpanCount;
+      const idTd = document.createElement('td');
+      idTd.textContent = student.student_id || '—';
+      idTd.rowSpan = rowSpanCount;
+      tr.append(nameTd, idTd);
+    }
+
+    [
+      row.subject,
+      isEmptyRow ? '—' : String(row.present),
+      isEmptyRow ? '—' : String(row.absent),
+      isEmptyRow ? '—' : String(row.late),
+      isEmptyRow || pct == null ? '—' : `${pct}%`,
+      isEmptyRow || !row.lastDate ? '—' : fmtDateLong(row.lastDate),
+      isEmptyRow || !row.lastMarkedBy ? '—' : row.lastMarkedBy,
+    ].forEach((text) => {
+      const td = document.createElement('td');
+      td.textContent = text;
+      tr.appendChild(td);
+    });
+
+    tbody.appendChild(tr);
+  }
+
+  document.getElementById('attendanceOverviewRefresh').addEventListener('click', () =>
+    loadAttendanceOverview(document.getElementById('attendanceCourseSelect').value)
+  );
+
+  /* ---------------- Support ---------------- */
+
+  async function loadSupportTab() {
+    const { data: profile, error } = await supabaseClient
+      .from('profiles')
+      .select('full_name, student_id, course_code, course_name')
+      .eq('id', currentUserId)
+      .single();
+
+    if (error) console.error('Could not load profile for support tab:', error);
+    currentUserProfile = profile || {};
+
+    document.getElementById('ticketName').value = currentUserProfile.full_name || '';
+    document.getElementById('ticketStudentId').value = currentUserProfile.student_id || '';
+    document.getElementById('ticketCourse').value = currentUserProfile.course_name || 'Staff';
+
+    await loadMyTickets();
+  }
+
+  const ticketStatusLabel = { open: 'Open', in_progress: 'In progress', closed: 'Closed' };
+  const ticketStatusBadge = { open: 'badge-unverified', in_progress: 'badge-staff', closed: 'badge-verified' };
+
+  // Closed tickets render collapsed (a native <details> with a
+  // one-line summary) so a growing history of resolved tickets doesn't
+  // bury the ones that still need attention. Open/in-progress tickets
+  // stay fully expanded. `extraContent`, if given, is appended inside
+  // the (always-visible-once-expanded) body — used by the admin "All
+  // tickets" view to attach its status/response controls.
+  function renderTicketItem(t, { who, extraContent, isNew } = {}) {
+    const badge = document.createElement('span');
+    badge.className = 'badge ' + (ticketStatusBadge[t.status] || 'badge-unverified');
+    badge.textContent = ticketStatusLabel[t.status] || 'Open';
+
+    const bodyBlock = document.createElement('div');
+    bodyBlock.className = 'record-body';
+    bodyBlock.textContent = t.body;
+
+    const extras = [];
+    if (t.attachment_url) {
+      const link = document.createElement('a');
+      link.className = 'file-link';
+      link.href = t.attachment_url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = 'View attachment';
+      extras.push(link);
+    }
+    if (t.admin_response) {
+      const reply = document.createElement('div');
+      reply.className = 'record-body';
+      reply.style.marginTop = '8px';
+      reply.style.paddingTop = '8px';
+      reply.style.borderTop = '1px dashed var(--paper-line)';
+      if (isNew) {
+        const newTag = document.createElement('span');
+        newTag.className = 'badge badge-staff ticket-new-tag';
+        newTag.style.marginRight = '6px';
+        newTag.textContent = 'New';
+        reply.appendChild(newTag);
+      }
+      const replyLabel = document.createElement('strong');
+      replyLabel.textContent = 'Response: ';
+      reply.appendChild(replyLabel);
+      reply.appendChild(document.createTextNode(t.admin_response));
+      extras.push(reply);
+    }
+    if (extraContent) extras.push(extraContent);
+
+    const item = document.createElement('li');
+    item.className = 'record';
+
+    if (t.status === 'closed') {
+      const details = document.createElement('details');
+      details.className = 'ticket-compact';
+
+      const summary = document.createElement('summary');
+      const title = document.createElement('span');
+      title.className = 'record-title';
+      title.textContent = t.subject;
+      const meta = document.createElement('span');
+      meta.className = 'record-meta';
+      if (who) {
+        const whoSpan = document.createElement('span');
+        whoSpan.textContent = who;
+        meta.appendChild(whoSpan);
+      }
+      const dateSpan = document.createElement('span');
+      dateSpan.textContent = fmtDate(t.created_at);
+      meta.append(dateSpan, badge);
+      summary.append(title, meta);
+
+      const content = document.createElement('div');
+      content.className = 'ticket-compact-body';
+      content.append(bodyBlock, ...extras);
+
+      details.append(summary, content);
+      item.appendChild(details);
+    } else {
+      const title = document.createElement('div');
+      title.className = 'record-title';
+      title.textContent = t.subject;
+
+      const meta = document.createElement('div');
+      meta.className = 'record-meta';
+      if (who) {
+        const whoSpan = document.createElement('span');
+        whoSpan.textContent = who;
+        meta.appendChild(whoSpan);
+      }
+      const dateSpan = document.createElement('span');
+      dateSpan.textContent = fmtDate(t.created_at);
+      meta.append(dateSpan, badge);
+
+      item.append(title, meta, bodyBlock, ...extras);
+    }
+
+    return item;
+  }
+
+  async function loadMyTickets() {
+    const list = document.getElementById('ticketsList');
+    const { data, error } = await supabaseClient
+      .from('support_tickets')
+      .select('id, subject, body, status, attachment_url, admin_response, responded_at, created_at')
+      .eq('user_id', currentUserId)
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    list.innerHTML = '';
+    if (error) {
+      console.error('Loading tickets failed:', error);
+      list.innerHTML = '<li class="empty-state">Could not load your tickets right now.</li>';
+      return;
+    }
+    const rows = data || [];
+    lastMyTicketsRows = rows;
+
+    if (!rows.length) {
+      list.innerHTML = '<li class="empty-state">No tickets submitted yet.</li>';
+      updateSupportBadge(0);
+      return;
+    }
+
+    const unseen = getUnseenResponses(rows);
+    const unseenIds = new Set(unseen.map((t) => t.id));
+    updateSupportBadge(unseen.length);
+
+    rows.forEach((t) => list.appendChild(renderTicketItem(t, { isNew: unseenIds.has(t.id) })));
+
+    // Only nudge with a toast the first time this loads with something
+    // unseen — clicking into Support (see the nav listener below)
+    // clears them, so this won't re-fire on every reload.
+    if (unseen.length === 1) {
+      toast(`You have a new response on "${unseen[0].subject}".`, 'info', 6000);
+    } else if (unseen.length > 1) {
+      toast(`You have new responses on ${unseen.length} tickets.`, 'info', 6000);
+    }
+  }
+
+  async function loadAllTickets() {
+    if (!currentUserIsAdmin) return;
+    const list = document.getElementById('adminTicketsList');
+    const { data, error } = await supabaseClient
+      .from('support_tickets')
+      .select('id, full_name, student_id, course_name, subject, body, attachment_url, status, admin_response, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    list.innerHTML = '';
+    if (error) {
+      console.error('Loading all tickets failed:', error);
+      list.innerHTML = '<li class="empty-state">Could not load tickets right now.</li>';
+      return;
+    }
+    const rows = data || [];
+    if (!rows.length) {
+      list.innerHTML = '<li class="empty-state">No tickets submitted yet.</li>';
+      return;
+    }
+
+    // Open tickets first, then in-progress, then closed — newest within
+    // each group — so what still needs attention floats to the top.
+    const statusRank = { open: 0, in_progress: 1, closed: 2 };
+    rows.sort((a, b) =>
+      (statusRank[a.status] ?? 0) - (statusRank[b.status] ?? 0) ||
+      new Date(b.created_at) - new Date(a.created_at)
+    );
+
+    rows.forEach((t) => {
+      // Who filed it and when — plain text, never an editable field, so
+      // there's no way to accidentally change someone's name/ID/course
+      // from here.
+      const who = `${t.full_name || 'Unknown'} · ID ${t.student_id || '—'} · ${t.course_name || 'Staff'}`;
+
+      const controls = document.createElement('div');
+      controls.style.marginTop = '14px';
+
+      const statusLabel = document.createElement('label');
+      statusLabel.textContent = 'Status';
+      const statusSelect = document.createElement('select');
+      [['open', 'Open'], ['in_progress', 'In progress'], ['closed', 'Closed']].forEach(([value, label]) => {
+        const opt = document.createElement('option');
+        opt.value = value;
+        opt.textContent = label;
+        if (value === t.status) opt.selected = true;
+        statusSelect.appendChild(opt);
+      });
+
+      const responseLabel = document.createElement('label');
+      responseLabel.textContent = 'Response';
+      const responseTextarea = document.createElement('textarea');
+      responseTextarea.value = t.admin_response || '';
+      responseTextarea.maxLength = 4000;
+      responseTextarea.placeholder = 'Write a reply…';
+
+      const saveRow = document.createElement('div');
+      saveRow.className = 'card-row-between';
+      saveRow.style.marginBottom = '0';
+      const saveStatus = document.createElement('span');
+      saveStatus.className = 'field-hint';
+      saveStatus.style.margin = '0';
+      const saveBtn = document.createElement('button');
+      saveBtn.type = 'button';
+      saveBtn.className = 'btn btn-sm';
+      saveBtn.textContent = 'Save';
+
+      let savedStatus = t.status;
+      saveBtn.addEventListener('click', async () => {
+        if (statusSelect.value === 'closed' && savedStatus !== 'closed'
+            && !(await confirmAction({ title: 'Close this ticket?', text: 'The requester is emailed the full transcript, and the ticket is removed from the portal after 30 days.', confirmText: 'Close ticket' }))) return;
+        saveBtn.disabled = true;
+        saveStatus.textContent = 'Saving…';
+        const { error: updateError } = await supabaseClient
+          .from('support_tickets')
+          .update({
+            status: statusSelect.value,
+            admin_response: responseTextarea.value.trim() || null,
+            responded_by: currentUserId,
+            responded_at: new Date().toISOString(),
+          })
+          .eq('id', t.id);
+        saveBtn.disabled = false;
+        if (updateError) {
+          console.error('Updating ticket failed:', updateError);
+          saveStatus.textContent = 'Could not save.';
+          return;
+        }
+        savedStatus = statusSelect.value;
+        saveStatus.textContent = 'Saved.';
+        toast('Ticket updated.', 'success');
+      });
+
+      saveRow.append(saveStatus, saveBtn);
+      controls.append(statusLabel, statusSelect, responseLabel, responseTextarea, saveRow);
+
+      list.appendChild(renderTicketItem(t, { who, extraContent: controls }));
+    });
+  }
+  document.getElementById('adminTicketsRefresh').addEventListener('click', loadAllTickets);
+
+  // Opening the Support tab means they've seen their responses —
+  // clear the nav badge and the per-ticket "New" tags right away
+  // rather than waiting for a data refetch.
+  const supportNavItem = document.querySelector('.nav-item[data-tab="support"]');
+  if (supportNavItem) {
+    supportNavItem.addEventListener('click', () => markResponsesSeen(lastMyTicketsRows));
+  }
+
+  function resetTicketForm() {
+    supportTicketForm.reset();
+    document.getElementById('ticketName').value = currentUserProfile.full_name || '';
+    document.getElementById('ticketStudentId').value = currentUserProfile.student_id || '';
+    document.getElementById('ticketCourse').value = currentUserProfile.course_name || 'Staff';
+    document.getElementById('ticketAttachmentStatus').textContent = '';
+  }
+
+  supportTicketForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const status = document.getElementById('ticketFormStatus');
+    const submitBtn = document.getElementById('ticketSubmitBtn');
+    const subject = document.getElementById('ticketSubject').value.trim();
+    const body = document.getElementById('ticketBody').value.trim();
+    const fileInput = document.getElementById('ticketAttachment');
+    const attachStatus = document.getElementById('ticketAttachmentStatus');
+    const chosenFile = fileInput.files && fileInput.files[0];
+
+    if (!subject || !body) {
+      setStatus(status, 'Please fill in a subject and message.', 'error');
+      return;
+    }
+
+    submitBtn.disabled = true;
+    setStatus(status, '', null);
+
+    let attachmentUrl = null;
+    let attachmentPath = null;
+    if (chosenFile) {
+      attachStatus.textContent = 'Uploading…';
+      const path = `${currentUserId}/${Date.now()}-${chosenFile.name}`;
+      const { error: uploadError } = await supabaseClient.storage
+        .from('support-attachments')
+        .upload(path, chosenFile, { upsert: false });
+
+      if (uploadError) {
+        console.error('Ticket attachment upload failed:', uploadError);
+        attachStatus.textContent = '';
+        submitBtn.disabled = false;
+        setStatus(status, 'Could not upload the picture. Please try again.', 'error');
+        return;
+      }
+      const { data: publicUrlData } = supabaseClient.storage.from('support-attachments').getPublicUrl(path);
+      attachmentUrl = publicUrlData.publicUrl;
+      attachmentPath = path; // kept alongside the URL so the cleanup job can remove the file, not just the row
+      attachStatus.textContent = 'Uploaded.';
+    }
+
+    const { error } = await supabaseClient.from('support_tickets').insert({
+      user_id: currentUserId,
+      user_email: currentUserEmail,
+      full_name: currentUserProfile.full_name || null,
+      student_id: currentUserProfile.student_id || null,
+      course_code: currentUserProfile.course_code || null,
+      course_name: currentUserProfile.course_name || null,
+      subject,
+      body,
+      attachment_url: attachmentUrl,
+      attachment_path: attachmentPath,
+      portal_origin: window.location.origin,
+    });
+
+    submitBtn.disabled = false;
+
+    if (error) {
+      console.error('Submitting ticket failed:', error);
+      setStatus(status, 'Could not submit your ticket. Please try again.', 'error');
+      return;
+    }
+
+    setStatus(status, 'Ticket submitted.', 'success');
+    toast('Support ticket submitted.', 'success');
+    resetTicketForm();
+    loadMyTickets();
+  });
+
+  /* ---------------- Activity Log (admin only) ----------------
+     One feed of everything that needs a person's supervision, kept for
+     28 days. Two sources are merged:
+       - activity_log      — written by database triggers (announcements,
+                             timetable, resources, grades, account
+                             deactivation / root access, ticket replies,
+                             banner / lockdown / feedback lock) plus
+                             attendance events sent from this page via
+                             logActivity() below.
+       - profile_change_log — name / student ID / course / verified /
+                             role / job-title edits (existing trigger).
+     Both are purged after 28 days by purge_activity_log() (see
+     activity-log.sql); this page also calls it on load and never shows
+     anything older than the cutoff, so the 28-day window holds even if
+     the scheduled purge isn't running. Filtering happens in memory. */
+  const ACTIVITY_RETENTION_DAYS = 28;
+  const ACTIVITY_LOG_MAX = 2000;
+  let activityRows = [];   // merged, newest first
+  let activityPeople = new Map(); // profile id -> display name
+
+  const ACTIVITY_CATEGORIES = {
+    accounts: 'Accounts', announcements: 'Announcements', timetable: 'Timetable',
+    resources: 'Resources', grades: 'Grades', attendance: 'Attendance',
+    tickets: 'Support tickets', system: 'Site settings',
+  };
+  const ACTIVITY_ICONS = {
+    accounts: 'person', announcements: 'bell', timetable: 'empty', resources: 'resource',
+    grades: 'resource', attendance: 'empty', tickets: 'bell', system: 'bell',
+  };
+  const PROFILE_FIELD_LABELS = {
+    full_name: 'name', student_id: 'student ID', course_code: 'course',
+    verified: 'verified status', role: 'role', job_title: 'job title',
+  };
+
+  // Fire-and-forget: record an event only the browser knows about
+  // (attendance). Never blocks or fails the action being logged.
+  function logActivity(category, action, summary, detail) {
+    supabaseClient
+      .rpc('log_client_activity', { p_category: category, p_action: action, p_summary: summary, p_detail: detail || null })
+      .then(({ error }) => { if (error) console.warn('Activity log write failed:', error); });
+  }
+
+  const activityEls = {
+    list: document.getElementById('activityLogList'),
+    search: document.getElementById('activitySearch'),
+    category: document.getElementById('activityCategoryFilter'),
+    action: document.getElementById('activityActionFilter'),
+    actor: document.getElementById('activityActorFilter'),
+    from: document.getElementById('activityFrom'),
+    to: document.getElementById('activityTo'),
+    count: document.getElementById('activityCount'),
+  };
+
+  function filteredActivityRows() {
+    const q = activityEls.search.value.trim().toLowerCase();
+    const category = activityEls.category.value;
+    const action = activityEls.action.value;
+    const actor = activityEls.actor.value;
+    const from = activityEls.from.value ? new Date(activityEls.from.value + 'T00:00:00') : null;
+    const to = activityEls.to.value ? new Date(activityEls.to.value + 'T23:59:59.999') : null;
+
+    return activityRows.filter((r) => {
+      if (category && r.category !== category) return false;
+      if (action && r.action !== action) return false;
+      if (actor === '__system' ? r.actor_id : (actor && r.actor_id !== actor)) return false;
+      const created = new Date(r.created_at);
+      if (from && created < from) return false;
+      if (to && created > to) return false;
+      if (q) {
+        const hay = `${r.summary} ${r.detail || ''} ${activityPeople.get(r.actor_id) || ''}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }
+
+  function renderActivityLog() {
+    const list = activityEls.list;
+    const rows = filteredActivityRows();
+    list.innerHTML = '';
+
+    const filtering = activityEls.search.value || activityEls.category.value || activityEls.action.value ||
+      activityEls.actor.value || activityEls.from.value || activityEls.to.value;
+    activityEls.count.textContent = activityRows.length
+      ? `Showing ${rows.length} of ${activityRows.length} entr${activityRows.length === 1 ? 'y' : 'ies'} from the last ${ACTIVITY_RETENTION_DAYS} days`
+      : '';
+
+    if (!activityRows.length) { list.innerHTML = emptyState('Nothing logged in the last 28 days.'); return; }
+    if (!rows.length) { list.innerHTML = emptyState(filtering ? 'No entries match these filters.' : 'No entries.'); return; }
+
+    const ACCENT_FOR_ACTION = { deleted: 'accent-danger' };
+
+    rows.forEach((r) => {
+      const item = document.createElement('li');
+      item.className = 'record' + (ACCENT_FOR_ACTION[r.action] ? ' ' + ACCENT_FOR_ACTION[r.action] : '');
+
+      const head = document.createElement('div');
+      head.className = 'record-head';
+      const headMain = document.createElement('div');
+      headMain.className = 'record-head-main';
+      const headText = document.createElement('div');
+      headText.className = 'record-head-text';
+
+      const title = document.createElement('div');
+      title.className = 'record-title';
+      title.textContent = r.summary;
+
+      const meta = document.createElement('div');
+      meta.className = 'record-meta';
+      const badge = document.createElement('span');
+      badge.className = 'badge badge-course';
+      badge.textContent = ACTIVITY_CATEGORIES[r.category] || r.category;
+      const dateSpan = document.createElement('span');
+      dateSpan.textContent = new Date(r.created_at).toLocaleString();
+      const actorSpan = document.createElement('span');
+      actorSpan.className = 'badge badge-admin';
+      actorSpan.textContent = r.actor_id ? (activityPeople.get(r.actor_id) || 'Unknown') : 'System';
+      meta.append(badge, dateSpan, actorSpan);
+
+      headText.append(title, meta);
+      headMain.append(recordIcon(ACTIVITY_ICONS[r.category] || 'bell'), headText);
+      head.appendChild(headMain);
+      item.appendChild(head);
+
+      if (r.detail) {
+        const body = document.createElement('div');
+        body.className = 'record-body';
+        body.textContent = r.detail;
+        item.appendChild(body);
+      }
+      list.appendChild(item);
+    });
+  }
+
+  async function loadActivityLog() {
+    if (!currentUserIsAdmin) return;
+    activityEls.list.innerHTML = '<li class="empty-state">Loading…</li>';
+
+    // Housekeeping first, so expired rows are really gone (not just hidden).
+    await supabaseClient.rpc('purge_activity_log').then(({ error }) => {
+      if (error) console.warn('Purging the activity log failed:', error);
+    });
+
+    const cutoff = new Date(Date.now() - ACTIVITY_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    const [logRes, profRes] = await Promise.all([
+      supabaseClient
+        .from('activity_log')
+        .select('id, created_at, actor_id, category, action, summary, detail, target_id')
+        .gte('created_at', cutoff)
+        .order('created_at', { ascending: false })
+        .limit(ACTIVITY_LOG_MAX),
+      supabaseClient
+        .from('profile_change_log')
+        .select('id, target_id, changed_by, field, old_value, new_value, created_at')
+        .gte('created_at', cutoff)
+        .order('created_at', { ascending: false })
+        .limit(ACTIVITY_LOG_MAX),
+    ]);
+
+    if (logRes.error && profRes.error) {
+      console.error('Loading activity log failed:', logRes.error, profRes.error);
+      activityEls.list.innerHTML = emptyState('Could not load the activity log.');
+      return;
+    }
+    if (logRes.error) console.error('Loading activity_log failed (has activity-log.sql been run?):', logRes.error);
+    if (profRes.error) console.error('Loading profile_change_log failed:', profRes.error);
+
+    const logRows = logRes.data || [];
+    const profRows = profRes.data || [];
+
+    // Names for everyone mentioned in either source.
+    const ids = [...new Set([
+      ...logRows.flatMap((r) => [r.actor_id]),
+      ...profRows.flatMap((r) => [r.changed_by, r.target_id]),
+    ].filter(Boolean))];
+    activityPeople = new Map();
+    if (ids.length) {
+      const { data: people } = await supabaseClient.from('profiles').select('id, full_name, email').in('id', ids);
+      (people || []).forEach((p) => activityPeople.set(p.id, p.full_name || p.email || 'Unknown'));
+    }
+
+    const fmt = (v) => (v === null || v === undefined || v === '' ? '(empty)' : String(v));
+    const fromProfiles = profRows.map((r) => ({
+      id: 'p' + r.id,
+      created_at: r.created_at,
+      actor_id: r.changed_by,
+      category: 'accounts',
+      action: 'updated',
+      summary: `Changed ${activityPeople.get(r.target_id) || 'an account'}'s ${PROFILE_FIELD_LABELS[r.field] || r.field}`,
+      detail: `${fmt(r.old_value)} → ${fmt(r.new_value)}`,
+    }));
+
+    activityRows = [...logRows.map((r) => ({ ...r, id: 'a' + r.id })), ...fromProfiles]
+      .sort((x, y) => new Date(y.created_at) - new Date(x.created_at))
+      .slice(0, ACTIVITY_LOG_MAX);
+
+    // Rebuild the "person" dropdown, keeping the current choice if it's still there.
+    const prevActor = activityEls.actor.value;
+    activityEls.actor.innerHTML = '<option value="">Everyone</option>';
+    const actorIds = [...new Set(activityRows.map((r) => r.actor_id).filter(Boolean))]
+      .sort((x, y) => (activityPeople.get(x) || '').localeCompare(activityPeople.get(y) || ''));
+    actorIds.forEach((id) => {
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = activityPeople.get(id) || 'Unknown';
+      activityEls.actor.appendChild(opt);
+    });
+    if (activityRows.some((r) => !r.actor_id)) {
+      const opt = document.createElement('option');
+      opt.value = '__system';
+      opt.textContent = 'System';
+      activityEls.actor.appendChild(opt);
+    }
+    if ([...activityEls.actor.options].some((o) => o.value === prevActor)) activityEls.actor.value = prevActor;
+
+    renderActivityLog();
+  }
+
+  activityEls.search.addEventListener('input', renderActivityLog);
+  [activityEls.category, activityEls.action, activityEls.actor, activityEls.from, activityEls.to]
+    .forEach((el) => el.addEventListener('change', renderActivityLog));
+  document.getElementById('activityClearFilters').addEventListener('click', () => {
+    activityEls.search.value = '';
+    activityEls.category.value = '';
+    activityEls.action.value = '';
+    activityEls.actor.value = '';
+    activityEls.from.value = '';
+    activityEls.to.value = '';
+    renderActivityLog();
+  });
+  document.getElementById('activityLogRefresh').addEventListener('click', loadActivityLog);
+
+  /* ---------------- Feedback ---------------- */
+
+  // "Give feedback on a student" course picker — Staff left out, same
+  // as every other course picker on this page (COURSES.filter above).
+  populateCourseSelect(
+    document.getElementById('studentFeedbackCourse'),
+    COURSES.filter((g) => g.label !== 'Staff'),
+    '-- Select a course --',
+    true
+  );
+  enhanceCourseSelect(document.getElementById('studentFeedbackCourse'));
+
+  async function loadStudentFeedbackStudents(courseCode) {
+    const select = document.getElementById('studentFeedbackStudent');
+    select.innerHTML = '';
+    if (!courseCode) {
+      select.innerHTML = '<option value="">-- Select a course first --</option>';
+      return;
+    }
+    select.innerHTML = '<option value="">Loading…</option>';
+    const { data, error } = await supabaseClient
+      .from('profiles')
+      .select('id, full_name, student_id')
+      .eq('course_code', courseCode)
+      .eq('role', 'student')
+      .order('full_name');
+
+    if (error) {
+      console.error('Loading students for feedback failed:', error);
+      select.innerHTML = '<option value="">Could not load students</option>';
+      return;
+    }
+
+    const rows = data || [];
+    select.innerHTML = rows.length
+      ? '<option value="">-- Select a student --</option>'
+      : '<option value="">No students on this course</option>';
+    rows.forEach((s) => {
+      const option = document.createElement('option');
+      option.value = s.id;
+      option.textContent = s.full_name + (s.student_id ? ' (' + s.student_id + ')' : '');
+      select.appendChild(option);
+    });
+  }
+  document.getElementById('studentFeedbackCourse').addEventListener('change', (e) => loadStudentFeedbackStudents(e.target.value));
+
+  // Admin-only: whether the *course/lecturer* feedback form (student
+  // portal, home.js) is locked — read here purely to drive the admin
+  // toggle card below, since that lock now lives on the other portal's
+  // form, not this page's "Give feedback on a student" (which is always
+  // open — see the field-hint on that form).
+  let courseFeedbackLocked = false;
+
+  async function refreshCourseFeedbackLockState() {
+    const { data, error } = await supabaseClient
+      .from('feedback_settings')
+      .select('lecturer_feedback_locked')
+      .eq('id', 1)
+      .maybeSingle();
+    if (error) { console.error('Loading feedback lock state failed:', error); return; }
+    courseFeedbackLocked = !!(data && data.lecturer_feedback_locked);
+  }
+
+  document.getElementById('studentFeedbackForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const status = document.getElementById('studentFeedbackStatus');
+    const submitBtn = document.getElementById('studentFeedbackSubmit');
+
+    const courseCode = document.getElementById('studentFeedbackCourse').value;
+    const studentId = document.getElementById('studentFeedbackStudent').value;
+    const rating = document.getElementById('studentFeedbackRating').value;
+    const comments = document.getElementById('studentFeedbackComments').value.trim();
+
+    if (!courseCode) { setStatus(status, 'Please select a course.', 'error'); return; }
+    if (!studentId) { setStatus(status, 'Please select a student.', 'error'); return; }
+    if (!rating) { setStatus(status, 'Please select a rating.', 'error'); return; }
+    if (!comments) { setStatus(status, 'Please add a comment.', 'error'); return; }
+
+    submitBtn.disabled = true;
+    setStatus(status, '', null);
+
+    const { error } = await supabaseClient.from('student_feedback').insert({
+      lecturer_id: currentUserId,
+      student_id: studentId,
+      course_code: courseCode,
+      rating: Number(rating),
+      comments,
+    });
+
+    submitBtn.disabled = false;
+
+    if (error) {
+      console.error('Submitting student feedback failed:', error);
+      setStatus(status, 'Could not submit feedback. Please try again.', 'error');
+      return;
+    }
+
+    setStatus(status, 'Feedback submitted.', 'success');
+    toast('Student feedback submitted.', 'success');
+    document.getElementById('studentFeedbackForm').reset();
+    loadStudentFeedbackStudents('');
+  });
+
+  function renderFeedbackItem(list, { headline, meta, rating, comments, empty }) {
+    if (empty) { list.innerHTML = emptyState(empty); return; }
+    const item = document.createElement('li');
+    item.className = 'record';
+
+    const head = document.createElement('div');
+    head.className = 'record-head';
+    const headMain = document.createElement('div');
+    headMain.className = 'record-head-main';
+    const headText = document.createElement('div');
+    headText.className = 'record-head-text';
+    const title = document.createElement('div');
+    title.className = 'record-title';
+    title.textContent = headline;
+    const metaRow = document.createElement('div');
+    metaRow.className = 'record-meta';
+    const metaSpan = document.createElement('span');
+    metaSpan.textContent = meta;
+    const ratingBadge = document.createElement('span');
+    ratingBadge.className = 'badge ' + (rating >= 4 ? 'badge-verified' : rating <= 2 ? 'badge-unverified' : 'badge-course');
+    ratingBadge.textContent = rating + '/5';
+    metaRow.append(metaSpan, ratingBadge);
+    headText.append(title, metaRow);
+    headMain.append(recordIcon('bell'), headText);
+    head.appendChild(headMain);
+
+    const body = document.createElement('div');
+    body.className = 'record-body';
+    body.textContent = comments || '(no comments left)';
+
+    item.append(head, body);
+    list.appendChild(item);
+  }
+
+  async function loadMyCourseFeedback() {
+    const list = document.getElementById('myCourseFeedbackList');
+    const { data, error } = await supabaseClient
+      .from('course_feedback')
+      .select('id, course_code, rating, comments, created_at')
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    list.innerHTML = '';
+    if (error) { console.error('Loading your feedback failed:', error); list.innerHTML = emptyState('Feedback is not available right now.'); return; }
+    const rows = data || [];
+    if (!rows.length) { list.innerHTML = emptyState('No feedback yet.'); return; }
+    rows.forEach((r) => renderFeedbackItem(list, {
+      headline: courseNameFor(r.course_code),
+      meta: fmtDate(r.created_at),
+      rating: r.rating,
+      comments: r.comments,
+    }));
+  }
+
+  /* Admin-only: all reports + the lock toggle. */
+
+  async function loadAllCourseFeedback() {
+    const list = document.getElementById('allCourseFeedbackList');
+    const { data, error } = await supabaseClient
+      .from('course_feedback')
+      .select('id, course_code, lecturer_id, rating, comments, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    list.innerHTML = '';
+    if (error) { console.error('Loading all course feedback failed:', error); list.innerHTML = emptyState('Could not load feedback.'); return; }
+    const rows = data || [];
+    if (!rows.length) { list.innerHTML = emptyState('No feedback yet.'); return; }
+
+    const ids = [...new Set(rows.map((r) => r.lecturer_id))];
+    const [{ data: people }, labels] = await Promise.all([
+      supabaseClient.from('profiles').select('id, full_name').in('id', ids),
+      fetchPosterLabels(ids),
+    ]);
+    const nameById = new Map((people || []).map((p) => [p.id, p.full_name]));
+
+    rows.forEach((r) => renderFeedbackItem(list, {
+      headline: (nameById.get(r.lecturer_id) || 'Unknown lecturer') + ' — ' + courseNameFor(r.course_code),
+      meta: fmtDate(r.created_at) + (labels.get(r.lecturer_id) ? ' • ' + labels.get(r.lecturer_id) : ''),
+      rating: r.rating,
+      comments: r.comments,
+    }));
+  }
+
+  async function loadAllStudentFeedback() {
+    const list = document.getElementById('allStudentFeedbackList');
+    const { data, error } = await supabaseClient
+      .from('student_feedback')
+      .select('id, lecturer_id, student_id, course_code, rating, comments, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    list.innerHTML = '';
+    if (error) { console.error('Loading all student feedback failed:', error); list.innerHTML = emptyState('Could not load feedback.'); return; }
+    const rows = data || [];
+    if (!rows.length) { list.innerHTML = emptyState('No feedback yet.'); return; }
+
+    const ids = [...new Set(rows.flatMap((r) => [r.lecturer_id, r.student_id]))];
+    const { data: people } = await supabaseClient.from('profiles').select('id, full_name').in('id', ids);
+    const nameById = new Map((people || []).map((p) => [p.id, p.full_name]));
+
+    rows.forEach((r) => renderFeedbackItem(list, {
+      headline: (nameById.get(r.student_id) || 'Unknown student') + ' — ' + courseNameFor(r.course_code),
+      meta: fmtDate(r.created_at) + ' • by ' + (nameById.get(r.lecturer_id) || 'Unknown lecturer'),
+      rating: r.rating,
+      comments: r.comments,
+    }));
+  }
+
+  async function loadFeedbackLockCard() {
+    await refreshCourseFeedbackLockState();
+    document.getElementById('courseFeedbackLockState').textContent =
+      courseFeedbackLocked ? 'Currently LOCKED' : 'Currently OPEN';
+    document.getElementById('courseFeedbackLockToggleBtn').textContent =
+      courseFeedbackLocked ? 'Unlock form' : 'Lock form';
+  }
+
+  document.getElementById('courseFeedbackLockToggleBtn').addEventListener('click', async () => {
+    const status = document.getElementById('courseFeedbackLockStatus');
+    const btn = document.getElementById('courseFeedbackLockToggleBtn');
+    const nextValue = !courseFeedbackLocked;
+    if (!(await confirmAction({ title: nextValue ? 'Lock the feedback form?' : 'Unlock the feedback form?', text: nextValue ? 'Students will no longer be able to submit course/lecturer feedback.' : 'Students will be able to submit course/lecturer feedback again.', confirmText: nextValue ? 'Lock form' : 'Unlock form', danger: nextValue }))) return;
+
+    btn.disabled = true;
+    setStatus(status, '', null);
+
+    const { error } = await supabaseClient
+      .from('feedback_settings')
+      .update({ lecturer_feedback_locked: nextValue, updated_by: currentUserId, updated_at: new Date().toISOString() })
+      .eq('id', 1);
+
+    btn.disabled = false;
+
+    if (error) {
+      console.error('Updating feedback lock failed:', error);
+      setStatus(status, 'Could not update. Please try again.', 'error');
+      return;
+    }
+
+    courseFeedbackLocked = nextValue;
+    document.getElementById('courseFeedbackLockState').textContent = nextValue ? 'Currently LOCKED' : 'Currently OPEN';
+    btn.textContent = nextValue ? 'Unlock form' : 'Lock form';
+    setStatus(status, nextValue ? 'Form locked.' : 'Form unlocked.', 'success');
+    toast(nextValue ? 'Course/lecturer feedback form locked.' : 'Course/lecturer feedback form unlocked.', 'success');
+  });
+
+  /* ---------------- Boot ---------------- */
+
+  async function init() {
+    const admin = await requireAdmin();
+    if (!admin) return; // already redirected to home.html
+
+    currentUserId = admin.session.user.id;
+    currentUserEmail = admin.session.user.email || null;
+    currentUserIsAdmin = admin.isAdmin;
+    currentUserIsSuperAdmin = admin.isSuperAdmin;
+    document.getElementById('headerName').textContent = admin.profile.full_name || admin.session.user.email || '';
+    renderAvatar(document.getElementById('avatarSlot'), admin.profile.full_name || admin.session.user.email, admin.profile.avatar_url);
+
+    // Hero banner (Overview tab, all staff) — same pattern as the
+    // student portal's hero in home.js: greeting + key account facts up
+    // top instead of a bare "Overview" heading.
+    const firstName = admin.profile.full_name ? admin.profile.full_name.split(' ')[0] : '';
+    document.getElementById('heroGreeting').textContent = 'Welcome back' + (firstName ? ', ' + firstName : '');
+    document.getElementById('heroSub').textContent = currentUserEmail || '';
+    document.getElementById('heroRoleTag').textContent = displayRoleLabel(admin.profile);
+    const heroAccessTag = document.getElementById('heroAccessTag');
+    const hasElevatedAccess = currentUserIsSuperAdmin || currentUserIsAdmin;
+    heroAccessTag.textContent = currentUserIsSuperAdmin ? 'Root access' : (currentUserIsAdmin ? 'Admin access' : 'Staff access');
+    heroAccessTag.classList.toggle('tag-verified', hasElevatedAccess);
+    heroAccessTag.classList.toggle('tag-pending', !hasElevatedAccess);
+
+    document.getElementById('adminTicketsSection').hidden = !currentUserIsAdmin;
+    document.getElementById('adminFeedbackSection').hidden = !currentUserIsAdmin;
+    document.getElementById('attendanceAdminTools').hidden = !currentUserIsAdmin;
+    // Root/super admin only — being a plain "admin" is no longer
+    // enough to see this link. (admin.js enforces the same rule on
+    // admin.html itself, in case someone bookmarks or types the URL
+    // directly instead of clicking this link.)
+    document.getElementById('adminPanelLink').hidden = !currentUserIsSuperAdmin;
+
+    // Lecturers (role "staff", not "admin") get Overview, Students,
+    // Announcements (course-scoped only), Resources, Attendance (incl.
+    // read-only archived attendance), Timetable, Grades, My Classes, and
+    // their own Support tickets. The Staff list and the Activity Log stay
+    // admin/root territory, as does creating an attendance archive. This
+    // is a UX-layer restriction only. Overview is the default active tab
+    // and is visible to everyone here, so no landing-tab redirect is
+    // needed.
+    if (!currentUserIsAdmin) {
+      document.querySelectorAll('[data-admin-only]').forEach((el) => {
+        el.hidden = true;
+        el.setAttribute('aria-hidden', 'true');
+      });
+    }
+
+    // Lecturers only ever see the Announcements tab's "course" audience
+    // (see restrictAnnouncementAudienceForStaff), and that course has to
+    // be one of their own (see buildAnnouncementCourseOptions) — so
+    // remind them up front, on the tab itself, rather than only after
+    // they've opened the modal and hit the same wall.
+    const announcementsStaffHint = document.getElementById('announcementsStaffHint');
+    if (announcementsStaffHint) announcementsStaffHint.hidden = currentUserIsAdmin;
+
+    populateCourseSelects();
+    populateDepartmentSelects();
+    populateStudentCourseFilter();
+
+    // Land on a real course instead of the blank "-- Select a course --"
+    // placeholder, so grades show up immediately rather than making the
+    // lecturer pick one first. Just the first course alphabetically by
+    // department (same order COURSES lists them in) — there's no
+    // "assigned courses" concept for staff to default to instead.
+    const gradesCourseSelect = document.getElementById('gradesCourseSelect');
+    const firstGradesCourseOption = gradesCourseSelect.querySelector('option[value]:not([value=""])');
+    if (firstGradesCourseOption && !gradesCourseSelect.value) {
+      gradesCourseSelect.value = firstGradesCourseOption.value;
+      syncCourseSelectDisplay(gradesCourseSelect);
+    }
+
+    document.getElementById('timetableCourseSelect').addEventListener('change', (e) => renderTimetableRows(e.target.value));
+    document.getElementById('resourceCourseFilter').addEventListener('change', (e) => loadResources(e.target.value));
+    document.getElementById('resourceSearch').addEventListener('input', renderResourcesList);
+    markUploadedTimetableCourses();
+
+    loadingMessage.hidden = true;
+    appShell.hidden = false;
+    signOutButton.hidden = false;
+
+    const loaders = [
+      loadAllTimetables(),
+      loadSupportTab(),
+      loadGrades(document.getElementById('gradesCourseSelect').value),
+      loadStudents(),
+      loadAnnouncements(),
+      loadResources(document.getElementById('resourceCourseFilter').value),
+      loadMySchedule(),
+      loadAttendance(document.getElementById('attendanceCourseSelect').value, document.getElementById('attendanceDate').value, ''),
+      loadAttendanceOverview(document.getElementById('attendanceCourseSelect').value),
+      loadMyCourseFeedback(),
+      loadOverview(),          // Overview tab is visible to all staff
+      loadAttendanceArchive(), // archived attendance is read-only for all staff
+    ];
+    // Everything else here backs an admin-only tab — skip fetching it
+    // for lecturers.
+    if (currentUserIsAdmin) {
+      loaders.push(
+        loadAllTickets(),
+        loadActivityLog(),
+        loadFeedbackLockCard(),
+        loadAllCourseFeedback(),
+        loadAllStudentFeedback(),
+        // Applications tab (admin only): lives in the separate Registration database, behind its own sign-in.
+        window.ApplicationsManager ? ApplicationsManager.init(document.getElementById('applicationsRoot')).catch(() => {}) : null,
+        // Emails tab: admins edit templates; root also gets the SMTP card.
+        window.EmailManager ? EmailManager.init(document.getElementById('emailManagerRoot'), { isSuperAdmin: currentUserIsSuperAdmin }) : null,
+      );
+    }
+    await Promise.all(loaders);
+    // Runs after everything else settles, once per login — a modal
+    // popping up mid-load would compete with the rest of the page for
+    // attention.
+    if (currentUserIsAdmin) offerAttendanceArchivePrompt();
+  }
+
+  signOutButton.addEventListener('click', async () => {
+    signOutButton.disabled = true;
+    const { error } = await supabaseClient.auth.signOut();
+    if (error) {
+      signOutButton.disabled = false;
+      toast('Sign-out error: ' + friendlyAuthError(error), 'error');
+      return;
+    }
+    window.location.href = 'lecturer-login.html';
+  });
+
+  init();
+})();
