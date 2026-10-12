@@ -191,7 +191,10 @@ function confirmAction(opts) {
    data-tab attributes rather than inline onclick (the CSP
    on every page blocks inline event handlers).
    ------------------------------------------------------- */
-function switchTab(tabId, triggerEl) {
+let gtiCurrentTab = null;
+let gtiTabHistoryReady = false;
+
+function switchTab(tabId, triggerEl, fromHistory) {
   document.querySelectorAll(".tab-content").forEach((el) => el.classList.remove("active"));
   document.querySelectorAll(".nav-item").forEach((el) => {
     el.classList.remove("active");
@@ -203,12 +206,33 @@ function switchTab(tabId, triggerEl) {
     triggerEl.classList.add("active");
     triggerEl.setAttribute("aria-selected", "true");
   }
+  // Every tab change is a history step, so the phone's back button (and the
+  // browser's) returns to the previous tab instead of leaving the portal.
+  if (gtiTabHistoryReady && !fromHistory && tabId !== gtiCurrentTab) {
+    try { history.pushState({ gtiTab: tabId }, ""); } catch (e) {}
+  }
+  gtiCurrentTab = tabId;
 }
 
 document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll(".nav-item[data-tab]").forEach((btn) => {
     btn.addEventListener("click", () => switchTab(btn.dataset.tab, btn));
   });
+  const active = document.querySelector(".nav-item.active[data-tab]");
+  gtiCurrentTab = active ? active.dataset.tab : null;
+  if (gtiCurrentTab) {
+    try { history.replaceState({ gtiTab: gtiCurrentTab }, ""); } catch (e) {}
+  }
+  gtiTabHistoryReady = true;
+});
+
+window.addEventListener("popstate", (event) => {
+  const tab = event.state && event.state.gtiTab;
+  if (!tab || tab === gtiCurrentTab) return;
+  const btn = document.querySelector('.nav-item[data-tab="' + tab + '"]');
+  if (!btn || btn.hidden) return;
+  switchTab(tab, btn, true);
+  window.scrollTo(0, 0);
 });
 
 /* -------------------------------------------------------
@@ -331,7 +355,7 @@ async function checkLockdownBlock() {
 async function requireSession() {
   const { data: { session }, error } = await supabaseClient.auth.getSession();
   if (error || !session) {
-    window.location.href = "index.html";
+    window.location.replace("index.html");
     return null;
   }
 
@@ -341,7 +365,7 @@ async function requireSession() {
   // navigation/reload, not just at their next sign-in attempt.
   const lockdownMessage = await checkLockdownBlock();
   if (lockdownMessage) {
-    window.location.href = "lockdown.html";
+    window.location.replace("lockdown.html");
     return null;
   }
 
@@ -373,7 +397,7 @@ async function requireAdmin() {
   }
 
   if (accessError && isSuperAdmin !== true) {
-    window.location.href = "lecturer-login.html?denied=1";
+    window.location.replace("lecturer-login.html?denied=1");
     return null;
   }
   if (hasAccess !== true && isSuperAdmin !== true) {
@@ -381,7 +405,7 @@ async function requireAdmin() {
     // policies on the tables the staff dashboard writes to — even if
     // someone bypassed this redirect, every insert/update/delete call
     // would still be rejected by Postgres.
-    window.location.href = "lecturer-login.html?denied=1";
+    window.location.replace("lecturer-login.html?denied=1");
     return null;
   }
 
@@ -1011,6 +1035,30 @@ function updateHeaderHeightVar() {
   if (height > 0) document.documentElement.style.setProperty("--header-height", height + "px");
 }
 window.addEventListener("resize", updateHeaderHeightVar);
+
+// The tab bar sticks below the header using --header-height. That value used
+// to be refreshed only on window resize and banner changes, so when the
+// header's height changed any other way (phone status-bar inset arriving
+// after load, banner appearing, fonts loading) the tabs sat too low until a
+// reload. Watching the header itself keeps it correct.
+(function watchHeaderHeight() {
+  if (!("ResizeObserver" in window) || !document.body) return;
+  const ro = new ResizeObserver(updateHeaderHeightVar);
+  let watched = null;
+  function attach() {
+    const el = document.getElementById("stickyTopWrap") || document.querySelector(".app-header");
+    if (!el || el === watched) return;
+    if (watched) ro.unobserve(watched);
+    ro.observe(el);
+    watched = el;
+    updateHeaderHeightVar();
+  }
+  attach();
+  document.addEventListener("DOMContentLoaded", attach);
+  window.addEventListener("load", attach);
+  new MutationObserver(attach).observe(document.body, { childList: true, subtree: true });
+})();
+
 
 function ensureStatusBanner() {
   if (statusBanner) return statusBanner;

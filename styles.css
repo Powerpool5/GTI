@@ -2136,3 +2136,46 @@ table.sd-table tr:last-child td { border-bottom: none; }
   cursor: help;
 }
 .app-qual-none { color: var(--danger); font-size: 0.85rem; font-weight: 500; }
+
+/* =========================
+   Phone / Android app: system-bar safe areas + timetable fit
+   ========================= */
+
+/* The scrolling banner sits ABOVE the header inside .sticky-top-wrap, so it
+   is the element touching the status bar while it shows: it takes the top
+   inset, and the header below it drops its own. */
+.db-down-banner { padding-top: calc(8px + env(safe-area-inset-top, 0px)); }
+.sticky-top-wrap:has(.db-down-banner:not([hidden])) .app-header { padding-top: 14px; }
+
+/* Toasts and bottom sheets must clear the phone's bottom navigation bar. */
+.toast-container {
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  right: calc(20px + env(safe-area-inset-right, 0px));
+}
+
+@media (max-width: 760px) {
+  .sticky-top-wrap:has(.db-down-banner:not([hidden])) .app-header { padding-top: 10px; }
+
+  .modal-backdrop { padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
+  .toast-container { left: 12px; right: 12px; max-width: none; }
+
+  /* Timetable view: no fixed column minimums, so the table can shrink to the
+     words themselves; timetable-editor.js then scales whatever is left to
+     fit the screen width (see fitTimetableToWidth). */
+  .tt-view-table td, .tt-view-table th { min-width: 0; padding: 5px 4px; }
+}
+
+/* Touch devices: no blue/grey flash when a control is tapped or held, and no
+   blue text selection on long-press. The normal outlines and focus rings
+   stay. Text fields keep normal selection. */
+* { -webkit-tap-highlight-color: transparent; }
+button, .btn, .btn-icon, .btn-icon-light, .btn-link, .nav-item, .password-toggle,
+a, summary, select, [role="tab"], [role="button"], [role="link"], .so-link {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+input, textarea, [contenteditable="true"], [contenteditable=""] {
+  -webkit-user-select: text;
+  user-select: text;
+}

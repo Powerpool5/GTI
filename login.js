@@ -83,7 +83,7 @@
           style: status.lockdown_style || 'warning',
         }));
       } catch {}
-      window.location.href = 'lockdown.html';
+      window.location.replace('lockdown.html');
       return;
     }
 
@@ -104,7 +104,7 @@
 
     // Already signed in? Skip straight to the portal.
     const { data: { session } } = await supabaseClient.auth.getSession();
-    if (session) window.location.href = 'home.html';
+    if (session) window.location.replace('home.html');
   })();
 
   const signInThrottle = new AttemptThrottle('signin', { maxFreeAttempts: 3, baseDelayMs: 2000, maxDelayMs: 60000 });
@@ -146,13 +146,13 @@
     if (lockdownMessage) {
       // Lockdown has its own page (message + style set by the admin, and it
       // notices when the lockdown is lifted).
-      window.location.href = 'lockdown.html';
+      window.location.replace('lockdown.html');
       return;
     }
 
     signInThrottle.reset();
     setStatus(status, 'Signed in. Redirecting…', 'success');
-    window.location.href = 'home.html';
+    window.location.replace('home.html');
   });
 
   // SIGN UP

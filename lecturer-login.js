@@ -39,7 +39,7 @@
   // they may be about to sign in with a different, staff, account.)
   supabaseClient.auth.getSession().then(async ({ data: { session } }) => {
     if (!session) return;
-    if (await hasStaffOrRootAccess()) window.location.href = 'lecturer-home.html';
+    if (await hasStaffOrRootAccess()) window.location.replace('lecturer-home.html');
   });
 
   signInForm.addEventListener('submit', async (event) => {
@@ -89,13 +89,13 @@
     // access both checked out.
     const lockdownMessage = await checkLockdownBlock();
     if (lockdownMessage) {
-      window.location.href = 'lockdown.html';
+      window.location.replace('lockdown.html');
       return;
     }
 
     signInThrottle.reset();
     setStatus(status, 'Signed in. Redirecting…', 'success');
-    window.location.href = 'lecturer-home.html';
+    window.location.replace('lecturer-home.html');
   });
 
   resetForm.addEventListener('submit', async (event) => {

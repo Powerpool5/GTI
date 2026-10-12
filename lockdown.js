@@ -66,7 +66,7 @@
     const tick = () => {
       $('lockdownHint').textContent = (kind === 'lifted' ? 'The lockdown has been lifted. ' : 'Nothing is locked at the moment. ')
         + 'Taking you to sign in in ' + left + '…';
-      if (left <= 0) { window.location.href = 'index.html'; return; }
+      if (left <= 0) { window.location.replace('index.html'); return; }
       left -= 1;
       redirectTimer = window.setTimeout(tick, 1000);
     };

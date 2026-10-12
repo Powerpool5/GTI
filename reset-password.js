@@ -76,6 +76,6 @@
     // Sign out of the temporary recovery session so the person has to
     // sign back in with the new password, confirming it actually works.
     await supabaseClient.auth.signOut();
-    window.setTimeout(() => { window.location.href = 'index.html'; }, 1500);
+    window.setTimeout(() => { window.location.replace('index.html'); }, 1500);
   });
 })();

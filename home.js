@@ -86,6 +86,7 @@
     syncCourseSelectDisplay(document.getElementById('courseChange'));
     document.getElementById('headerName').textContent = account.full_name || user.email || '';
     renderAvatar(document.getElementById('avatarSlot'), account.full_name || user.email, account.avatar_url);
+    GTITimetableCache.saveProfile({ name: account.full_name || user.email || '' });
 
     // Hero banner (Overview tab) — same underlying data as the detail-row
     // card below it, just surfaced as the page's greeting first.
@@ -989,7 +990,7 @@
       toast('Sign-out error: ' + friendlyAuthError(error), 'error');
       return;
     }
-    window.location.href = 'index.html';
+    window.location.replace('index.html');
   });
 
   loadAccount();

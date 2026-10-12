@@ -6,36 +6,6 @@
       });
     });
   }
-
-  let installPrompt = null;
-
-  function installButton() { return document.getElementById('installAppBtn'); }
-
-  window.addEventListener('beforeinstallprompt', (event) => {
-    event.preventDefault();
-    installPrompt = event;
-    const btn = installButton();
-    if (btn) btn.hidden = false;
-  });
-
-  window.addEventListener('appinstalled', () => {
-    installPrompt = null;
-    const btn = installButton();
-    if (btn) btn.hidden = true;
-  });
-
-  document.addEventListener('DOMContentLoaded', () => {
-    const btn = installButton();
-    if (!btn) return;
-    if (installPrompt) btn.hidden = false;
-    btn.addEventListener('click', async () => {
-      if (!installPrompt) return;
-      installPrompt.prompt();
-      try { await installPrompt.userChoice; } catch {}
-      installPrompt = null;
-      btn.hidden = true;
-    });
-  });
 })();
 
 (function () {
@@ -46,7 +16,8 @@
     '.gti-net-banner.show{display:flex}',
     '.gti-net-banner.online{background:#d9f2e1;color:#0f5132;border-bottom-color:rgba(15,81,50,.25)}',
     '.gti-net-dot{width:9px;height:9px;border-radius:50%;background:currentColor;flex:none}',
-    'html.gti-net-on .app-header{top:var(--gti-net-h,0px)}',
+    'html.gti-net-on .app-header{top:var(--gti-net-h,0px);padding-top:14px}',
+    '@media (max-width:760px){html.gti-net-on .app-header{padding-top:10px}}',
   ].join('');
 
   let banner = null;

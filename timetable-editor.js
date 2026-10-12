@@ -45,7 +45,7 @@ const TimetableEditor = (function () {
       s.src = src;
       s.dataset.ttSrc = src;
       s.onload = () => { s.dataset.ttLoaded = "1"; resolve(); };
-      s.onerror = () => reject(new Error("Could not load " + src));
+      s.onerror = () => { s.remove(); reject(new Error("Could not load " + src)); };
       document.head.appendChild(s);
     });
   }
@@ -58,21 +58,37 @@ const TimetableEditor = (function () {
         loadScript(`${CDN}/pdfjs-dist@3.11.174/build/pdf.min.js`),
       ]).then(() => {
         window.pdfjsLib.GlobalWorkerOptions.workerSrc = `${CDN}/pdfjs-dist@3.11.174/build/pdf.worker.min.js`;
-      });
+      }).catch((err) => { ocrLibsPromise = null; throw err; });
     }
     return ocrLibsPromise;
   }
 
-  let exportLibsPromise = null;
-  function loadExportLibs() {
-    if (!exportLibsPromise) {
-      exportLibsPromise = Promise.all([
+  // PDF and Word each load only their own library, so a problem with one
+  // can't stop the other. A failed load is forgotten so the next tap retries.
+  // (docx 8.x ships its browser build as build/index.umd.js, which defines
+  // window.docx; there is no build/index.js in that version.)
+  let pdfLibsPromise = null;
+  function loadPdfLibs() {
+    if (!pdfLibsPromise) {
+      pdfLibsPromise = Promise.all([
         loadScript(`${CDN}/jspdf@2.5.2/dist/jspdf.umd.min.js`),
         loadScript(`${CDN}/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js`),
-        loadScript(`${CDN}/docx@8.5.0/build/index.js`),
-      ]);
+      ]).catch((err) => { pdfLibsPromise = null; throw err; });
     }
-    return exportLibsPromise;
+    return pdfLibsPromise;
+  }
+
+  let docxLibPromise = null;
+  function loadDocxLib() {
+    if (!docxLibPromise) {
+      docxLibPromise = loadScript(`${CDN}/docx@8.5.0/build/index.umd.js`)
+        .catch((err) => { docxLibPromise = null; throw err; });
+    }
+    return docxLibPromise;
+  }
+
+  function loadExportLibs() {
+    return Promise.all([loadPdfLibs(), loadDocxLib()]);
   }
 
   /* ---------------- PDF -> canvas (first page only) ---------------- */
@@ -1269,6 +1285,34 @@ const TimetableEditor = (function () {
   }
 
   // Read-only render (student/lecturer viewing, not editing).
+  /* On phones, scale the whole timetable down (as one piece) until it fits
+     the screen width, instead of leaving most columns off to the side.
+     It re-fits whenever the box changes size, which also covers the case
+     where the timetable is rendered while its tab is still hidden. */
+  function fitTimetableToWidth(wrap, table) {
+    if (wrap._ttFit) { wrap._ttFit.disconnect(); wrap._ttFit = null; }
+    if (!("ResizeObserver" in window) || !window.matchMedia) return;
+    const phone = window.matchMedia("(max-width: 760px)");
+    let lastWidth = -1;
+    function fit() {
+      const avail = wrap.clientWidth;
+      if (avail <= 0) return;
+      table.style.zoom = "";
+      if (!phone.matches) return;
+      const natural = table.scrollWidth;
+      if (natural > avail + 1) table.style.zoom = String(Math.max(avail / natural, 0.3));
+    }
+    const ro = new ResizeObserver(() => {
+      const w = wrap.clientWidth;
+      if (w === lastWidth) return;
+      lastWidth = w;
+      fit();
+    });
+    ro.observe(wrap);
+    wrap._ttFit = ro;
+    fit();
+  }
+
   function renderTimetableView(container, rows) {
     container.innerHTML = "";
     const norm = normalizeRows(rows);
@@ -1285,6 +1329,7 @@ const TimetableEditor = (function () {
       table.appendChild(tr);
     });
     container.appendChild(table);
+    fitTimetableToWidth(container, table);
   }
 
   /* ---------------- export ---------------- */
@@ -1300,11 +1345,50 @@ const TimetableEditor = (function () {
     document.body.appendChild(a);
     a.click();
     a.remove();
-    URL.revokeObjectURL(url);
+    // Revoking straight away can cancel the download on some phones.
+    setTimeout(() => URL.revokeObjectURL(url), 15000);
+  }
+
+  // The Android app's web view ignores downloads that a page creates itself,
+  // so there the file is written to the app's cache and handed to the phone's
+  // share sheet (save to Files / Drive, open in another app, send, ...).
+  function inApp() {
+    const cap = window.Capacitor;
+    return !!(cap && typeof cap.isNativePlatform === "function" && cap.isNativePlatform()
+      && typeof cap.nativePromise === "function");
+  }
+
+  function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+      reader.onerror = () => reject(reader.error || new Error("Could not read the file"));
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async function saveFile(blob, filename) {
+    if (!inApp()) { downloadBlob(blob, filename); return; }
+    const data = await blobToBase64(blob);
+    const written = await window.Capacitor.nativePromise("Filesystem", "writeFile", {
+      path: filename,
+      data,
+      directory: "CACHE",
+    });
+    try {
+      await window.Capacitor.nativePromise("Share", "share", {
+        title: filename,
+        dialogTitle: "Save or share your timetable",
+        url: written.uri,
+      });
+    } catch (err) {
+      // Closing the share sheet without choosing anything is not an error.
+      if (!/cancel/i.test(String(err && (err.message || err)))) throw err;
+    }
   }
 
   async function exportTimetablePdf(rows, title) {
-    await loadExportLibs();
+    await loadPdfLibs();
     const norm = normalizeRows(rows);
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: norm[0].length > 6 ? "landscape" : "portrait" });
@@ -1325,11 +1409,11 @@ const TimetableEditor = (function () {
         }
       },
     });
-    doc.save(`${slug(title)}.pdf`);
+    await saveFile(doc.output("blob"), `${slug(title)}.pdf`);
   }
 
   async function exportTimetableDocx(rows, title) {
-    await loadExportLibs();
+    await loadDocxLib();
     const norm = normalizeRows(rows);
     const { Document, Packer, Table, TableRow, TableCell, Paragraph, TextRun, HeadingLevel, WidthType, AlignmentType } = window.docx;
 
@@ -1365,7 +1449,7 @@ const TimetableEditor = (function () {
     });
 
     const blob = await Packer.toBlob(doc);
-    downloadBlob(blob, `${slug(title)}.docx`);
+    await saveFile(blob, `${slug(title)}.docx`);
   }
 
   /* ---------------- open in a new tab ---------------- */
