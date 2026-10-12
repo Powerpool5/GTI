@@ -258,10 +258,36 @@
       .maybeSingle();
 
     list.innerHTML = '';
-    if (error) { console.error('Loading timetable failed:', error); list.innerHTML = emptyState('Timetable is not available right now.'); return; }
+    if (error) {
+      console.error('Loading timetable failed:', error);
+      const cached = GTITimetableCache.load(currentUserId, courseCode);
+      if (cached) { renderTimetable(list, cached.data, cached.savedAt); return; }
+      list.innerHTML = emptyState('Timetable is not available right now.');
+      return;
+    }
     const hasTable = data && data.display_mode === 'table' && data.table_data && data.table_data.length;
-    if (!data || (!data.file_url && !hasTable)) { list.innerHTML = emptyState('No timetable has been uploaded for this course yet.'); return; }
+    if (!data || (!data.file_url && !hasTable)) {
+      GTITimetableCache.clear();
+      list.innerHTML = emptyState('No timetable has been uploaded for this course yet.');
+      return;
+    }
 
+    if (hasTable) {
+      GTITimetableCache.save(currentUserId, courseCode, {
+        file_name: data.file_name,
+        updated_at: data.updated_at,
+        table_data: data.table_data,
+        display_mode: 'table',
+      });
+    } else {
+      GTITimetableCache.clear();
+    }
+
+    renderTimetable(list, data, null);
+  }
+
+  function renderTimetable(list, data, offlineSavedAt) {
+    const hasTable = data && data.display_mode === 'table' && data.table_data && data.table_data.length;
     const item = document.createElement('li');
     item.className = 'record';
 
@@ -282,6 +308,13 @@
       meta.className = 'record-meta';
       meta.textContent = 'Updated ' + new Date(data.updated_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
       headText.appendChild(meta);
+    }
+
+    if (offlineSavedAt) {
+      const note = document.createElement('div');
+      note.className = 'record-meta';
+      note.textContent = 'Saved copy from ' + new Date(offlineSavedAt).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' — could not reach the server, so this may be out of date.';
+      headText.appendChild(note);
     }
 
     headMain.append(recordIcon('calendar'), headText);
@@ -949,6 +982,7 @@
 
   signOutButton.addEventListener('click', async () => {
     signOutButton.disabled = true;
+    GTITimetableCache.clear();
     const { error } = await supabaseClient.auth.signOut();
     if (error) {
       signOutButton.disabled = false;
