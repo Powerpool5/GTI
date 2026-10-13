@@ -2138,7 +2138,7 @@ table.sd-table tr:last-child td { border-bottom: none; }
 .app-qual-none { color: var(--danger); font-size: 0.85rem; font-weight: 500; }
 
 /* =========================
-   Phone / Android app: system-bar safe areas + timetable fit
+   Phone / Android app: system-bar safe areas
    ========================= */
 
 /* The scrolling banner sits ABOVE the header inside .sticky-top-wrap, so it
@@ -2159,10 +2159,6 @@ table.sd-table tr:last-child td { border-bottom: none; }
   .modal-backdrop { padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
   .toast-container { left: 12px; right: 12px; max-width: none; }
 
-  /* Timetable view: no fixed column minimums, so the table can shrink to the
-     words themselves; timetable-editor.js then scales whatever is left to
-     fit the screen width (see fitTimetableToWidth). */
-  .tt-view-table td, .tt-view-table th { min-width: 0; padding: 5px 4px; }
 }
 
 /* Touch devices: no blue/grey flash when a control is tapped or held, and no
@@ -2200,13 +2196,53 @@ html.using-touch .nav-item:focus { outline: none; box-shadow: none; }
 
 #timetableExportPdfBtn { display: none; }
 
-/* Timetable on phones: give the table more room, and (when it helps a lot)
-   let long words break so the whole thing can be scaled up. */
-.tt-tight td, .tt-tight th { overflow-wrap: anywhere; hyphens: auto; }
-@media (max-width: 760px) {
-  .card:has(.tt-view-table-wrap) { padding: 12px 8px; margin-left: -6px; margin-right: -6px; }
-  .tt-view-table td, .tt-view-table th { padding: 4px 3px; }
-}
-
 /* Dark mode only: no theme switch button anywhere. */
 #themeToggleBtn, .theme-toggle-corner { display: none !important; }
+
+/* =========================
+   Phone: the section menu is a slide-out side panel
+   (app.js adds the menu button to the header and the dim backdrop)
+   ========================= */
+.nav-toggle, .nav-backdrop { display: none; }
+
+@media (max-width: 760px) {
+  .nav-toggle { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; margin-right: 10px; padding: 0; }
+
+  .nav-backdrop {
+    display: block;
+    position: fixed; top: 0; right: 0; bottom: 0; left: 0;
+    z-index: 59;
+    background: rgba(5, 10, 16, 0.6);
+    opacity: 0; visibility: hidden;
+  }
+  html.nav-anim .nav-backdrop { transition: opacity 0.25s ease, visibility 0s linear 0.25s; }
+  html.nav-open .nav-backdrop { opacity: 1; visibility: visible; transition-delay: 0s; }
+  html.nav-open { overflow: hidden; }
+
+  .app-shell .app-nav {
+    position: fixed; top: 0; bottom: 0; left: 0;
+    z-index: 60;
+    width: min(80vw, 300px); height: 100%; max-height: none;
+    display: flex; flex-direction: column; align-items: stretch;
+    overflow-x: hidden; overflow-y: auto;
+    scroll-snap-type: none;
+    gap: 0;
+    padding: calc(18px + env(safe-area-inset-top, 0px)) 0 calc(18px + env(safe-area-inset-bottom, 0px));
+    border-right: 1px solid var(--paper-line); border-bottom: none;
+    box-shadow: 8px 0 30px rgba(0, 0, 0, 0.45);
+    transform: translateX(-102%); visibility: hidden;
+  }
+  html.nav-anim .app-shell .app-nav { transition: transform 0.25s ease, visibility 0s linear 0.25s; }
+  html.nav-open .app-shell .app-nav { transform: none; visibility: visible; transition-delay: 0s; }
+
+  .app-shell .app-nav .nav-logo { display: flex; }
+  .app-shell .app-nav .nav-item {
+    width: calc(100% - 20px); margin: 2px 10px; min-width: 0;
+    flex-direction: row; justify-content: flex-start; align-items: center;
+    gap: 10px; padding: 13px 14px;
+    font-size: 0.98rem; text-align: left;
+    white-space: normal; overflow: visible; text-overflow: clip;
+    border-bottom: none;
+  }
+  html .app-shell .app-nav .nav-item.active { background: var(--ink-navy); color: #fff; font-weight: 600; }
+}

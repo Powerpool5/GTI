@@ -1,20 +1,2282 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#0b3972">
-<meta http-equiv="Content-Security-Policy"
-  content="default-src 'self'; script-src 'self' 'sha256-vvt4KWwuNr51XfE5m+hzeNEGhiOfZzG97ccfqGsPwvE='; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data:; base-uri 'self'; form-action 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-injv5ZpOWsbmlQNrztOK4a4SuyUq79cK4jaHsJRH03M=' 'sha256-vvt4KWwuNr51XfE5m+hzeNEGhiOfZzG97ccfqGsPwvE='; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data:; base-uri 'self'; form-action 'self';">
 <title>Student Portal - GTI</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<!-- This page is deliberately self-contained: its own copy of the site's styles
+     and its own script, so it still looks and works if nothing else can be loaded.
+     The live stylesheet below overrides the built-in copy whenever it is available. -->
+<style>
+/* =========================================================
+   GTI Student Portal — Design System v3
+   Blueprint/drafting concept. v3 adds dark mode (data-theme
+   on <html>) and drops the Google-sign-in-only components.
+   ========================================================= */
+
+:root {
+  --ink-navy: #0b3972;
+  --ink-navy-deep: #09396d;
+  --blueprint: #2B5F8C;
+  --blueprint-soft: #DCE6EE;
+  --on-dark-soft: #DCE6EE; /* text on the always-dark header/auth-visual — must NOT flip in dark mode, since those surfaces are already dark in both themes */
+  --paper: #FBFAF7;
+  --paper-line: #E4E0D6;
+  --surface: #FFFFFF;
+  --border-input: #C7CDD3;
+  --ink: #16232E;
+  --slate: #5C6B78;
+  --brass: #B8863B;
+  --brass-dark: #96692A;
+  --success: #3F7D5C;
+  --success-bg: #E8F1EC;
+  --danger: #B24C3F;
+  --danger-bg: #FBEBE8;
+
+  --font-display: "Space Grotesk", "IBM Plex Sans", sans-serif;
+  --font-body: "IBM Plex Sans", sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+
+  --radius: 14px;
+  --radius-sm: 8px;
+  --sidebar-w: 240px;
+  --max-content: 780px;
+
+  --shadow-sm: 0 1px 2px rgba(16, 36, 61, 0.06);
+  --shadow-md: 0 4px 16px rgba(16, 36, 61, 0.08);
+  --shadow-lg: 0 12px 32px rgba(16, 36, 61, 0.14);
+  --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --paper: #121A22;
+  --paper-line: #29323B;
+  --surface: #1B2530;
+  --border-input: #37424D;
+  --ink: #E6E3DA;
+  --slate: #97A2AB;
+  --blueprint-soft: #1D3448;
+  --success-bg: #163226;
+  --danger-bg: #3A1F1C;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.45);
+  color-scheme: dark;
+}
+
+/* Admin panel gets its own accent color (red instead of the site's
+   usual navy/blue) so it visually reads as a distinct, higher-stakes
+   area — same technique as the dark-mode override above, just scoped
+   to admin.html's <body> instead of [data-theme="dark"]. Everything
+   built on these tokens (header background, headings, active nav
+   highlight, links, badges) picks it up automatically; nothing else
+   needs to change. Header background/text intentionally doesn't
+   change between light/dark site themes (same as the navy header does
+   everywhere else) — only the soft tint used for hover/active
+   backgrounds needs its own dark-mode variant, since that one does
+   normally flip. */
+body.theme-admin {
+  --ink-navy: #7A1F1F;
+  --ink-navy-deep: #611818;
+  --blueprint: #A83232;
+  --blueprint-soft: #F5DCDA;
+}
+[data-theme="dark"] body.theme-admin {
+  --blueprint-soft: #3A2222;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0; padding: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+body { transition: background 0.2s var(--ease), color 0.2s var(--ease); }
+
+h1, h2, h3 { font-family: var(--font-display); font-weight: 600; margin: 0 0 0.5em 0; letter-spacing: -0.01em; }
+h1 { font-size: 1.5rem; }
+h2 { font-size: 1.05rem; color: var(--ink-navy); }
+[data-theme="dark"] h2 { color: var(--ink); }
+p { margin: 0 0 1em 0; }
+a { color: var(--blueprint); }
+button, input, select { font-family: inherit; font-size: 1rem; }
+:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+
+.grid-texture {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* =========================
+   App shell
+   ========================= */
+
+.app-header {
+  background: var(--ink-navy);
+  color: #fff;
+  padding: 14px 20px;
+  /* On a notched/Dynamic-Island phone, `viewport-fit=cover` (index.html
+     etc.) lets the page draw under the status bar — without this,
+     the header's own content (brand mark, theme toggle) would sit
+     right under the notch instead of below it. env() is 0 on any
+     browser/device that doesn't need it, so this is a no-op there —
+     same reasoning as the bottom nav's safe-area-inset-bottom padding
+     below (.app-nav, max-width: 760px). */
+  padding-top: calc(14px + env(safe-area-inset-top, 0px));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 3px solid var(--brass);
+  box-shadow: var(--shadow-md);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.app-header .brand { display: flex; align-items: baseline; gap: 10px; }
+
+.app-header .header-actions { display: flex; align-items: center; gap: 16px; }
+
+.app-header .brand-mark {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  color: var(--brass);
+  border: 1px solid var(--brass);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.app-header h1 { font-size: 1.1rem; margin: 0; color: #fff; }
+.app-header a.brand-link { text-decoration: none; }
+
+.app-header .user-chip {
+  font-size: 0.85rem;
+  color: var(--on-dark-soft);
+  font-family: var(--font-mono);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-icon {
+  background: none;
+  border: 1px solid rgba(255,255,255,0.3);
+  color: #fff;
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s var(--ease);
+}
+.btn-icon:hover { background: rgba(255,255,255,0.12); }
+
+/* Same control, used on the light auth screens (login/staff login) */
+.btn-icon-light {
+  background: none;
+  border: 1px solid var(--border-input);
+  color: var(--ink);
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s var(--ease);
+}
+.btn-icon-light:hover { background: var(--blueprint-soft); }
+
+.avatar {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.35);
+  object-fit: cover;
+}
+
+.avatar-fallback {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: var(--blueprint);
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.app-shell {
+  display: flex;
+  min-height: calc(100vh - 58px);
+  /* iOS/Android browsers resize the *visual* viewport (not the layout
+     one) when the address bar shows/hides, but plain `vh` is based on
+     the layout viewport — so it's briefly wrong on load and only
+     corrects itself once a scroll forces a reflow. `dvh` tracks the
+     real, current viewport and fixes that; kept second, after the vh
+     line above, purely as a fallback for older browsers that don't
+     support dvh yet. */
+  min-height: calc(100dvh - 58px);
+}
+
+.app-nav {
+  width: var(--sidebar-w); flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--paper-line); padding: 20px 0;
+  /* Stays put while .app-main scrolls, instead of scrolling away with the
+     page. Offset by the height of the sticky header — and, when a
+     banner is showing above it, the banner too — kept in sync via
+     --header-height, set by app.js's updateHeaderHeightVar(). Not used
+     on mobile, where this nav becomes a fixed bottom bar instead (see
+     the responsive rules below). */
+  position: sticky;
+  top: var(--header-height, 58px);
+  align-self: flex-start;
+  max-height: calc(100vh - var(--header-height, 58px));
+  overflow-y: auto;
+}
+
+.nav-logo { display: flex; justify-content: center; padding: 4px 12px 20px; }
+.nav-logo img { width: 200px; max-width: 100%; height: auto; display: block; }
+
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  width: calc(100% - 20px);
+  margin: 2px 10px;
+  background: none; border: none;
+  text-align: left;
+  text-decoration: none;
+  padding: 11px 14px;
+  border-radius: 10px;
+  color: var(--slate);
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: background 0.15s var(--ease), color 0.15s var(--ease);
+}
+/* Without this, the hidden attribute does nothing on nav items: the
+   rule above always sets display:flex, which (being an author
+   stylesheet rule) beats the browser's built-in [hidden]->display:none
+   default even though it's not aimed at [hidden] elements specifically.
+   Affects every conditionally-shown nav item — Admin panel link,
+   System tab, staff dashboard link — not just one. */
+.nav-item[hidden] { display: none; }
+.nav-item:hover { background: var(--blueprint-soft); color: var(--ink-navy); }
+[data-theme="dark"] .nav-item:hover { color: var(--ink); }
+.nav-item.active { background: var(--ink-navy); color: #fff; font-weight: 600; }
+.nav-item .nav-icon { width: 18px; height: 18px; flex-shrink: 0; }
+.nav-item .nav-badge {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  background: var(--brass);
+  color: #fff;
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+.app-main { flex: 1; padding: 32px 24px 64px; max-width: var(--max-content); }
+.app-main.wide { max-width: 1040px; }
+
+.tab-content { display: none; }
+.tab-content.active { display: block; animation: reveal 0.25s var(--ease); }
+@keyframes reveal { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .tab-content.active { animation: none; } }
+
+/* =========================
+   Cards
+   ========================= */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.2s var(--ease), background 0.2s var(--ease);
+}
+
+.card-row-between { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 14px; }
+
+.detail-row { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; padding: 9px 0; border-bottom: 1px solid var(--paper-line); font-size: 0.95rem; }
+.detail-row:last-child { border-bottom: none; }
+.detail-row .label { color: var(--slate); }
+.detail-row .value { font-family: var(--font-mono); font-size: 0.9rem; text-align: right; }
+
+/* =========================
+   Lists
+   ========================= */
+
+ul.record-list { list-style: none; margin: 0; padding: 0; }
+.record { padding: 14px 0; border-bottom: 1px solid var(--paper-line); }
+.record:last-child { border-bottom: none; }
+.record-title { font-weight: 600; margin-bottom: 3px; }
+.record-meta { font-family: var(--font-mono); font-size: 0.8rem; color: var(--blueprint); margin-bottom: 4px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.record-body { color: var(--slate); font-size: 0.92rem; }
+.record a.file-link { display: inline-block; margin-top: 6px; font-size: 0.85rem; text-decoration: none; border-bottom: 1px dashed var(--blueprint); }
+.grade-breakdown { margin-top: 6px; }
+.record-actions { display: flex; gap: 10px; margin-top: 8px; }
+.empty-state { color: var(--slate); font-size: 0.92rem; padding: 8px 0; }
+
+.badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  padding: 2px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.03em;
+}
+.badge-course { background: var(--blueprint-soft); color: var(--blueprint); }
+.badge-all { background: #EFE6D4; color: var(--brass-dark); }
+.badge-everyone { background: var(--danger-bg); color: var(--danger); }
+.badge-admin { background: var(--ink-navy); color: #f1f1eb; }
+.badge-staff { background: var(--brass); color: #fff; }
+.badge-student { background: var(--blueprint-soft); color: var(--blueprint); }
+.badge-verified { background: var(--success-bg); color: var(--success); }
+.badge-unverified { background: var(--paper-line); color: var(--slate); }
+.badge-inactive { background: var(--danger-bg); color: var(--danger); }
+.badge-grade-a { background: var(--success-bg); color: var(--success); }
+.badge-grade-b { background: var(--blueprint-soft); color: var(--blueprint); }
+.badge-grade-c { background: #EFE6D4; color: var(--brass-dark); }
+.badge-grade-f { background: var(--danger-bg); color: var(--danger); }
+.badge-gpa { background: var(--brass); color: #fff; }
+
+/* Closed tickets collapse to a single summary line (native <details>,
+   so no extra JS/CSP-inline handlers are needed to expand them). */
+.ticket-compact summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.ticket-compact summary::-webkit-details-marker { display: none; }
+.ticket-compact summary::before {
+  content: "▸";
+  display: inline-block;
+  font-size: 0.7rem;
+  color: var(--slate);
+  transition: transform 0.15s var(--ease);
+}
+.ticket-compact[open] summary::before { transform: rotate(90deg); }
+.ticket-compact summary .record-title { margin: 0; }
+.ticket-compact-body { margin-top: 12px; }
+
+/* Archived-attendance week groups — same collapsible <details> idea
+   as .ticket-compact above, but each group is its own full .card
+   rather than a line in a list. */
+.archive-week-group summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.archive-week-group summary::-webkit-details-marker { display: none; }
+.archive-week-group summary .archive-week-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.archive-week-group summary .archive-week-label::before {
+  content: "▸";
+  display: inline-block;
+  font-size: 0.7rem;
+  color: var(--slate);
+  transition: transform 0.15s var(--ease);
+}
+.archive-week-group[open] summary .archive-week-label::before { transform: rotate(90deg); }
+.archive-week-group-body { margin-top: 16px; }
+
+/* =========================
+   Forms
+   ========================= */
+
+label { display: block; font-size: 0.85rem; font-weight: 600; color: var(--ink-navy); margin-bottom: 6px; }
+[data-theme="dark"] label { color: var(--ink); }
+
+input[type="email"], input[type="password"], input[type="text"], input[type="time"],
+input[type="search"], input[type="date"], input[type="number"],
+select, textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  margin-bottom: 16px;
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+  -webkit-appearance: none;
+  appearance: none;
+}
+/* Restore the calendar/dropdown affordances appearance:none strips,
+   themed to match currentColor instead of the OS default icon. */
+input[type="date"]::-webkit-calendar-picker-indicator { filter: var(--date-icon-filter, none); cursor: pointer; }
+[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.8); }
+input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
+/* Mobile WebKit/Blink (iOS Safari, Android Chrome) keep rendering
+   type="search" fields with their own native rounded/light "pill" look —
+   including a background that ignores our --surface color and never
+   flips with dark mode — even with -webkit-appearance:none above.
+   -webkit-appearance:textfield is the one value that reliably strips
+   that native chrome down to a plain text field on those browsers;
+   restating background/border here too in case the native style had
+   been winning on those. */
+input[type="search"] {
+  -webkit-appearance: textfield;
+  appearance: textfield;
+  background: var(--surface);
+  border: 1px solid var(--border-input);
+  color: var(--ink);
+}
+input[type="search"]::-webkit-search-decoration { -webkit-appearance: none; appearance: none; }
+textarea { resize: vertical; min-height: 90px; }
+input:focus, select:focus, textarea:focus { border-color: var(--blueprint); box-shadow: 0 0 0 3px rgba(43,95,140,0.12); outline: none; }
+input:disabled, select:disabled, button:disabled { opacity: 0.55; cursor: not-allowed; }
+.field-hint { font-size: 0.78rem; color: var(--slate); margin-top: -12px; margin-bottom: 16px; }
+
+/* Password show/hide toggle — see initPasswordToggles() in app.js.
+   Margin lives on the wrapper instead of the input so the eye button
+   can be centered with a plain top:50% without fighting the input's
+   own bottom margin. */
+.password-field { position: relative; margin-bottom: 16px; }
+.password-field input[type="password"], .password-field input[type="text"] {
+  margin-bottom: 0;
+  padding-right: 42px;
+}
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--slate);
+  cursor: pointer;
+  transition: color 0.15s var(--ease), background 0.15s var(--ease);
+}
+.password-toggle:hover { color: var(--ink-navy); background: var(--blueprint-soft); }
+[data-theme="dark"] .password-toggle:hover { color: var(--ink); }
+.password-toggle:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+.field-row { display: flex; gap: 14px; }
+.field-row > div { flex: 1; }
+
+/* =========================
+   Course picker (searchable combobox)
+   See enhanceCourseSelect() in app.js — the real <select> stays in
+   the DOM (hidden) as the source of truth; this is just its skin.
+   ========================= */
+.course-combo { position: relative; margin-bottom: 16px; }
+.course-combo-native {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
+.course-combo-input {
+  margin-bottom: 0;
+  padding-right: 30px;
+  cursor: pointer;
+  background-image: none;
+  font-family: var(--font-body);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.course-combo::after {
+  content: "▾";
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  color: var(--slate);
+  pointer-events: none;
+  font-size: 0.75rem;
+}
+.course-combo.open .course-combo-input {
+  border-color: var(--blueprint);
+  box-shadow: 0 0 0 3px rgba(43,95,140,0.12);
+}
+.course-combo-panel {
+  position: fixed;
+  z-index: 1000;
+  background: var(--surface);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 4px;
+}
+/* Accordion department headers (shown when the box isn't being
+   searched) — collapsed by default, click to reveal that
+   department's courses instead of scrolling past everyone else's. */
+.course-combo-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 9px 10px;
+  margin: 1px 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.86rem;
+  color: var(--ink-navy);
+  letter-spacing: -0.005em;
+}
+[data-theme="dark"] .course-combo-group-header { color: var(--ink); }
+.course-combo-group-header:hover { background: var(--blueprint-soft); }
+.course-combo-group-header .course-combo-group-count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--slate);
+  background: var(--paper-line);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+.course-combo-group-header .course-combo-group-chevron {
+  font-size: 0.9rem;
+  color: var(--slate);
+  transition: transform 0.15s var(--ease);
+  width: 12px;
+  text-align: center;
+}
+.course-combo-group-header.open .course-combo-group-chevron { transform: rotate(90deg); }
+/* Plain group label used only in search results, where every match is
+   already shown flat regardless of department — no click target. */
+.course-combo-group-label {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--slate);
+  padding: 10px 10px 4px;
+}
+.course-combo-option {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 8px 10px;
+  margin: 1px 0;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  color: var(--ink);
+  cursor: pointer;
+  line-height: 1.35;
+}
+.course-combo-option-name { flex: 1; }
+.course-combo-option-code {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--slate);
+  background: var(--paper-line);
+  border-radius: var(--radius-sm);
+  padding: 1px 6px;
+}
+.course-combo-option.active .course-combo-option-code { color: var(--ink-navy); }
+[data-theme="dark"] .course-combo-option.active .course-combo-option-code { color: var(--ink); }
+.course-combo-option.indented { padding-left: 20px; } /* nested under an open accordion header */
+.course-combo-option:hover, .course-combo-option.highlighted { background: var(--blueprint-soft); }
+.course-combo-option.active { font-weight: 600; color: var(--ink-navy); }
+[data-theme="dark"] .course-combo-option.active { color: var(--ink); }
+.course-combo-empty { padding: 14px 10px; font-size: 0.85rem; color: var(--slate); text-align: center; }
+
+button.btn {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 11px 20px;
+  border-radius: var(--radius-sm);
+  border: none;
+  cursor: pointer;
+  background: var(--brass);
+  color: #fff;
+  transition: background 0.15s var(--ease), transform 0.1s var(--ease), box-shadow 0.15s var(--ease);
+}
+button.btn:hover:not(:disabled) { background: var(--brass-dark); box-shadow: var(--shadow-sm); }
+button.btn:active:not(:disabled) { transform: translateY(1px); }
+button.btn-block { width: 100%; }
+
+button.btn-secondary { background: none; color: var(--blueprint); border: 1px solid var(--blueprint); }
+button.btn-secondary:hover:not(:disabled) { background: var(--blueprint-soft); }
+
+button.btn-danger { background: none; color: var(--danger); border: 1px solid var(--danger); }
+button.btn-danger:hover:not(:disabled) { background: var(--danger-bg); }
+
+button.btn-sm { padding: 6px 12px; font-size: 0.82rem; }
+
+button.btn-link { background: none; border: none; color: var(--blueprint); padding: 0; font-size: 0.88rem; cursor: pointer; text-decoration: underline; }
+
+.status-message { font-size: 0.88rem; padding: 10px 12px; border-radius: var(--radius-sm); margin-top: -6px; margin-bottom: 16px; display: none; }
+.status-message.visible { display: block; }
+.status-message.error { background: var(--danger-bg); color: var(--danger); }
+.status-message.success { background: var(--success-bg); color: var(--success); }
+.status-message.info { background: var(--blueprint-soft); color: var(--ink-navy); }
+[data-theme="dark"] .status-message.info { color: var(--ink); }
+
+/* =========================
+   Locked feedback form (home.html — Feedback tab)
+   Shown when an admin locks "Lecturer & course feedback" from the
+   staff portal. Same warm, non-alarming tone as the lockdown page's
+   brass accent, since this is an expected admin action, not an error.
+   ========================= */
+.form-locked-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  margin: -6px 0 16px;
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--brass);
+  background: var(--blueprint-soft);
+  color: var(--ink-navy);
+  font-size: 0.9rem;
+  line-height: 1.4;
+  box-shadow: var(--shadow-sm);
+  animation: formLockedIn 0.2s var(--ease);
+}
+[data-theme="dark"] .form-locked-banner { color: var(--ink); }
+.form-locked-banner[hidden] { display: none; }
+@keyframes formLockedIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .form-locked-banner { animation: none; } }
+
+/* Round icon badge (same idea as the lockdown page's lock badge, just
+   inline-sized) instead of a bare glyph — gives the banner a bit more
+   visual weight so it reads as a deliberate state, not an afterthought. */
+.form-locked-icon-badge {
+  flex-shrink: 0;
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(184, 134, 59, 0.16);
+  color: var(--brass-dark);
+}
+[data-theme="dark"] .form-locked-icon-badge { background: rgba(184, 134, 59, 0.22); color: var(--brass); }
+.form-locked-icon { width: 15px; height: 15px; }
+
+/* Small "Locked" pill next to the Feedback tab's own heading — visible
+   the moment the tab is opened, before a student scrolls down to the
+   banner sitting above the (now-disabled) form fields. */
+h2 .locked-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: middle;
+  margin-left: 10px;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--brass-dark);
+  background: rgba(184, 134, 59, 0.14);
+  border: 1px solid var(--brass);
+  border-radius: 999px;
+  padding: 3px 9px 3px 7px;
+}
+[data-theme="dark"] h2 .locked-pill { color: var(--brass); background: rgba(184, 134, 59, 0.18); }
+h2 .locked-pill[hidden] { display: none; }
+h2 .locked-pill svg { width: 10px; height: 10px; flex-shrink: 0; }
+
+/* Reset the browser's default fieldset chrome (border/padding/min-width)
+   so it's invisible until :disabled — at which point the native
+   disabled-fieldset behaviour (every field + the submit button inside
+   stop accepting input, in one go) kicks in and this just dims it to
+   show that's what happened. */
+.feedback-fieldset { border: none; margin: 0; padding: 0; min-width: 0; }
+.feedback-fieldset:disabled { opacity: 0.55; }
+.feedback-fieldset:disabled select,
+.feedback-fieldset:disabled textarea,
+.feedback-fieldset:disabled button { cursor: not-allowed; }
+
+/* =========================
+   Login / auth pages
+   ========================= */
+
+.auth-screen { min-height: 100vh; display: flex; background: var(--ink-navy-deep); }
+.auth-visual {
+  flex: 1.15;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 64px;
+  color: #fff;
+  position: relative;
+  overflow: hidden;
+}
+/* Rotating background photos, one per department/stream — sits at the
+   very back (z-index: 0). Pure CSS crossfade: every <img> shares one
+   animation but starts at a different offset (negative delay), so
+   exactly one is opaque at a time and the loop is seamless. Update the
+   count below (6 images → 24s / 6 = 4s each) if you add or remove a
+   stream photo. */
+.auth-visual-slides { position: absolute; inset: 0; z-index: 0; }
+.auth-visual-slides img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  animation: streamPhotoFade 24s infinite;
+}
+.auth-visual-slides img:nth-child(1) { animation-delay: 0s; }
+.auth-visual-slides img:nth-child(2) { animation-delay: -4s; }
+.auth-visual-slides img:nth-child(3) { animation-delay: -8s; }
+.auth-visual-slides img:nth-child(4) { animation-delay: -12s; }
+.auth-visual-slides img:nth-child(5) { animation-delay: -16s; }
+.auth-visual-slides img:nth-child(6) { animation-delay: -20s; }
+@keyframes streamPhotoFade {
+  0%   { opacity: 0; }
+  4%   { opacity: 1; }
+  14%  { opacity: 1; }
+  18%  { opacity: 0; }
+  100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-visual-slides img { animation: none; opacity: 0; }
+  .auth-visual-slides img:first-child { opacity: 1; }
+}
+/* Navy tint over the photos so the white/brass text and grid lines
+   stay legible no matter what's underneath — same tone as the old
+   solid-navy background, just letting the photo show through it. */
+.auth-visual::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(165deg, rgba(7,27,52,0.94) 0%, rgba(11,57,114,0.82) 50%, rgba(5,18,36,0.95) 100%);
+  pointer-events: none;
+}
+/* Soft brass glow in the corner — the kind of quiet, oversized light
+   flare these reference sites use to keep a dark panel from feeling
+   flat, without needing an actual image asset. Layered above the
+   photo/tint, below the text. A second, dimmer glow low on the
+   opposite side balances it so the panel doesn't read as lit from
+   one corner only. */
+.auth-visual::before {
+  content: "";
+  position: absolute;
+  top: -160px;
+  right: -140px;
+  width: 460px;
+  height: 460px;
+  z-index: 2;
+  background:
+    radial-gradient(circle at center, rgba(184,134,59,0.34), transparent 70%),
+    radial-gradient(circle at 15% 135%, rgba(43,95,140,0.4), transparent 60%);
+  pointer-events: none;
+}
+.auth-visual > * { position: relative; z-index: 3; }
+.auth-visual .brand-mark { font-family: var(--font-mono); font-size: 0.8rem; letter-spacing: 0.1em; color: var(--brass); border: 1px solid var(--brass); display: inline-block; padding: 3px 8px; border-radius: var(--radius-sm); margin-bottom: 28px; width: fit-content; }
+.auth-visual h1 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(2.4rem, 1.3rem + 3.4vw, 3.8rem);
+  line-height: 1.02;
+  letter-spacing: -0.025em;
+  color: #fff;
+  max-width: 520px;
+  margin-bottom: 18px;
+}
+.auth-visual p { color: var(--on-dark-soft); max-width: 400px; margin-bottom: 24px; }
+/* Real departments instead of a decorative eyebrow label — grounds
+   the hero in what GTI actually teaches (see courses-data.js) rather
+   than a generic "Student & Staff Portal" tagline. */
+.auth-dept-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-width: 460px;
+}
+.auth-dept-tags li {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  color: var(--on-dark-soft);
+  border: 1px solid rgba(220,230,238,0.28);
+  border-radius: 999px;
+  padding: 5px 12px;
+}
+
+.auth-panel { flex: 1; min-width: 360px; max-width: 480px; background: var(--paper); display: flex; flex-direction: column; justify-content: center; align-items: center; position: relative; padding: 40px; }
+.auth-panel-card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--surface);
+  border: 1px solid var(--paper-line);
+  border-radius: 18px;
+  box-shadow: var(--shadow-lg);
+  padding: 40px 36px;
+}
+.auth-panel h2 { font-size: 1.5rem; margin-bottom: 4px; }
+.auth-panel .subtitle { color: var(--slate); font-size: 0.92rem; margin-bottom: 28px; }
+.auth-panel .theme-toggle-corner { position: absolute; top: 20px; right: 20px; }
+
+/* Segmented pill control instead of underlined tabs — reads more like
+   a mode switch (sign in vs. create account are mutually exclusive
+   states), which is what it actually is. */
+.auth-tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 28px;
+  background: var(--paper);
+  border: 1px solid var(--paper-line);
+  border-radius: 999px;
+  padding: 3px;
+}
+.auth-tab {
+  flex: 1;
+  background: none;
+  border: none;
+  border-radius: 999px;
+  padding: 8px 4px;
+  font-size: 0.86rem;
+  color: var(--slate);
+  cursor: pointer;
+  transition: color 0.15s var(--ease), background 0.15s var(--ease);
+}
+.auth-tab.active { color: #fff; font-weight: 600; background: var(--ink-navy); }
+[data-theme="dark"] .auth-tab.active { color: var(--paper); }
+.auth-form { display: none; }
+.auth-form.active { display: block; animation: authFormIn 0.32s var(--ease); }
+@keyframes authFormIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.form-footer { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin-top: 4px; }
+
+@media (max-width: 860px) {
+  .auth-screen { flex-direction: column; }
+  .auth-visual {
+    flex: 0 0 auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    padding: 18px 24px;
+    overflow: visible;
+  }
+  .auth-visual::before, .auth-visual::after, .auth-visual-slides { display: none; }
+  .auth-visual .brand-mark { margin-bottom: 0; }
+  .auth-visual h1, .auth-visual p, .auth-dept-tags { display: none; }
+  .auth-panel { max-width: none; min-width: 0; width: 100%; margin: 0; justify-content: flex-start; padding: 32px 20px; }
+  .auth-panel-card { border: none; box-shadow: none; padding: 8px 4px; max-width: none; }
+}
+
+/* A little more polish specifically on the sign-in/sign-up panel —
+   slightly larger radius and a hover lift on the submit button — kept
+   scoped to .auth-panel for now rather than changed globally, since
+   the rest of the app (tables, admin forms) hasn't been redesigned
+   yet and shouldn't shift underneath it. */
+.auth-panel input[type="email"],
+.auth-panel input[type="password"],
+.auth-panel input[type="text"],
+.auth-panel select {
+  padding: 12px 14px;
+  border-radius: 10px;
+}
+.auth-panel button.btn {
+  border-radius: 10px;
+  padding: 13px 22px;
+  letter-spacing: 0.01em;
+  transition: background 0.15s var(--ease), transform 0.15s var(--ease), box-shadow 0.15s var(--ease);
+}
+.auth-panel button.btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+.auth-panel button.btn:active:not(:disabled) { transform: translateY(0); }
+
+/* =========================
+   Student dashboard hero banner
+   Reuses the sign-in screen's dark navy / grid-texture / brass-glow
+   system (see .auth-visual above) so the portal reads as the same
+   product right after signing in, instead of switching to a plain
+   generic dashboard look. One static photo rather than the slideshow
+   used on .auth-visual — this is a returning-user banner, not a
+   first-impression hero, so it doesn't need to keep cycling.
+   ========================= */
+.hero-banner {
+  position: relative;
+  overflow: hidden;
+  border-radius: 20px;
+  padding: 36px 34px;
+  margin-bottom: 22px;
+  color: #fff;
+  background: var(--ink-navy-deep);
+  box-shadow: var(--shadow-lg);
+}
+.hero-banner .hero-photo { position: absolute; inset: 0; z-index: 0; }
+.hero-banner .hero-photo img { width: 100%; height: 100%; object-fit: cover; opacity: 0.5; }
+.hero-banner::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(165deg, rgba(7,27,52,0.94) 0%, rgba(11,57,114,0.82) 50%, rgba(5,18,36,0.95) 100%);
+  pointer-events: none;
+}
+.hero-banner::before {
+  content: "";
+  position: absolute;
+  top: -140px;
+  right: -110px;
+  width: 380px;
+  height: 380px;
+  z-index: 2;
+  background:
+    radial-gradient(circle at center, rgba(184,134,59,0.34), transparent 70%),
+    radial-gradient(circle at 15% 135%, rgba(43,95,140,0.4), transparent 60%);
+  pointer-events: none;
+}
+.hero-banner > * { position: relative; z-index: 3; }
+.hero-banner h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(1.5rem, 1.1rem + 1.4vw, 2.1rem);
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  color: #fff;
+  margin-bottom: 6px;
+}
+.hero-banner .hero-sub { color: var(--on-dark-soft); font-size: 0.92rem; max-width: 440px; margin-bottom: 20px; }
+
+/* Faint crest watermark — GTI's own emblem rather than a generic
+   glow shape, grounding the hero in the institute's actual identity. */
+.hero-banner .hero-crest {
+  position: absolute;
+  right: -30px;
+  bottom: -30px;
+  width: 200px;
+  height: 200px;
+  z-index: 1;
+  opacity: 0.1;
+  filter: brightness(0) invert(1);
+  pointer-events: none;
+}
+
+/* Blueprint-style corner registration ticks, echoing the drafting
+   instruments on the crest (compass, caliper) rather than a purely
+   decorative glow. */
+.hero-tick { position: absolute; z-index: 3; width: 16px; height: 16px; pointer-events: none; }
+.hero-tick::before, .hero-tick::after { content: ""; position: absolute; background: rgba(220,230,238,0.4); }
+.hero-tick::before { width: 100%; height: 1px; top: 50%; }
+.hero-tick::after { width: 1px; height: 100%; left: 50%; }
+.hero-tick-tl { top: 16px; left: 16px; }
+.hero-tick-br { bottom: 16px; right: 16px; }
+
+.hero-stats { display: flex; flex-wrap: wrap; gap: 22px; }
+.hero-stat { display: flex; flex-direction: column; gap: 3px; }
+.hero-stat-label { font-family: var(--font-mono); font-size: 0.7rem; color: var(--on-dark-soft); opacity: 0.8; }
+.hero-stat-value { font-family: var(--font-display); font-weight: 600; font-size: 1.05rem; color: #fff; }
+.hero-stat-value.tag-verified { color: #B7E0C8; }
+.hero-stat-value.tag-pending { color: #F0D9AE; }
+
+/* Radial GPA gauge — an instrument-style reading rather than a bare
+   number, in keeping with the measuring tools on the crest. */
+.gpa-gauge { display: flex; align-items: center; gap: 24px; }
+.gpa-gauge svg { flex-shrink: 0; }
+.gpa-ring-bg { stroke: var(--paper-line); }
+.gpa-ring-fg { stroke: var(--brass); stroke-dasharray: 326.73; stroke-dashoffset: 326.73; transition: stroke-dashoffset 0.6s var(--ease); }
+.gpa-gauge-center { display: flex; flex-direction: column; }
+.gpa-gauge-value { font-family: var(--font-display); font-weight: 600; font-size: 2rem; color: var(--ink-navy); letter-spacing: -0.01em; }
+[data-theme="dark"] .gpa-gauge-value { color: var(--ink); }
+.gpa-gauge-label { font-size: 0.8rem; color: var(--slate); margin-top: 2px; }
+
+@media (max-width: 760px) {
+  .hero-banner { padding: 26px 22px; border-radius: 16px; }
+  .hero-banner .hero-sub { max-width: none; }
+  .hero-banner .hero-crest { width: 140px; height: 140px; right: -20px; bottom: -20px; }
+  .hero-stats { gap: 16px; }
+  .gpa-gauge { gap: 16px; }
+  .gpa-gauge svg { width: 92px; height: 92px; }
+}
+
+/* Carries a few more auth-screen touches (pill nav, rounder cards, a
+   button lift on hover) into the rest of the student portal, so the
+   hero banner above doesn't read as a one-off graphic bolted onto an
+   otherwise unrelated page. Scoped to home.html only — admin.html and
+   lecturer-home.html aren't part of this pass. */
+.portal-home .app-nav .nav-item { border-radius: 999px; }
+.portal-home .card {
+  border-radius: 18px;
+  transition: box-shadow 0.2s var(--ease), background 0.2s var(--ease);
+}
+.portal-home .card:hover { box-shadow: var(--shadow-md); }
+.portal-home select { border-radius: 10px; }
+.portal-home button.btn {
+  border-radius: 10px;
+  transition: background 0.15s var(--ease), transform 0.1s var(--ease), box-shadow 0.15s var(--ease);
+}
+.portal-home button.btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.portal-home button.btn:active:not(:disabled) { transform: translateY(0); }
+
+/* =========================
+   Student dashboard — record cards
+   Announcements / Timetable / Grades / Resources currently render as
+   .record rows sharing one bottom-bordered .card, the same plain-list
+   treatment used on admin.html/lecturer-home.html. This lifts them to
+   match the rest of the student dashboard (hero banner, auth screens):
+   each record becomes its own rounded, elevated card with a type
+   colored left edge and icon, echoing the registration-tick/instrument
+   language above. Scoped to home.html and lecturer-home.html (see the .staff-dashboard
+   body class there) — admin.html keeps the plain shared version.
+   ========================= */
+
+.portal-home ul.record-list, .staff-dashboard ul.record-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.portal-home .record, .staff-dashboard .record {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--paper-line);
+  border-left: 3px solid var(--blueprint);
+  border-radius: 14px;
+  padding: 16px 18px;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 0.2s var(--ease), transform 0.2s var(--ease), background 0.2s var(--ease);
+}
+.portal-home .record:hover, .staff-dashboard .record:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
+
+/* Accent variants, set by home.js from the record's own data (an
+   announcement's audience, a grade's letter) rather than a fixed color
+   per tab — reuses the same semantics as the existing .badge-* colors. */
+.portal-home .record.accent-brass, .staff-dashboard .record.accent-brass { border-left-color: var(--brass); }
+.portal-home .record.accent-success, .staff-dashboard .record.accent-success { border-left-color: var(--success); }
+.portal-home .record.accent-danger, .staff-dashboard .record.accent-danger { border-left-color: var(--danger); }
+.portal-home .record.accent-ink, .staff-dashboard .record.accent-ink { border-left-color: var(--ink-navy); }
+
+.portal-home .record-head, .staff-dashboard .record-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.portal-home .record-head-main, .staff-dashboard .record-head-main { display: flex; align-items: flex-start; min-width: 0; }
+.portal-home .record-head-text, .staff-dashboard .record-head-text { min-width: 0; }
+.portal-home .record-title, .staff-dashboard .record-title { margin-bottom: 2px; }
+.portal-home .record-meta, .staff-dashboard .record-meta { margin-bottom: 0; }
+.portal-home .record-body, .staff-dashboard .record-body { margin-top: 8px; }
+
+.portal-home .record-icon, .staff-dashboard .record-icon {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  background: var(--blueprint-soft);
+  color: var(--ink-navy);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  margin-right: 10px;
+  overflow: hidden;
+}
+.portal-home .record-icon svg, .staff-dashboard .record-icon svg { width: 15px; height: 15px; }
+[data-theme="dark"] .portal-home .record-icon, [data-theme="dark"] .staff-dashboard .record-icon { color: var(--ink); }
+.portal-home .record.accent-brass .record-icon, .staff-dashboard .record.accent-brass .record-icon { background: #EFE6D4; color: var(--brass-dark); }
+.portal-home .record.accent-success .record-icon, .staff-dashboard .record.accent-success .record-icon { background: var(--success-bg); color: var(--success); }
+.portal-home .record.accent-danger .record-icon, .staff-dashboard .record.accent-danger .record-icon { background: var(--danger-bg); color: var(--danger); }
+
+/* Small pill action in the card header — a clearer call to action for
+   "open this file" than the old dashed-underline text link buried
+   after the body copy. */
+.portal-home a.record-action, .staff-dashboard a.record-action {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.78rem;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--blueprint-soft);
+  color: var(--ink-navy);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.15s var(--ease), color 0.15s var(--ease), transform 0.1s var(--ease);
+}
+[data-theme="dark"] .portal-home a.record-action, [data-theme="dark"] .staff-dashboard a.record-action { color: var(--ink); }
+.portal-home a.record-action:hover, .staff-dashboard a.record-action:hover { background: var(--brass); color: #fff; }
+.portal-home a.record-action:active, .staff-dashboard a.record-action:active { transform: translateY(1px); }
+
+/* Grade breakdown becomes progressive disclosure — the header already
+   carries course, letter grade and the two headline numbers (Grade,
+   GPA) at a glance, so the four component scores are worth a click
+   rather than always-on clutter. Same <details> pattern already used
+   for closed tickets elsewhere in the product. */
+.portal-home .grade-details, .staff-dashboard .grade-details { margin-top: 10px; }
+.portal-home .grade-details summary, .staff-dashboard .grade-details summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--blueprint);
+}
+.portal-home .grade-details summary::-webkit-details-marker, .staff-dashboard .grade-details summary::-webkit-details-marker { display: none; }
+.portal-home .grade-details summary::before, .staff-dashboard .grade-details summary::before { content: "Show component scores ▾"; }
+.portal-home .grade-details[open] summary::before, .staff-dashboard .grade-details[open] summary::before { content: "Hide component scores ▴"; }
+.portal-home .grade-details .grade-breakdown, .staff-dashboard .grade-details .grade-breakdown { margin-top: 8px; }
+.portal-home .record .headline-row, .staff-dashboard .record .headline-row {
+  display: flex; flex-wrap: wrap; gap: 18px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--paper-line);
+}
+.portal-home .record .headline-stat, .staff-dashboard .record .headline-stat { display: flex; flex-direction: column; gap: 2px; }
+.portal-home .record .headline-stat .label, .staff-dashboard .record .headline-stat .label { font-size: 0.72rem; color: var(--slate); }
+.portal-home .record .headline-stat .value, .staff-dashboard .record .headline-stat .value { font-family: var(--font-mono); font-weight: 600; font-size: 1rem; color: var(--ink-navy); }
+[data-theme="dark"] .portal-home .record .headline-stat .value, [data-theme="dark"] .staff-dashboard .record .headline-stat .value { color: var(--ink); }
+
+/* Small dot marker for announcements posted in the last few days —
+   quieter than another text badge crowding the meta row. */
+.portal-home .record.is-new::after, .staff-dashboard .record.is-new::after {
+  content: "";
+  position: absolute;
+  top: 16px; right: 16px;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--brass);
+  box-shadow: 0 0 0 3px var(--blueprint-soft);
+}
+[data-theme="dark"] .portal-home .record.is-new::after, [data-theme="dark"] .staff-dashboard .record.is-new::after { box-shadow: 0 0 0 3px rgba(184,134,59,0.3); }
+
+/* Empty states get their own dashed placeholder card instead of a
+   bare line of text, matching the elevated-card treatment above. */
+.portal-home .card .empty-state, .staff-dashboard .card .empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  padding: 30px 16px;
+  border: 1.5px dashed var(--paper-line);
+  border-radius: 14px;
+  color: var(--slate);
+}
+.portal-home .card .empty-state svg, .staff-dashboard .card .empty-state svg { opacity: 0.45; }
+
+@media (max-width: 760px) {
+  .portal-home .record-head, .staff-dashboard .record-head { flex-wrap: wrap; }
+  .portal-home a.record-action, .staff-dashboard a.record-action { margin-top: 4px; }
+}
+
+/* =========================
+   Toasts
+   ========================= */
+
+.toast-container {
+  position: fixed;
+  bottom: 20px; right: 20px;
+  display: flex; flex-direction: column; gap: 10px;
+  z-index: 999;
+  max-width: 320px;
+}
+.toast {
+  background: var(--ink-navy);
+  color: #fff;
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  box-shadow: var(--shadow-lg);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.25s var(--ease), transform 0.25s var(--ease);
+  border-left: 3px solid var(--brass);
+}
+.toast.visible { opacity: 1; transform: translateY(0); }
+.toast.toast-error { border-left-color: var(--danger); }
+.toast.toast-success { border-left-color: var(--success); }
+
+/* =========================
+   Staff dashboard: table + modal + stat cards
+   ========================= */
+
+.stat-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+.stat-card {
+  flex: 1; min-width: 140px;
+  background: var(--surface); border: 1px solid var(--paper-line); border-radius: var(--radius);
+  padding: 18px 20px; box-shadow: var(--shadow-sm);
+}
+.stat-card .stat-value { font-family: var(--font-display); font-weight: 600; font-size: 1.9rem; letter-spacing: -0.01em; color: var(--ink-navy); }
+[data-theme="dark"] .stat-card .stat-value { color: var(--ink); }
+.stat-card .stat-label { font-size: 0.78rem; color: var(--slate); letter-spacing: 0.01em; margin-top: 2px; }
+
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table.admin-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+table.admin-table th {
+  text-align: left; font-family: var(--font-mono); font-size: 0.72rem; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--slate); padding: 10px 12px; border-bottom: 1px solid var(--paper-line);
+}
+table.admin-table td { padding: 10px 12px; border-bottom: 1px solid var(--paper-line); vertical-align: middle; }
+table.admin-table tr:hover td { background: var(--blueprint-soft); }
+table.admin-table select, table.admin-table input { margin-bottom: 0; }
+table.admin-table input[type="number"] { width: 72px; text-align: right; }
+table.admin-table .grade-total { display: inline-block; min-width: 48px; font-family: var(--font-mono); font-weight: 600; text-align: right; }
+
+/* Input Grades tab: renderStudentGradeBlock (lecturer-home.js) inserts
+   one header row per student — spanning all 8 columns — followed by a
+   plain <tr> per subject. Neither had any styling of its own before,
+   so the header blended into the subject rows below it and ran
+   straight into the previous student's last row with no separation. */
+.grades-student-row td {
+  background: var(--blueprint-soft);
+  border-bottom: 1px solid var(--paper-line);
+  padding: 10px 12px;
+}
+.grades-student-row:not(:first-child) td { border-top: 14px solid var(--surface); }
+.grades-student-row-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+.grades-student-id-block { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.grades-student-name { font-weight: 700; font-size: 0.96rem; color: var(--ink-navy); }
+[data-theme="dark"] .grades-student-name { color: var(--ink); }
+.grades-student-idtext { font-family: var(--font-mono); font-size: 0.78rem; color: var(--slate); }
+
+/* Subject rows for a student sit between that student's own header row
+   and the next one — a light left accent on the first cell keeps them
+   visually grouped under their header without repeating the name on
+   every row (border-collapse ignores a border set on the <tr> itself). */
+table.admin-table #gradesTbody tr:not(.grades-student-row) td:first-child,
+table.admin-table #studentGradesTbody tr:not(.grades-student-row) td:first-child {
+  border-left: 3px solid var(--blueprint-soft);
+  padding-left: 9px;
+}
+
+.chip-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 0; }
+.chip {
+  border: 1px solid var(--blueprint, var(--brass));
+  background: none;
+  color: var(--ink-navy);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+[data-theme="dark"] .chip { color: var(--ink); }
+.chip:hover { background: var(--blueprint-soft); }
+.chip.chip-empty { color: var(--slate); border-style: dashed; cursor: default; }
+.chip.chip-empty:hover { background: none; }
+
+#myClassesRows {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 18px;
+}
+.day-schedule-row {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 22px;
+  min-height: 160px;
+  background: var(--paper);
+  border: 1px solid var(--paper-line);
+  border-radius: var(--radius);
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease), background 0.15s var(--ease);
+}
+.day-schedule-row:hover { border-color: var(--blueprint); box-shadow: var(--shadow-sm); }
+.day-schedule-row .day-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 1.08rem;
+  color: var(--ink-navy);
+  padding-bottom: 12px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--paper-line);
+}
+[data-theme="dark"] .day-schedule-row .day-label { color: var(--ink); }
+
+/* Highlights the current weekday in the My Classes schedule (see
+   renderMyClassesForm in lecturer-home.js) so a lecturer can spot
+   today's picks at a glance instead of scanning every card. */
+.day-schedule-row.is-today {
+  border-color: var(--blueprint);
+  background: var(--blueprint-soft);
+  box-shadow: 0 0 0 1px var(--blueprint);
+}
+.day-schedule-row.is-today .day-label { border-bottom-color: rgba(43,95,140,0.25); }
+.day-label-today-tag {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fff;
+  background: var(--blueprint);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.day-schedule-row select { margin-bottom: 0; }
+.day-schedule-picks { display: flex; flex-direction: column; gap: 10px; }
+.day-schedule-pick { display: flex; align-items: center; gap: 8px; }
+.day-schedule-pick select { flex: 1; min-width: 0; }
+.day-schedule-remove {
+  flex-shrink: 0;
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--border-input);
+  background: none;
+  color: var(--slate);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s var(--ease), color 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+.day-schedule-remove:hover { background: var(--danger-bg); color: var(--danger); border-color: var(--danger); }
+.day-schedule-add {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 2px 0;
+  color: var(--blueprint);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.day-schedule-add:hover { text-decoration: underline; }
+
+.attendance-status-group { display: flex; gap: 6px; flex-wrap: wrap; }
+.attendance-status-btn {
+  border: 1px solid var(--slate);
+  background: none;
+  color: var(--slate);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.attendance-status-btn.present.active { background: #E4EFE7; border-color: #3E8558; color: #2F6B45; }
+.attendance-status-btn.absent.active { background: var(--danger-bg); border-color: var(--danger); color: var(--danger); }
+
+/* Name/Student ID cells span down over a student's subject rows in
+   the Attendance overview table — top-align them so they sit level
+   with that student's first subject rather than centering across the
+   whole span. */
+#attendanceOverviewTable td[rowspan] { vertical-align: top; }
+
+/* The save-attendance status message used to stretch the shared
+   .status-message bar across the full width of the card, which reads
+   as an oversized, heavy banner next to a small button. Scoped here
+   to sit as a compact pill right beside the button instead. */
+.attendance-save-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.attendance-save-row .status-message {
+  margin: 0;
+  flex: 0 1 auto;
+  width: auto;
+  border-radius: 999px;
+  padding: 8px 16px;
+}
+.attendance-save-row .status-message.visible { display: inline-block; }
+
+.attendance-summary-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 12px 16px;
+  margin-top: 4px;
+  background: var(--blueprint-soft);
+  border-radius: var(--radius-sm);
+}
+.attendance-summary-card .attendance-summary-title { font-weight: 600; font-size: 0.9rem; color: var(--ink-navy); }
+[data-theme="dark"] .attendance-summary-card .attendance-summary-title { color: var(--ink); }
+.attendance-summary-card .attendance-summary-marked { font-size: 0.78rem; color: var(--slate); font-weight: 400; margin-left: 6px; }
+.attendance-summary-card .attendance-summary-counts { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.search-row { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+/* Plain <input>/<select> pick up `width: 100%` from the shared form-field
+   rule above, which — inside a flex row — becomes each item's flex-basis.
+   Two 100%-basis items in one row is what forced the search box onto its
+   own line, then the course filter onto another, then the button onto a
+   third, instead of sharing one row like the .course-combo variant
+   already did. Giving them a sane, shrinkable basis instead of 100%
+   fixes that on every screen size, not just mobile. */
+.search-row input:not(.course-combo-input) { width: auto; flex: 1 1 180px; min-width: 140px; margin-bottom: 0; }
+/* Date/time/number fields have a fixed, sensible native width — growing
+   them the same way as a search box (above) is what stretched the
+   Attendance date picker across almost the whole row. Keep these at
+   their natural size instead. */
+.search-row input[type="date"], .search-row input[type="time"], .search-row input[type="number"] {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 0;
+}
+.search-row .attendance-date-weekday { flex: 0 0 auto; align-self: center; color: var(--slate); font-size: 0.85rem; white-space: nowrap; }
+.search-row select { width: auto; flex: 0 1 220px; min-width: 140px; margin-bottom: 0; }
+.search-row button { flex: 0 0 auto; }
+.search-row .course-combo { margin-bottom: 0; flex: 2 1 280px; min-width: 260px; }
+
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(5, 18, 36, 0.62);
+  backdrop-filter: blur(2px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100; padding: 20px;
+}
+.modal-backdrop[hidden] { display: none; }
+.modal {
+  background: var(--surface); border-radius: var(--radius); padding: 26px;
+  max-width: 480px; width: 100%; box-shadow: var(--shadow-lg);
+  max-height: 90vh; overflow-y: auto;
+}
+.modal.modal-grades { max-width: 1040px; }
+.modal-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
+.modal-header h2, .modal-header h3 { min-width: 0; overflow-wrap: break-word; }
+.modal-close { flex-shrink: 0; background: none; border: none; font-size: 1.2rem; cursor: pointer; color: var(--slate); }
+
+/* Skeleton loading */
+.skeleton { background: linear-gradient(90deg, var(--paper-line) 25%, var(--surface) 37%, var(--paper-line) 63%); background-size: 400% 100%; animation: shimmer 1.4s ease infinite; border-radius: var(--radius-sm); }
+.skeleton-line { height: 14px; margin-bottom: 8px; }
+@keyframes shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
+
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+.loading-state { padding: 24px; color: var(--slate); }
+
+/* =========================
+   Responsive app shell
+   ========================= */
+
+@media (max-width: 760px) {
+  .app-shell { flex-direction: column; }
+
+  /* The section nav is a horizontal tab bar pinned to the TOP of the
+     screen, directly under the sticky header/banner. It's sticky (not
+     fixed) and sits first inside .app-shell, so it takes up its own
+     space in the flow and needs no extra top padding on .app-main.
+     --header-height is kept current by app.js (updateHeaderHeightVar). */
+  .app-nav {
+    position: sticky;
+    top: var(--header-height, 58px);
+    bottom: auto;
+    align-self: stretch;
+    z-index: 19; /* just under .app-header (20) / .sticky-top-wrap (21) */
+    width: 100%;
+    display: flex;
+    align-items: center;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    max-height: none;
+    padding: 6px 8px;
+    gap: 2px;
+    border-right: none;
+    border-top: none;
+    border-bottom: 1px solid var(--paper-line);
+    box-shadow: 0 2px 10px rgba(16, 36, 61, 0.08);
+  }
+  /* The logo repeats the branding already shown in the header just
+     above, and on a page with five or more tabs (lecturer-home.html)
+     it was the difference between tabs merely being tight and tabs
+     actually crowding into each other. Drop it here; it's still shown
+     in the sidebar on desktop. */
+  .nav-logo {
+    display: none;
+  }
+  /* No actual icon image is ever put in here (still just an empty,
+     aria-hidden span) — it only reserves an 18px-tall invisible box
+     above the label. Harmless on desktop where the label sits next to
+     it, but here the tab is a column, so that empty box sits above the
+     label and pushes it down — the tab reads as bigger than its own
+     text, with the text sitting near the bottom instead of centered.
+     Only lecturer-home.html's tabs include this span at all (the
+     admin/home nav buttons use a bare, class-less span with no
+     reserved size), which is why only the staff dashboard showed it.
+     Simplest fix: don't reserve the space on mobile since nothing's
+     ever drawn there. */
+  .nav-item .nav-icon {
+    display: none;
+  }
+  .nav-item {
+    /* Base rule sets width:100%, which is what stacked every tab into
+       its own full-width row. On mobile this used to force every tab
+       into an equal, shrinking share of the bar (flex: 1 1 0) — fine
+       with 3-4 tabs, but on pages with 5+ tabs (lecturer-home.html)
+       that squeezed each one below a usable width and their icon/label
+       started crowding and overlapping each other. Give each tab a
+       fixed, comfortable minimum width instead and let the bar itself
+       scroll horizontally (overflow-x: auto, above) for whatever
+       doesn't fit — swipeable, like a native app's tab bar, rather
+       than crushed. */
+    width: auto;
+    margin: 0;
+    flex: 0 0 auto;
+    min-width: 68px;
+    /* Keeps the label centered top-to-bottom in the box (matters once
+       .nav-icon is hidden below — without this, column layout's default
+       justify-content: flex-start leaves the label pinned to the top). */
+    justify-content: center;
+    scroll-snap-align: start;
+    flex-direction: column;
+    gap: 2px;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    padding: 6px 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 0.68rem;
+    text-align: center;
+    background: transparent;
+  }
+  .nav-item.active { border-bottom-color: var(--brass); background: transparent; color: var(--ink-navy); font-weight: 600; }
+  [data-theme="dark"] .nav-item.active { color: var(--ink); }
+
+  /* The nav no longer sits at the bottom, so no extra room is needed
+     down there beyond the phone's home-indicator inset. */
+  .app-main { padding: 20px 16px calc(40px + env(safe-area-inset-bottom, 0px)); }
+  .field-row { flex-direction: column; gap: 0; }
+
+  /* Header: down to brand + theme toggle + avatar + sign-out. The
+     subtitle, the dashboard-switch link's full text, and the name/email
+     text all get trimmed here rather than being left to wrap or shrink
+     themselves into something unreadable. */
+  .app-header {
+    /* No longer wraps to two rows — brand and header-actions now share
+       one line (see below). flex-wrap stays on as a safety net only,
+       in case a future addition ever genuinely doesn't fit. */
+    flex-wrap: wrap;
+    row-gap: 8px;
+    padding: 10px 14px;
+    padding-top: calc(10px + env(safe-area-inset-top, 0px));
+  }
+  .app-header h1 { display: none; }
+  /* Was width:100% + centered, which forced the brand onto its own
+     full row and pushed header-actions (theme toggle/avatar/sign-out)
+     down to a second row underneath. Now that the header no longer
+     holds any nav-style links (those moved into the tab bar — see
+     #staffDashboardNavLink / #adminPanelLink / the Student-view link
+     in admin.html's nav), the brand is small enough to sit on the same
+     line as the rest of the header controls, like on desktop. */
+  .app-header .brand {
+    gap: 6px;
+  }
+  .app-header .header-actions {
+    gap: 8px;
+    flex-wrap: nowrap;
+  }
+
+  /* Sign out was sized like a full desktop button — shrink it to match
+     the other header controls instead of dominating the row. */
+  .app-header #signOutButton {
+    padding: 6px 12px;
+    font-size: 0.8rem;
+  }
+
+  /* The name/email text was being squeezed into a max-width so small it
+     rendered as just an ellipsis. Better to drop the text and rely on
+     the avatar (which already shows an initial) than show "…". */
+  .app-header .user-chip span:last-child { display: none; }
+
+  /* Tables (Students/Staff/Attendance/Grades/Timetable) — tighten up so
+     more columns fit before the horizontal scroll in .table-wrap kicks
+     in, and give buttons/inputs inside cells a touch-friendly minimum
+     size instead of the cramped desktop sizing. */
+  table.admin-table { font-size: 0.82rem; }
+  table.admin-table th, table.admin-table td { padding: 8px 8px; }
+  table.admin-table .btn-sm { padding: 7px 10px; font-size: 0.78rem; }
+  table.admin-table input[type="number"] { width: 58px; }
+
+  /* Attendance table: Present/Absent/Late used to wrap onto a second
+     line per student as soon as the Status column got squeezed by
+     Name/Student ID next to it — force the three buttons to share one
+     row and split whatever width is left evenly, instead of wrapping.
+     Student ID is capped since it never needs more than a few
+     characters, and Name is capped too (it already wraps onto two
+     lines fine) so both hand their spare width over to Status, which
+     is the column people actually need to tap. */
+  #attendanceTable th:nth-child(1), #attendanceTable td:nth-child(1) { max-width: 88px; }
+  #attendanceTable th:nth-child(2), #attendanceTable td:nth-child(2) { max-width: 52px; }
+  /* The three buttons used to be jammed edge-to-edge with almost no
+     inner padding, so the label text sat right against the button
+     border — cramped rather than tappable. A bigger gap between
+     buttons and more horizontal padding inside each gives the text
+     real breathing room; the font size comes down slightly to make
+     room for that padding without the row wrapping again. */
+  #attendanceTable .attendance-status-group { flex-wrap: nowrap; gap: 6px; }
+  #attendanceTable .attendance-status-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 8px 4px;
+    font-size: 0.66rem;
+    letter-spacing: -0.01em;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  /* Search/filter bars above tables: full-width stacked controls read
+     far better on a narrow screen than several shrunken side-by-side
+     inputs fighting for space. */
+  .search-row { flex-direction: column; align-items: stretch; }
+  .search-row input, .search-row select, .search-row .course-combo {
+    width: 100%; flex: 1 1 auto; min-width: 0;
+  }
+  .search-row button { width: 100%; }
+
+  /* Modals: use more of the viewport and trim the padding so forms
+     don't feel squeezed against the edges of the screen. */
+  .modal-backdrop { padding: 10px; align-items: flex-end; }
+  .modal { padding: 18px; border-radius: 16px 16px 0 0; max-height: 92vh; }
+
+  /* Card headers with a button/hint on the right (course counts,
+     "+ Add" buttons, refresh actions, etc. across every tab) — stack
+     them instead of squeezing both onto one crowded row. */
+  .card-row-between { flex-direction: column; align-items: stretch; }
+  .card-row-between > * { width: 100%; }
+
+  /* Timetable table: reflows from a wide 4-column row into a single
+     stacked card per course, each field labelled via the data-label
+     set in renderTimetableRow() (lecturer-home.js) — much easier to
+     read than shrinking 4 columns down to fit a phone screen. */
+  #timetableTable thead { display: none; }
+  #timetableTable, #timetableTable tbody, #timetableTable tr, #timetableTable td {
+    display: block;
+    width: 100%;
+  }
+  #timetableTable tr {
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--paper-line);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+  }
+  #timetableTable tr.empty-state, #timetableTable tr:has(.empty-state), #timetableTable tr:has(.skeleton) {
+    border: none; background: none; padding: 0;
+  }
+  #timetableTable td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 7px 0;
+    border-bottom: 1px dashed var(--paper-line);
+  }
+  #timetableTable td:last-child { border-bottom: none; padding-top: 10px; justify-content: flex-start; }
+  #timetableTable td[data-label]::before {
+    content: attr(data-label);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--slate);
+    flex-shrink: 0;
+  }
+  #timetableTable td[colspan] { display: block; }
+  #timetableTable td[colspan]::before { content: none; }
+}
+/* Database-down banner (added by app.js's connectivity watchdog) */
+/* Sticky wrapper (added by app.js only once a banner is actually
+   needed) holding the banner and .app-header together as one unit.
+   Sticking the wrapper — rather than the banner or header
+   individually — means whatever it currently contains (header alone,
+   or banner+header) stays pinned as-is; nothing has to compute or
+   guess a height. See ensureStickyTopWrap() in app.js. */
+.sticky-top-wrap {
+  position: sticky;
+  top: 0;
+  z-index: 21;
+}
+.sticky-top-wrap .app-header {
+  position: static; /* the wrapper is what's sticky now */
+}
+.db-down-banner {
+  background: var(--danger, #b3261e);
+  color: #fff;
+  overflow: hidden;
+  white-space: pre; /* like nowrap, but keeps the spaced-out separator between repeats from collapsing to one space */
+  padding: 8px 0;
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+  font-weight: 600;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  /* Appearing/disappearing animates max-height + opacity (app.js measures
+     and sets an exact px max-height so the transition has a real distance
+     to cover, not the "snaps open the instant it clears 0" you get from
+     animating max-height against an oversized guess). Switching between
+     reasons (lockdown <-> maintenance <-> connectivity-down) never touches
+     max-height at all — app.js crossfades the text/color of an
+     already-open banner in place, and background-color/box-shadow below
+     are what make that recolor read as a fade instead of a snap. */
+  transition: max-height 380ms ease, opacity 260ms ease, background-color 320ms ease, box-shadow 320ms ease;
+}
+.db-down-banner[hidden] {
+  display: none;
+}
+/* Root-authored banner styles (chosen from the System tab in admin.html).
+   "down" keeps the original plain red — no color-coded stripe of its
+   own like maintenance/lockdown below, since it's raised automatically
+   by the connectivity watchdog rather than authored by a person. It
+   does get its own pulse, though: unlike the other two, it means the
+   app itself can't currently reach the database, so it's worth reading
+   as more urgent than a static bar at a glance. */
+.db-down-banner.down {
+  animation: db-down-pulse 1.6s ease-in-out infinite;
+}
+@keyframes db-down-pulse {
+  0%, 100% { background: var(--danger, #b3261e); }
+  50% { background: #7a1710; }
+}
+.db-down-banner.maintenance-info {
+  background: #2B6CB0;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25), inset 0 2px 0 #FF8C1A;
+}
+.db-down-banner.maintenance-warning {
+  background: var(--brass-dark, #96692A);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25), inset 0 2px 0 #FF8C1A;
+}
+.db-down-banner.maintenance-danger {
+  background: var(--danger, #B24C3F);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25), inset 0 2px 0 #FF8C1A;
+}
+.db-down-banner.lockdown-info {
+  background: #1B3A5C;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+.db-down-banner.lockdown-warning {
+  background: #6B4310;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+.db-down-banner.lockdown-danger {
+  background: #6B1410;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+.db-down-banner .db-down-track {
+  /* Back-to-back copies of the same text, no leading padding — app.js
+     decides HOW MANY copies (bannerRepeatCount, enough to keep the
+     banner full for a short message on a wide screen) and sets
+     --marquee-shift to exactly one copy's rendered width. Translating
+     by that one-copy distance means the instant the loop resets to 0%,
+     the next copy is already sitting exactly where the last one started
+     — no blank stretch, no jump. A fixed percentage here (-50%, -100%)
+     can't do that on its own: it only tiles seamlessly for the one
+     message-length/banner-width ratio it happened to be tuned for. */
+  display: inline-block;
+  animation: db-down-scroll 16s linear infinite;
+  transition: opacity 220ms ease; /* the crossfade app.js uses when swapping what the banner says */
+}
+/* Applied briefly by app.js while the old text is fading out, just
+   before the new message/variant is swapped in underneath it. */
+.db-down-banner .db-down-track.db-down-fade {
+  opacity: 0;
+}
+/* The divider between repeats — its own element (app.js builds the
+   strip from parts, not one text string) so it can look like a
+   deliberate divider instead of a stray character sharing the
+   message's own size/weight/color. */
+.db-down-banner .db-down-dot {
+  display: inline-block;
+  opacity: 0.55;
+  font-size: 0.7em;
+  transform: translateY(-0.05em);
+}
+@keyframes db-down-scroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(calc(-1 * var(--marquee-shift, 50%))); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .db-down-banner {
+    transition: none;
+  }
+  .db-down-banner .db-down-track {
+    animation: none;
+    transition: none;
+  }
+  .db-down-banner.down {
+    animation: none;
+    background: var(--danger, #b3261e);
+  }
+}
+
+
+/* =========================
+   Staff dashboard: clickable student name (Students tab)
+   Plain text colour with just an underline — no blue link styling.
+   ========================= */
+button.name-link {
+  background: none; border: none; padding: 0; margin: 0;
+  font: inherit; color: var(--ink); text-align: left; cursor: pointer;
+  text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px;
+}
+button.name-link:hover { text-decoration-thickness: 2px; }
+button.name-link:focus-visible { outline: 2px solid var(--blueprint); outline-offset: 2px; border-radius: 2px; }
+
+/* =========================
+   Staff dashboard: student detail modal
+   ========================= */
+.modal.modal-student {
+  max-width: 880px; padding: 0; overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.sd-header {
+  display: flex; align-items: center; gap: 16px;
+  padding: 22px 26px;
+  background: linear-gradient(135deg, var(--ink-navy), var(--ink-navy-deep));
+  color: #fff;
+}
+.sd-avatar {
+  flex-shrink: 0; width: 48px; height: 48px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, 0.14); border: 1px solid rgba(255, 255, 255, 0.3);
+  font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; color: #fff;
+}
+.sd-header-text { min-width: 0; flex: 1; }
+.sd-header-text h2 { margin: 0; font-size: 1.3rem; color: #fff; overflow-wrap: anywhere; }
+.sd-header-text p { margin: 3px 0 0; font-family: var(--font-mono); font-size: 0.78rem; color: var(--on-dark-soft); }
+.sd-header .modal-close { color: var(--on-dark-soft); font-size: 1.6rem; line-height: 1; padding: 4px 8px; border-radius: var(--radius-sm); }
+.sd-header .modal-close:hover { color: #fff; background: rgba(255, 255, 255, 0.12); }
+
+.sd-body { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 26px 26px; background: var(--paper); }
+
+.sd-section {
+  margin-top: 20px; padding: 18px 20px;
+  background: var(--surface); border: 1px solid var(--paper-line);
+  border-radius: var(--radius); box-shadow: var(--shadow-sm);
+}
+.sd-section-title {
+  margin: 0 0 14px; font-family: var(--font-mono); font-size: 0.72rem; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--slate);
+}
+.sd-subtitle { margin: 22px 0 8px; font-size: 0.88rem; font-weight: 600; color: var(--ink); }
+.sd-note { margin: 0; color: var(--slate); font-size: 0.9rem; }
+.sd-note-gap { margin-top: 8px; }
+
+.sd-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px 24px; }
+.sd-fact-label { font-family: var(--font-mono); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--slate); margin-bottom: 3px; }
+.sd-fact-value { font-size: 0.95rem; font-weight: 500; color: var(--ink); overflow-wrap: anywhere; }
+
+.sd-file {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 13px 16px; border: 1px solid var(--paper-line); border-radius: var(--radius-sm);
+  background: var(--paper); color: var(--ink); text-decoration: none;
+  transition: border-color 0.15s var(--ease), background 0.15s var(--ease);
+}
+.sd-file:hover { border-color: var(--blueprint); background: var(--blueprint-soft); }
+.sd-file-name { font-weight: 500; overflow-wrap: anywhere; }
+.sd-file-open { flex-shrink: 0; font-family: var(--font-mono); font-size: 0.78rem; color: var(--blueprint); }
+
+.sd-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
+.sd-stat {
+  padding: 14px 16px; background: var(--paper);
+  border: 1px solid var(--paper-line); border-left: 4px solid var(--slate); border-radius: var(--radius-sm);
+}
+.sd-stat.present { border-left-color: var(--success); }
+.sd-stat.absent { border-left-color: var(--danger); }
+.sd-stat.rate { border-left-color: var(--blueprint); }
+.sd-stat-value { font-family: var(--font-display); font-weight: 600; font-size: 1.6rem; letter-spacing: -0.01em; color: var(--ink); line-height: 1.1; }
+.sd-stat-label { margin-top: 4px; font-size: 0.75rem; color: var(--slate); }
+
+.sd-bar { display: flex; height: 8px; margin-top: 14px; border-radius: 999px; overflow: hidden; background: var(--paper-line); }
+.sd-bar .present { background: var(--success); }
+.sd-bar .absent { background: var(--danger); }
+
+.sd-table-wrap { border: 1px solid var(--paper-line); border-radius: var(--radius-sm); }
+.sd-scroll { max-height: 320px; overflow-y: auto; }
+table.sd-table th { background: var(--paper); position: sticky; top: 0; z-index: 1; white-space: nowrap; }
+table.sd-table tr:last-child td { border-bottom: none; }
+
+.sd-pill {
+  display: inline-block; padding: 2px 10px; border-radius: 999px;
+  font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.03em;
+  background: var(--paper-line); color: var(--slate);
+}
+.sd-pill.present { background: var(--success-bg); color: var(--success); }
+.sd-pill.absent { background: var(--danger-bg); color: var(--danger); }
+.sd-pill.archived { background: transparent; border: 1px solid var(--paper-line); color: var(--slate); }
+
+@media (max-width: 560px) {
+  .sd-header { padding: 18px 16px; gap: 12px; }
+  .sd-body { padding: 4px 14px 20px; }
+  .sd-section { padding: 16px; }
+}
+/* =========================================================
+   Timetable editor / viewer (timetable-editor.js)
+   ========================================================= */
+.tt-ocr-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 16px; }
+.tt-ocr-progress { font-size: 0.82rem; color: var(--slate); }
+.tt-display-mode { display: flex; gap: 16px; align-items: center; margin: 4px 0 16px; font-size: 0.88rem; }
+.tt-display-mode label { display: flex; align-items: center; gap: 6px; font-weight: 400; margin: 0; }
+
+.tt-editor-toolbar, .tt-view-toolbar { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+
+.tt-editor-table-wrap, .tt-view-table-wrap { overflow-x: auto; border: 1px solid var(--blueprint-soft); border-radius: var(--radius-sm); margin-bottom: 14px; }
+
+.tt-editor-table, .tt-view-table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+.tt-editor-table td, .tt-view-table td, .tt-view-table th {
+  border: 1px solid var(--blueprint-soft);
+  padding: 6px 10px;
+  min-width: 70px;
+  vertical-align: middle;
+  text-align: center;
+}
+.tt-editor-table td div, .tt-view-table td div, .tt-view-table th div { line-height: 1.3; }
+.tt-view-table th { background: var(--blueprint-soft); color: var(--ink-navy); font-weight: 700; }
+.tt-editor-table .tt-editor-header-row td:not(.tt-editor-ctl) { background: var(--blueprint-soft); font-weight: 700; }
+.tt-editor-table td[contenteditable] { background: var(--surface, transparent); cursor: text; white-space: pre-wrap; }
+.tt-editor-table td[contenteditable]:focus { outline: 2px solid var(--blueprint); outline-offset: -2px; }
+.tt-row-compact td, .tt-row-compact th { background: #e5e5e5; font-weight: 700; font-style: italic; }
+.tt-editor-ctl { border: none !important; padding: 2px !important; min-width: 22px !important; text-align: center; background: transparent; }
+.tt-editor-del {
+  background: var(--danger-bg); color: var(--danger); border: none; border-radius: 6px;
+  width: 20px; height: 20px; line-height: 1; font-size: 0.8rem; cursor: pointer; padding: 0;
+}
+.tt-editor-del:hover { opacity: 0.8; }
+
+.tt-export-row { display: flex; gap: 8px; margin: 10px 0 18px; flex-wrap: wrap; }
+
+/* Full-page timetable popup (timetable-popup.html) */
+.tt-popup-wrap { max-width: 1200px; margin: 0 auto; padding: 32px 24px 60px; }
+.tt-popup-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+.tt-popup-header h1 { font-family: "Space Grotesk", sans-serif; font-size: 1.4rem; margin: 0; }
+.tt-popup-header .theme-toggle-corner { position: static; }
+
+
+/* --- Timetable import v5: cells the reader was unsure about + original picture --- */
+.tt-editor-table td.tt-cell-check[contenteditable] { background: #FFF4C2; box-shadow: inset 0 0 0 2px #E0B02F; }
+[data-theme="dark"] .tt-editor-table td.tt-cell-check[contenteditable] { background: rgba(224, 176, 47, 0.22); box-shadow: inset 0 0 0 2px #C99A20; }
+.tt-check-legend { align-self: center; font-size: 0.8rem; color: var(--slate); }
+.tt-source { margin: 0 0 12px; border: 1px solid var(--blueprint-soft); border-radius: var(--radius-sm); background: var(--surface, transparent); }
+.tt-source summary { cursor: pointer; padding: 8px 12px; font-size: 0.82rem; font-weight: 600; color: var(--ink-navy); }
+[data-theme="dark"] .tt-source summary { color: var(--ink); }
+.tt-source img { display: block; max-width: 100%; max-height: 260px; margin: 0 auto 10px; object-fit: contain; cursor: zoom-in; background: #fff; }
+.tt-source img.tt-source-zoom { max-width: none; max-height: none; width: 1400px; cursor: zoom-out; }
+.tt-source[open] { overflow-x: auto; }
+
+/* Timetable view on phones: nested card + record padding left only ~270px for the table.
+   Trim the padding around a timetable so more of it shows without sideways scrolling. */
+@media (max-width: 760px) {
+  .portal-home .card:has(.tt-view-table-wrap) { padding: 10px; }
+  .portal-home .record:has(.tt-view-table-wrap), .staff-dashboard .record:has(.tt-view-table-wrap) { padding: 12px 8px; }
+  .tt-view-table td, .tt-view-table th { padding: 6px 6px; min-width: 60px; }
+}
+
+/* Timetable in dark mode: the header text used the (dark navy) light-mode colour and the
+   break/lunch bars kept their light-grey fill, so both washed out. */
+[data-theme="dark"] .tt-view-table th,
+[data-theme="dark"] .tt-editor-table .tt-editor-header-row td:not(.tt-editor-ctl) { color: var(--ink); }
+[data-theme="dark"] .tt-row-compact td,
+[data-theme="dark"] .tt-row-compact th { background: #2C3947; color: var(--ink); }
+[data-theme="dark"] .tt-export-row .btn-secondary,
+[data-theme="dark"] .tt-editor-toolbar .btn-secondary,
+[data-theme="dark"] .tt-ocr-row .btn-secondary { color: var(--ink); border-color: var(--border-input); }
+
+/* =========================
+   Error pages (404.html, 403.html, 500.html, 503.html, error.html)
+   Built on the sign-in screen's layout (.auth-screen / .auth-visual / .auth-panel).
+   ========================= */
+.error-card { max-width: 420px; }
+.error-code {
+  font-family: var(--font-mono);
+  font-size: 4rem;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--brass);
+  margin: 0 0 14px;
+}
+.error-path {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  background: var(--blueprint-soft);
+  color: var(--ink-navy);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  margin: -10px 0 22px;
+  word-break: break-all;
+}
+[data-theme="dark"] .error-path { color: var(--ink); }
+.error-actions { display: flex; flex-direction: column; gap: 10px; }
+.error-actions [hidden], .error-path[hidden] { display: none !important; }
+.error-actions .btn {
+  display: block;
+  width: 100%;
+  text-align: center;
+  text-decoration: none;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 11px 20px;
+  border-radius: 10px;
+  border: 1px solid var(--brass);
+  background: var(--brass);
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s var(--ease), transform 0.1s var(--ease), box-shadow 0.15s var(--ease);
+}
+.error-actions .btn:hover { background: var(--brass-dark); border-color: var(--brass-dark); box-shadow: var(--shadow-sm); }
+.error-actions .btn:active { transform: translateY(1px); }
+.error-actions .btn.btn-secondary { background: none; color: var(--blueprint); border-color: var(--blueprint); }
+.error-actions .btn.btn-secondary:hover { background: var(--blueprint-soft); box-shadow: none; }
+[data-theme="dark"] .error-actions .btn.btn-secondary { color: var(--ink); border-color: var(--border-input); }
+.error-actions .btn:focus-visible { outline: 2px solid var(--blueprint); outline-offset: 2px; }
+.error-meta { margin: 20px 0 0; font-family: var(--font-mono); font-size: 0.75rem; color: var(--slate); }
+.error-meta:empty { display: none; }
+.error-links { display: flex; gap: 16px; flex-wrap: wrap; margin: 18px 0 0; font-size: 0.85rem; }
+[data-theme="dark"] .error-links a { color: #9DBBD8; }
+@media (max-width: 760px) { .error-card { margin-top: 36px; } .error-code { font-size: 3.4rem; } }
+
+/* =========================
+   Lockdown page (lockdown.html) — its own screen, colour-keyed to the style the
+   admin picked for the lockdown banner (info / warning / danger).
+   ========================= */
+.lockdown-page { --lock-accent: var(--brass); --lock-accent-bg: rgba(184, 134, 59, 0.12); }
+.lockdown-page[data-style="danger"] { --lock-accent: var(--danger); --lock-accent-bg: var(--danger-bg); }
+.lockdown-page[data-style="info"] { --lock-accent: var(--blueprint); --lock-accent-bg: var(--blueprint-soft); }
+[data-theme="dark"] .lockdown-page { --lock-accent-bg: rgba(184, 134, 59, 0.16); }
+[data-theme="dark"] .lockdown-page[data-style="danger"] { --lock-accent: #E0796B; --lock-accent-bg: var(--danger-bg); }
+[data-theme="dark"] .lockdown-page[data-style="info"] { --lock-accent: #7FB0DD; --lock-accent-bg: var(--blueprint-soft); }
+
+.lockdown-lock {
+  width: 92px; height: 92px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--lock-accent);
+  border: 2px solid var(--lock-accent);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: 0 0 0 10px rgba(255, 255, 255, 0.03), 0 0 40px -6px var(--lock-accent);
+  margin-bottom: 26px;
+  animation: lockdownPulse 3.2s ease-in-out infinite;
+}
+@keyframes lockdownPulse {
+  0%, 100% { box-shadow: 0 0 0 10px rgba(255, 255, 255, 0.03), 0 0 30px -8px var(--lock-accent); }
+  50% { box-shadow: 0 0 0 16px rgba(255, 255, 255, 0.02), 0 0 46px -4px var(--lock-accent); }
+}
+
+.lockdown-card { border-top: 4px solid var(--lock-accent); }
+.lockdown-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 5px 12px; margin-bottom: 18px;
+  border-radius: 999px;
+  background: var(--lock-accent-bg); color: var(--lock-accent);
+  font-family: var(--font-mono); font-size: 0.72rem; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase;
+}
+.lockdown-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: lockdownBlink 1.6s ease-in-out infinite; }
+@keyframes lockdownBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+.lockdown-message {
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border-left: 3px solid var(--lock-accent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--lock-accent-bg);
+  color: var(--ink);
+  font-size: 0.95rem; line-height: 1.5;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.lockdown-message[hidden] { display: none; }
+.lockdown-card .subtitle { margin-bottom: 22px; min-height: 1.2em; }
+
+/* Resolved states: the lock turns green. */
+.lockdown-page:has(.lockdown-card[data-state="lifted"]),
+.lockdown-page:has(.lockdown-card[data-state="none"]) { --lock-accent: var(--success); --lock-accent-bg: var(--success-bg); }
+[data-theme="dark"] .lockdown-page:has(.lockdown-card[data-state="lifted"]),
+[data-theme="dark"] .lockdown-page:has(.lockdown-card[data-state="none"]) { --lock-accent: #6FBF95; }
+.lockdown-card[data-state="checking"] .lockdown-dot { animation-duration: 0.8s; }
+
+@media (prefers-reduced-motion: reduce) { .lockdown-lock, .lockdown-dot { animation: none; } }
+@media (max-width: 760px) {
+  .lockdown-lock { width: 0; height: 0; border: 0; box-shadow: none; margin: 0; overflow: hidden; }
+}
+.lockdown-message { margin-top: 14px; }
+.error-links[hidden] { display: none; }
+@media (max-width: 760px) { .lockdown-card { padding-top: 22px; } }
+
+.error-retry-status { margin: 4px 0 10px; font-family: var(--font-mono); font-size: 0.75rem; color: var(--slate); min-height: 1.1em; }
+.error-retry-status[hidden] { display: none; }
+#errorCopyBtn { display: block; margin: 2px 0 0; }
+
+/* ---------- Applications tab (staff dashboard) ---------- */
+.app-empty { text-align: center; color: var(--slate); padding: 22px 12px; }
+.app-name-link { font-weight: 600; text-align: left; }
+.app-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.app-actions .btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+.app-doc-row + .app-doc-row { margin-top: 8px; }
+.sd-section .sd-subtitle:first-of-type { margin-top: 18px; }
+.sd-section .sd-subtitle { margin-bottom: 8px; }
+.sd-section .status-message { margin: 12px 0 0; }
+/* Applications tab: accepted applicants stay in the list, tinted green. */
+.admin-table tr.app-row-accepted td { background: var(--success-bg); }
+.admin-table tr.app-row-accepted td:first-child { box-shadow: inset 4px 0 0 var(--success); }
+
+/* Applications tab: qualification badges and the "no qualifications" warning. */
+.app-quals { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.app-qual-warn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--danger-bg); color: var(--danger);
+  border: 1.5px solid var(--danger); font-weight: 700; font-size: 0.8rem; line-height: 1;
+  cursor: help;
+}
+.app-qual-none { color: var(--danger); font-size: 0.85rem; font-weight: 500; }
+
+/* =========================
+   Phone / Android app: system-bar safe areas
+   ========================= */
+
+/* The scrolling banner sits ABOVE the header inside .sticky-top-wrap, so it
+   is the element touching the status bar while it shows: it takes the top
+   inset, and the header below it drops its own. */
+.db-down-banner { padding-top: calc(8px + env(safe-area-inset-top, 0px)); }
+.sticky-top-wrap:has(.db-down-banner:not([hidden])) .app-header { padding-top: 14px; }
+
+/* Toasts and bottom sheets must clear the phone's bottom navigation bar. */
+.toast-container {
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  right: calc(20px + env(safe-area-inset-right, 0px));
+}
+
+@media (max-width: 760px) {
+  .sticky-top-wrap:has(.db-down-banner:not([hidden])) .app-header { padding-top: 10px; }
+
+  .modal-backdrop { padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
+  .toast-container { left: 12px; right: 12px; max-width: none; }
+
+}
+
+/* Touch devices: no blue/grey flash when a control is tapped or held, and no
+   blue text selection on long-press. The normal outlines and focus rings
+   stay. Text fields keep normal selection. */
+* { -webkit-tap-highlight-color: transparent; }
+button, .btn, .btn-icon, .btn-icon-light, .btn-link, .nav-item, .password-toggle,
+a, summary, select, [role="tab"], [role="button"], [role="link"], .so-link {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+input, textarea, [contenteditable="true"], [contenteditable=""] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* App: no long-press text selection (inputs and text areas keep it);
+   touch: no focus ring left on a button after it is released;
+   PDF download is retired (Word stays). */
+html.is-app, html.is-app * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+html.is-app input, html.is-app textarea, html.is-app [contenteditable]:not([contenteditable="false"]),
+html.is-app [contenteditable]:not([contenteditable="false"]) * {
+  -webkit-user-select: text;
+  user-select: text;
+}
+html.using-touch :focus-visible,
+html.using-touch button:focus,
+html.using-touch a:focus,
+html.using-touch .nav-item:focus { outline: none; box-shadow: none; }
+
+#timetableExportPdfBtn { display: none; }
+
+/* Dark mode only: no theme switch button anywhere. */
+#themeToggleBtn, .theme-toggle-corner { display: none !important; }
+
+/* =========================
+   Phone: the section menu is a slide-out side panel
+   (app.js adds the menu button to the header and the dim backdrop)
+   ========================= */
+.nav-toggle, .nav-backdrop { display: none; }
+
+@media (max-width: 760px) {
+  .nav-toggle { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; margin-right: 10px; padding: 0; }
+
+  .nav-backdrop {
+    display: block;
+    position: fixed; top: 0; right: 0; bottom: 0; left: 0;
+    z-index: 59;
+    background: rgba(5, 10, 16, 0.6);
+    opacity: 0; visibility: hidden;
+  }
+  html.nav-anim .nav-backdrop { transition: opacity 0.25s ease, visibility 0s linear 0.25s; }
+  html.nav-open .nav-backdrop { opacity: 1; visibility: visible; transition-delay: 0s; }
+  html.nav-open { overflow: hidden; }
+
+  .app-shell .app-nav {
+    position: fixed; top: 0; bottom: 0; left: 0;
+    z-index: 60;
+    width: min(80vw, 300px); height: 100%; max-height: none;
+    display: flex; flex-direction: column; align-items: stretch;
+    overflow-x: hidden; overflow-y: auto;
+    scroll-snap-type: none;
+    gap: 0;
+    padding: calc(18px + env(safe-area-inset-top, 0px)) 0 calc(18px + env(safe-area-inset-bottom, 0px));
+    border-right: 1px solid var(--paper-line); border-bottom: none;
+    box-shadow: 8px 0 30px rgba(0, 0, 0, 0.45);
+    transform: translateX(-102%); visibility: hidden;
+  }
+  html.nav-anim .app-shell .app-nav { transition: transform 0.25s ease, visibility 0s linear 0.25s; }
+  html.nav-open .app-shell .app-nav { transform: none; visibility: visible; transition-delay: 0s; }
+
+  .app-shell .app-nav .nav-logo { display: flex; }
+  .app-shell .app-nav .nav-item {
+    width: calc(100% - 20px); margin: 2px 10px; min-width: 0;
+    flex-direction: row; justify-content: flex-start; align-items: center;
+    gap: 10px; padding: 13px 14px;
+    font-size: 0.98rem; text-align: left;
+    white-space: normal; overflow: visible; text-overflow: clip;
+    border-bottom: none;
+  }
+  html .app-shell .app-nav .nav-item.active { background: var(--ink-navy); color: #fff; font-weight: 600; }
+}
+
+
+.gti-net-banner{position:sticky;top:0;z-index:40;display:none;align-items:center;justify-content:center;gap:8px;padding:8px 14px;padding-top:calc(8px + env(safe-area-inset-top,0px));font-size:.88rem;font-weight:600;text-align:center;background:#fde8b0;color:#4a3200;border-bottom:1px solid rgba(74,50,0,.25)}
+.gti-net-banner.show{display:flex}
+.gti-net-dot{width:9px;height:9px;border-radius:50%;background:currentColor;flex:none}
+html.gti-net-on .app-header{top:var(--gti-net-h,0px);padding-top:14px}
+@media (max-width:760px){html.gti-net-on .app-header{padding-top:10px}}
+
+</style>
 <link rel="stylesheet" href="styles.css?v=15">
-<script src="theme.js"></script>
-<link rel="icon" type="image/x-icon" href="gti.png">
+<link rel="icon" type="image/png" href="data:image/png;base64,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">
+<style>html { background: #121A22; }</style>
 </head>
 <body class="portal-home">
+
+<div class="gti-net-banner" id="netBanner" role="status" aria-live="polite"><span class="gti-net-dot" aria-hidden="true"></span><span>You're offline. Saved data is shown where available, and some features won't work until you reconnect.</span></div>
 
 <header class="app-header grid-texture">
   <div class="brand">
@@ -32,7 +2294,7 @@
 
 <div class="app-shell">
   <nav class="app-nav" role="tablist" aria-label="Portal sections">
-    <div class="nav-logo"><img src="gti.png" alt="GTI logo"></div>
+    <div class="nav-logo"><img src="data:image/png;base64,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" alt="GTI logo"></div>
     <button class="nav-item" role="tab" aria-selected="false" aria-disabled="true" tabindex="-1">
       <svg class="nav-icon" viewBox="0 0 18 18" fill="none" aria-hidden="true"><circle cx="9" cy="9" r="6.25" stroke="currentColor" stroke-width="1.4"/><path d="M9 2.5V4.5M9 13.5V15.5M2.5 9H4.5M13.5 9H15.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="9" cy="9" r="1.3" fill="currentColor"/></svg> Overview
     </button>
@@ -62,9 +2324,198 @@
   </main>
 </div>
 
-<script src="timetable-cache.js"></script>
-<script src="timetable-editor.js?v=6"></script>
-<script src="offline.js"></script>
-<script src="pwa.js?v=2"></script>
+<!--native-config-->
+<script>
+(function () {
+  var root = document.documentElement;
+  root.setAttribute('data-theme', 'dark');
+  root.style.backgroundColor = '#121A22';
+
+  var store = null;
+  try { store = window.GTIStore && typeof window.GTIStore.load === 'function' ? window.GTIStore : null; } catch (e) {}
+  var cap = window.Capacitor;
+  var inApp = !!(cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform()) || !!store;
+
+  // App only: no long-press text selection or copy menu.
+  if (inApp) {
+    root.classList.add('is-app');
+    var block = function (e) { e.preventDefault(); };
+    document.addEventListener('contextmenu', block);
+    document.addEventListener('selectstart', block);
+  }
+
+  // Touch: no focus ring left on a button after it is released.
+  document.addEventListener('pointerdown', function (e) {
+    root.classList.toggle('using-touch', e.pointerType === 'touch' || e.pointerType === 'pen');
+  }, true);
+  document.addEventListener('pointerup', function (e) {
+    if (e.pointerType !== 'touch' && e.pointerType !== 'pen') return;
+    var el = e.target && e.target.closest ? e.target.closest('button') : null;
+    if (el) setTimeout(function () { if (document.activeElement === el) el.blur(); }, 0);
+  }, true);
+
+  function read(key) {
+    var raw = null;
+    try { raw = localStorage.getItem(key); } catch (e) {}
+    if (raw) return raw;
+    if (store) { try { raw = store.load(key); } catch (e) {} }
+    return raw || null;
+  }
+  function parse(key) {
+    try { var raw = read(key); return raw ? JSON.parse(raw) : null; } catch (e) { return null; }
+  }
+
+  function fmtDate(iso) {
+    var d = new Date(iso);
+    return isNaN(d) ? '' : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+  function fmtDateTime(iso) {
+    var d = new Date(iso);
+    return isNaN(d) ? '' : d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  // ---- phone: the section menu is a slide-out side panel (same as the portal) ----
+  (function () {
+    var nav = document.querySelector('.app-shell .app-nav');
+    var header = document.querySelector('.app-header');
+    if (!nav || !header) return;
+    var toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.id = 'navToggle';
+    toggle.className = 'btn-icon nav-toggle';
+    toggle.setAttribute('aria-label', 'Open menu');
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.innerHTML = '<svg viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true"><path d="M3 5.5h14M3 10h14M3 14.5h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+    var host = header.querySelector('.brand') || header;
+    host.insertBefore(toggle, host.firstChild);
+    var backdrop = document.createElement('div');
+    backdrop.className = 'nav-backdrop';
+    document.body.appendChild(backdrop);
+    function isOpen() { return root.classList.contains('nav-open'); }
+    function setOpen(open) {
+      root.classList.toggle('nav-open', open);
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+    }
+    toggle.addEventListener('click', function () { setOpen(!isOpen()); });
+    backdrop.addEventListener('click', function () { setOpen(false); });
+    nav.addEventListener('click', function (e) { if (e.target.closest('.nav-item')) setOpen(false); });
+    window.gtiHandleBack = function () { if (isOpen()) { setOpen(false); return true; } return false; };
+    requestAnimationFrame(function () { requestAnimationFrame(function () { root.classList.add('nav-anim'); }); });
+  })();
+
+  // ---- offline banner ----
+  var banner = document.getElementById('netBanner');
+  function sizeBanner() {
+    root.classList.add('gti-net-on');
+    root.style.setProperty('--gti-net-h', banner.offsetHeight + 'px');
+  }
+  banner.classList.add('show');
+  sizeBanner();
+  window.addEventListener('resize', sizeBanner);
+
+  // ---- header details saved by the app while online ----
+  var profile = parse('gti-offline-profile');
+  if (profile && typeof profile.name === 'string') {
+    document.getElementById('headerName').textContent = profile.name;
+    var initial = el('div', 'avatar-fallback', (profile.name || '?').trim().charAt(0).toUpperCase());
+    document.getElementById('avatarSlot').appendChild(initial);
+    document.getElementById('offlineUser').hidden = false;
+    document.getElementById('offlineSignOut').hidden = false;
+  }
+
+  // ---- timetable (same drawing rules as the portal's own view) ----
+  function cellText(c) { return c == null ? '' : String(c); }
+  function isCompactRow(row) {
+    var rest = row.slice(1).map(function (c) { return cellText(c).trim(); });
+    var filled = rest.filter(function (c) { return c; });
+    return filled.length >= 2 && filled.every(function (c) { return c.length <= 1; });
+  }
+  function renderTable(rows) {
+    var width = rows.reduce(function (m, r) { return Math.max(m, r.length); }, 0);
+    var table = el('table', 'tt-view-table');
+    rows.forEach(function (row, i) {
+      var cells = row.slice();
+      while (cells.length < width) cells.push('');
+      var tr = document.createElement('tr');
+      if (i > 0 && isCompactRow(cells)) tr.className = 'tt-row-compact';
+      cells.forEach(function (c) {
+        var td = document.createElement(i === 0 ? 'th' : 'td');
+        var lines = cellText(c).split('\n');
+        lines.forEach(function (line, k) {
+          if (k > 0) td.appendChild(document.createElement('br'));
+          if (k === 0 && i > 0 && lines.length > 1) {
+            var b = document.createElement('strong');
+            b.textContent = line;
+            td.appendChild(b);
+          } else {
+            td.appendChild(document.createTextNode(line));
+          }
+        });
+        tr.appendChild(td);
+      });
+      table.appendChild(tr);
+    });
+    return table;
+  }
+
+  var list = document.getElementById('timetableList');
+  var rec = parse('gti-offline-timetable');
+  var data = rec && rec.data;
+  if (!data || !Array.isArray(data.table_data) || !data.table_data.length) {
+    var empty = el('li', 'empty-state');
+    empty.appendChild(el('span', '', 'No saved timetable on this device yet. Open the portal once while connected and view the Timetable tab; it will be available here next time.'));
+    list.appendChild(empty);
+  } else {
+    var item = el('li', 'record');
+    var head = el('div', 'record-head');
+    var headMain = el('div', 'record-head-main');
+    var icon = el('span', 'record-icon');
+    icon.innerHTML = '<svg viewBox="0 0 18 18" width="15" height="15" fill="none" aria-hidden="true"><rect x="2.5" y="3.5" width="13" height="12" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 7H15.5" stroke="currentColor" stroke-width="1.4"/><path d="M6 2V5M12 2V5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+    var headText = el('div', 'record-head-text');
+    headText.appendChild(el('div', 'record-title', data.file_name || 'Timetable'));
+    if (data.updated_at) headText.appendChild(el('div', 'record-meta', 'Updated ' + fmtDate(data.updated_at)));
+    headText.appendChild(el('div', 'record-meta', 'Saved copy from ' + fmtDateTime(rec.savedAt) + '. It refreshes the next time you open the portal while connected.'));
+    headMain.appendChild(icon);
+    headMain.appendChild(headText);
+    head.appendChild(headMain);
+    item.appendChild(head);
+    var wrap = el('div', 'tt-view-table-wrap');
+    wrap.style.marginTop = '12px';
+    wrap.appendChild(renderTable(data.table_data));
+    item.appendChild(wrap);
+    list.appendChild(item);
+  }
+
+  // ---- tapping any other section only says you're offline ----
+  var notice = document.getElementById('offlineNotice');
+  var noticeTimer = null;
+  Array.prototype.forEach.call(document.querySelectorAll('.nav-item[aria-disabled="true"]'), function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      notice.textContent = "You're offline. Connect to the internet to open " + btn.textContent.trim() + '.';
+      notice.classList.add('visible', 'info');
+      clearTimeout(noticeTimer);
+      noticeTimer = setTimeout(function () { notice.classList.remove('visible', 'info'); }, 3500);
+    });
+  });
+
+  // ---- back to the real portal as soon as a connection exists ----
+  // The Android app opens this page from its own storage and sets
+  // GTI_HOME_URL (see gti-app/prepare.js); on the website it is just home.html.
+  var home = window.GTI_HOME_URL || 'home.html';
+  function goOnline() { window.location.replace(home); }
+  window.addEventListener('online', goOnline);
+  setInterval(function () {
+    fetch(home, { method: 'HEAD', mode: 'no-cors', cache: 'no-store' }).then(goOnline).catch(function () {});
+  }, 5000);
+})();
+</script>
 </body>
 </html>

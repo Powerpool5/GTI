@@ -1285,45 +1285,6 @@ const TimetableEditor = (function () {
   }
 
   // Read-only render (student/lecturer viewing, not editing).
-  /* On phones, scale the whole timetable down (as one piece) until it fits
-     the screen width, instead of leaving most columns off to the side.
-     It re-fits whenever the box changes size, which also covers the case
-     where the timetable is rendered while its tab is still hidden. */
-  function fitTimetableToWidth(wrap, table) {
-    if (wrap._ttFit) { wrap._ttFit.disconnect(); wrap._ttFit = null; }
-    if (!("ResizeObserver" in window) || !window.matchMedia) return;
-    const phone = window.matchMedia("(max-width: 760px)");
-    let lastWidth = -1;
-    function fit() {
-      const avail = wrap.clientWidth;
-      if (avail <= 0) return;
-      table.style.zoom = "";
-      wrap.classList.remove("tt-tight");
-      if (!phone.matches) return;
-      const natural = table.scrollWidth;
-      if (natural <= avail + 1) return;
-      let scale = avail / natural;
-      if (scale < 0.8) {
-        // Letting long words break shrinks the table's natural width, which
-        // lets the text be shown larger. Only keep it if it helps noticeably.
-        wrap.classList.add("tt-tight");
-        const tightScale = avail / table.scrollWidth;
-        if (tightScale > scale + 0.05) scale = tightScale;
-        else wrap.classList.remove("tt-tight");
-      }
-      table.style.zoom = String(Math.min(1, Math.max(scale, 0.3)));
-    }
-    const ro = new ResizeObserver(() => {
-      const w = wrap.clientWidth;
-      if (w === lastWidth) return;
-      lastWidth = w;
-      fit();
-    });
-    ro.observe(wrap);
-    wrap._ttFit = ro;
-    fit();
-  }
-
   function renderTimetableView(container, rows) {
     container.innerHTML = "";
     const norm = normalizeRows(rows);
@@ -1340,7 +1301,6 @@ const TimetableEditor = (function () {
       table.appendChild(tr);
     });
     container.appendChild(table);
-    fitTimetableToWidth(container, table);
   }
 
   /* ---------------- export ---------------- */

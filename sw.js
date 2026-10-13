@@ -8,11 +8,10 @@
    It never stores API responses, login data or student records — the saved
    timetable itself lives in localStorage (see timetable-cache.js) and is wiped
    on sign-out. Bump VERSION when this file or the SHELL list changes. */
-const VERSION = 'gti-shell-v5';
+const VERSION = 'gti-shell-v6';
 
 const SHELL = [
   'offline.html',
-  'offline.js',
   'timetable-cache.js',
   'timetable-editor.js?v=6',
   'styles.css?v=15',
@@ -70,7 +69,7 @@ self.addEventListener('fetch', (event) => {
 });
 
 let lastShellRefresh = 0;
-const OFFLINE_ONLY = ['offline.html', 'offline.js', 'timetable-cache.js'];
+const OFFLINE_ONLY = ['offline.html'];
 function refreshOfflineFiles() {
   const now = Date.now();
   if (now - lastShellRefresh < 10 * 60 * 1000) return;

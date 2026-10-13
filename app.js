@@ -226,6 +226,51 @@ document.addEventListener("DOMContentLoaded", () => {
   gtiTabHistoryReady = true;
 });
 
+// Phone: the section menu is a slide-out side panel. The menu button is added
+// to the header here (so no page needs its HTML edited), and
+// window.gtiHandleBack lets the Android app's back button close the panel first.
+(function initNavDrawer() {
+  function setup() {
+    const nav = document.querySelector(".app-shell .app-nav");
+    const header = document.querySelector(".app-header");
+    if (!nav || !header || document.getElementById("navToggle")) return;
+    const root = document.documentElement;
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.id = "navToggle";
+    toggle.className = "btn-icon nav-toggle";
+    toggle.setAttribute("aria-label", "Open menu");
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.innerHTML = '<svg viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true"><path d="M3 5.5h14M3 10h14M3 14.5h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+    const host = header.querySelector(".brand") || header;
+    host.insertBefore(toggle, host.firstChild);
+
+    const backdrop = document.createElement("div");
+    backdrop.className = "nav-backdrop";
+    document.body.appendChild(backdrop);
+
+    function isOpen() { return root.classList.contains("nav-open"); }
+    function setOpen(open) {
+      root.classList.toggle("nav-open", open);
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+      toggle.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+    }
+    toggle.addEventListener("click", () => setOpen(!isOpen()));
+    backdrop.addEventListener("click", () => setOpen(false));
+    nav.addEventListener("click", (e) => { if (e.target.closest(".nav-item")) setOpen(false); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape" && isOpen()) setOpen(false); });
+    const wide = window.matchMedia("(min-width: 761px)");
+    const onWide = (e) => { if (e.matches) setOpen(false); };
+    if (wide.addEventListener) wide.addEventListener("change", onWide); else if (wide.addListener) wide.addListener(onWide);
+    window.gtiHandleBack = () => { if (isOpen()) { setOpen(false); return true; } return false; };
+    // Switch the slide animation on only after first paint, so nothing slides on load.
+    requestAnimationFrame(() => requestAnimationFrame(() => root.classList.add("nav-anim")));
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", setup);
+  else setup();
+})();
+
 window.addEventListener("popstate", (event) => {
   const tab = event.state && event.state.gtiTab;
   if (!tab || tab === gtiCurrentTab) return;
