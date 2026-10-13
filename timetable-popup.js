@@ -39,11 +39,6 @@
         statusEl.classList.add('visible', 'success');
       }, 'btn btn-sm'));
     }
-    actions.appendChild(mkBtn('Download as PDF', async (e) => {
-      e.target.disabled = true;
-      try { await TimetableEditor.exportTimetablePdf(currentRows(), title); }
-      finally { e.target.disabled = false; }
-    }));
     actions.appendChild(mkBtn('Download as Word', async (e) => {
       e.target.disabled = true;
       try { await TimetableEditor.exportTimetableDocx(currentRows(), title); }

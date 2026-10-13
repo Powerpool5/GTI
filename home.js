@@ -346,16 +346,6 @@
 
       const exportRow = document.createElement('div');
       exportRow.className = 'tt-export-row';
-      const pdfBtn = document.createElement('button');
-      pdfBtn.type = 'button';
-      pdfBtn.className = 'btn btn-secondary btn-sm';
-      pdfBtn.textContent = 'Download as PDF';
-      pdfBtn.addEventListener('click', async () => {
-        pdfBtn.disabled = true;
-        try { await TimetableEditor.exportTimetablePdf(data.table_data, data.file_name || 'Timetable'); }
-        catch (err) { console.error('PDF export failed:', err); toast('Could not create the PDF.', 'error'); }
-        finally { pdfBtn.disabled = false; }
-      });
       const docxBtn = document.createElement('button');
       docxBtn.type = 'button';
       docxBtn.className = 'btn btn-secondary btn-sm';
@@ -366,7 +356,7 @@
         catch (err) { console.error('Word export failed:', err); toast('Could not create the Word document.', 'error'); }
         finally { docxBtn.disabled = false; }
       });
-      exportRow.append(pdfBtn, docxBtn);
+      exportRow.append(docxBtn);
       item.appendChild(exportRow);
     } else if (data.file_url && /\.(png|jpe?g|gif|webp)(\?|$)/i.test(data.file_url)) {
       // Show it inline if it looks like an image; otherwise the header's

@@ -1,34 +1,42 @@
-/* Dark mode. Loaded in <head>, right after styles.css, so the theme is
-   set before the page paints (avoids a flash of the wrong theme) —
-   this has to be a real external file rather than an inline <script>
-   because every page's CSP blocks inline scripts. */
+/* Dark mode only. The light theme and the toggle button are retired: every
+   page is set to dark before it paints (this is a real external file, loaded
+   in <head>, because every page's CSP blocks inline scripts). */
 (function () {
-  let stored = null;
-  try { stored = localStorage.getItem("gti-theme"); } catch {}
-  const theme = stored === "dark" || stored === "light"
-    ? stored
-    : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-  document.documentElement.setAttribute("data-theme", theme);
+  const root = document.documentElement;
+  root.setAttribute("data-theme", "dark");
+  root.style.backgroundColor = "#121A22";
+  try { localStorage.removeItem("gti-theme"); } catch {}
 })();
 
-function toggleTheme() {
-  const current = document.documentElement.getAttribute("data-theme");
-  const next = current === "dark" ? "light" : "dark";
-  document.documentElement.setAttribute("data-theme", next);
-  try { localStorage.setItem("gti-theme", next); } catch {}
-  updateThemeToggleIcon();
-}
+/* Phone behaviour.
+   - In the Android app only: no long-press text selection / copy menu
+     (text fields still work normally).
+   - On touch screens: tapping a button leaves no focus ring behind. */
+(function () {
+  const root = document.documentElement;
+  const cap = window.Capacitor;
+  const inApp = !!(cap && typeof cap.isNativePlatform === "function" && cap.isNativePlatform()) || !!window.GTIStore;
+  const EDITABLE = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])';
 
-function updateThemeToggleIcon() {
-  const btn = document.getElementById("themeToggleBtn");
-  if (!btn) return;
-  const isDark = document.documentElement.getAttribute("data-theme") === "dark";
-  btn.textContent = isDark ? "☀" : "☾";
-  btn.setAttribute("aria-label", isDark ? "Switch to light mode" : "Switch to dark mode");
-}
+  if (inApp) {
+    root.classList.add("is-app");
+    const block = (e) => {
+      const t = e.target;
+      const el = t && t.nodeType === 1 ? t : (t && t.parentElement);
+      if (el && el.closest && el.closest(EDITABLE)) return;
+      e.preventDefault();
+    };
+    document.addEventListener("contextmenu", block);
+    document.addEventListener("selectstart", block);
+  }
 
-document.addEventListener("DOMContentLoaded", () => {
-  updateThemeToggleIcon();
-  const btn = document.getElementById("themeToggleBtn");
-  if (btn) btn.addEventListener("click", toggleTheme);
-});
+  document.addEventListener("pointerdown", (e) => {
+    root.classList.toggle("using-touch", e.pointerType === "touch" || e.pointerType === "pen");
+  }, true);
+  document.addEventListener("keydown", () => root.classList.remove("using-touch"), true);
+  document.addEventListener("pointerup", (e) => {
+    if (e.pointerType !== "touch" && e.pointerType !== "pen") return;
+    const el = e.target && e.target.closest ? e.target.closest('button, a, summary, [role="tab"]') : null;
+    if (el) window.setTimeout(() => { if (document.activeElement === el) el.blur(); }, 0);
+  }, true);
+})();

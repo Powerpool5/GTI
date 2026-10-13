@@ -2179,3 +2179,34 @@ input, textarea, [contenteditable="true"], [contenteditable=""] {
   -webkit-user-select: text;
   user-select: text;
 }
+
+/* App: no long-press text selection (inputs and text areas keep it);
+   touch: no focus ring left on a button after it is released;
+   PDF download is retired (Word stays). */
+html.is-app, html.is-app * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+html.is-app input, html.is-app textarea, html.is-app [contenteditable]:not([contenteditable="false"]),
+html.is-app [contenteditable]:not([contenteditable="false"]) * {
+  -webkit-user-select: text;
+  user-select: text;
+}
+html.using-touch :focus-visible,
+html.using-touch button:focus,
+html.using-touch a:focus,
+html.using-touch .nav-item:focus { outline: none; box-shadow: none; }
+
+#timetableExportPdfBtn { display: none; }
+
+/* Timetable on phones: give the table more room, and (when it helps a lot)
+   let long words break so the whole thing can be scaled up. */
+.tt-tight td, .tt-tight th { overflow-wrap: anywhere; hyphens: auto; }
+@media (max-width: 760px) {
+  .card:has(.tt-view-table-wrap) { padding: 12px 8px; margin-left: -6px; margin-right: -6px; }
+  .tt-view-table td, .tt-view-table th { padding: 4px 3px; }
+}
+
+/* Dark mode only: no theme switch button anywhere. */
+#themeToggleBtn, .theme-toggle-corner { display: none !important; }

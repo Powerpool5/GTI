@@ -1298,9 +1298,20 @@ const TimetableEditor = (function () {
       const avail = wrap.clientWidth;
       if (avail <= 0) return;
       table.style.zoom = "";
+      wrap.classList.remove("tt-tight");
       if (!phone.matches) return;
       const natural = table.scrollWidth;
-      if (natural > avail + 1) table.style.zoom = String(Math.max(avail / natural, 0.3));
+      if (natural <= avail + 1) return;
+      let scale = avail / natural;
+      if (scale < 0.8) {
+        // Letting long words break shrinks the table's natural width, which
+        // lets the text be shown larger. Only keep it if it helps noticeably.
+        wrap.classList.add("tt-tight");
+        const tightScale = avail / table.scrollWidth;
+        if (tightScale > scale + 0.05) scale = tightScale;
+        else wrap.classList.remove("tt-tight");
+      }
+      table.style.zoom = String(Math.min(1, Math.max(scale, 0.3)));
     }
     const ro = new ResizeObserver(() => {
       const w = wrap.clientWidth;

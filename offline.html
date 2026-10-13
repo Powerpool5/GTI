@@ -11,9 +11,6 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css?v=15">
-<style>
-  .nav-item[aria-disabled="true"] { pointer-events: none; cursor: default; }
-</style>
 <script src="theme.js"></script>
 <link rel="icon" type="image/x-icon" href="gti.png">
 </head>
@@ -25,7 +22,6 @@
     <h1>Student Portal</h1>
   </div>
   <div class="header-actions">
-    <button class="btn-icon" id="themeToggleBtn" type="button" aria-label="Toggle dark mode">&#9790;</button>
     <div class="user-chip" id="offlineUser" hidden>
       <span id="avatarSlot"></span>
       <span id="headerName"></span>
@@ -60,6 +56,7 @@
   <main class="app-main">
     <section id="timetable" class="tab-content active">
       <h2>Timetable</h2>
+      <p class="status-message" id="offlineNotice" role="alert"></p>
       <div class="card"><ul class="record-list" id="timetableList"></ul></div>
     </section>
   </main>

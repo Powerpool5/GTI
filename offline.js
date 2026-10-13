@@ -80,14 +80,29 @@
     list.appendChild(item);
   }
 
+  // Tapping any other section only tells the student they're offline.
+  const notice = document.getElementById('offlineNotice');
+  let noticeTimer = null;
+  document.querySelectorAll('.nav-item[aria-disabled="true"]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      notice.textContent = "You're offline. Connect to the internet to open " + btn.textContent.trim() + '.';
+      notice.classList.add('visible', 'info');
+      window.clearTimeout(noticeTimer);
+      noticeTimer = window.setTimeout(() => notice.classList.remove('visible', 'info'), 3500);
+    });
+  });
+
   // Back to the real portal as soon as a connection exists. The browser's
   // "online" event is unreliable inside some phone web views, so also check
-  // every few seconds with a request that bypasses the saved copies.
-  function goOnline() { window.location.replace('home.html'); }
+  // every few seconds. The Android app opens this page from its own storage
+  // and sets GTI_HOME_URL to the live site's address (see gti-app/prepare.js).
+  const home = window.GTI_HOME_URL || 'home.html';
+  function goOnline() { window.location.replace(home); }
   window.addEventListener('online', goOnline);
   window.setInterval(() => {
-    fetch('home.html', { method: 'HEAD', cache: 'no-store' })
-      .then((res) => { if (res.ok) goOnline(); })
+    fetch(home, { method: 'HEAD', mode: 'no-cors', cache: 'no-store' })
+      .then(goOnline)
       .catch(() => {});
   }, 5000);
 })();
