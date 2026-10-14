@@ -2308,6 +2308,20 @@ a.auth-alt-btn:hover { background: var(--blueprint-soft); }
   }
 }
 
+/* =========================
+   Timetable: zoomed-out view that always fits the phone, tap to enlarge.
+   Page zoom is off everywhere (pinch does nothing on normal pages); the
+   timetable viewer handles its own pinch-zoom.
+   ========================= */
+html { touch-action: pan-x pan-y; }
+.tt-enlargeable { cursor: zoom-in; }
+.tt-hint { font-size: 0.78rem; opacity: 0.7; text-align: center; margin: 0 0 6px; }
+.tt-tight td, .tt-tight th { overflow-wrap: anywhere; hyphens: auto; }
+@media (max-width: 760px) {
+  .card:has(.tt-view-table-wrap) { padding: 12px 8px; margin-left: -6px; margin-right: -6px; }
+  .tt-view-table td, .tt-view-table th { min-width: 0; padding: 4px 3px; }
+}
+
 
 .gti-net-banner{position:sticky;top:0;z-index:40;display:none;align-items:center;justify-content:center;gap:8px;padding:8px 14px;padding-top:calc(8px + env(safe-area-inset-top,0px));font-size:.88rem;font-weight:600;text-align:center;background:#fde8b0;color:#4a3200;border-bottom:1px solid rgba(74,50,0,.25)}
 .gti-net-banner.show{display:flex}
@@ -2373,6 +2387,492 @@ html.gti-net-on .app-header{top:var(--gti-net-h,0px);padding-top:14px}
 <!--native-config-->
 <script>
 (function () {
+/* <viewer-kit> */
+/* Self-contained helpers shared by the portal's timetable view and the offline
+   page: saving files, fitting a table to the screen, building the timetable as
+   an image, and the full-screen "gallery" viewer with pinch-to-zoom. The
+   offline page copies this block in when it is built, so edit it here only. */
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Revoking straight away can cancel the download on some phones.
+  setTimeout(() => URL.revokeObjectURL(url), 15000);
+}
+
+function inApp() {
+  const cap = window.Capacitor;
+  return !!(cap && typeof cap.isNativePlatform === "function" && cap.isNativePlatform()
+    && typeof cap.nativePromise === "function");
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+    reader.onerror = () => reject(reader.error || new Error("Could not read the file"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+// In the Android app the file goes straight into the phone's Downloads folder
+// (GTIDownloads, added by the app's MainActivity). Older app builds without it
+// fall back to the share sheet; a normal browser just downloads.
+async function saveFile(blob, filename) {
+  const bridge = window.GTIDownloads;
+  if (bridge && typeof bridge.save === "function") {
+    const data = await blobToBase64(blob);
+    if (bridge.save(filename, blob.type || "application/octet-stream", data)) return;
+    throw new Error("Could not save the file");
+  }
+  if (!inApp()) { downloadBlob(blob, filename); return; }
+  const data = await blobToBase64(blob);
+  const written = await window.Capacitor.nativePromise("Filesystem", "writeFile", {
+    path: filename,
+    data,
+    directory: "CACHE",
+  });
+  try {
+    await window.Capacitor.nativePromise("Share", "share", {
+      title: filename,
+      dialogTitle: "Save or share your timetable",
+      url: written.uri,
+    });
+  } catch (err) {
+    if (!/cancel/i.test(String(err && (err.message || err)))) throw err;
+  }
+}
+
+function tvSlug(s) {
+  return String(s || "timetable").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "timetable";
+}
+
+function tvIsCompact(row) {
+  const rest = row.slice(1);
+  if (!rest.some((c) => c && c.trim())) return false;
+  return rest.every((c) => !c || c.trim().length <= 3);
+}
+
+/* ---- zoomed-out view: scale the whole table to fit the screen width ---- */
+function fitTimetableToWidth(wrap, table) {
+  if (wrap._ttFit) { wrap._ttFit.disconnect(); wrap._ttFit = null; }
+  if (!("ResizeObserver" in window) || !window.matchMedia) return;
+  const phone = window.matchMedia("(max-width: 760px)");
+  let lastWidth = -1;
+  function fit() {
+    const avail = wrap.clientWidth;
+    if (avail <= 0) return;
+    table.style.zoom = "";
+    wrap.classList.remove("tt-tight");
+    if (!phone.matches) return;
+    const natural = table.scrollWidth;
+    if (natural <= avail + 1) return;
+    let scale = avail / natural;
+    if (scale < 0.8) {
+      // Letting long words break shrinks the table's natural width, which
+      // lets the text be shown larger. Only keep it if it helps noticeably.
+      wrap.classList.add("tt-tight");
+      const tightScale = avail / table.scrollWidth;
+      if (tightScale > scale + 0.05) scale = tightScale;
+      else wrap.classList.remove("tt-tight");
+    }
+    table.style.zoom = String(Math.min(1, Math.max(scale, 0.3)));
+  }
+  const ro = new ResizeObserver(() => {
+    const w = wrap.clientWidth;
+    if (w === lastWidth) return;
+    lastWidth = w;
+    fit();
+  });
+  ro.observe(wrap);
+  wrap._ttFit = ro;
+  fit();
+}
+
+/* ---- the timetable as a picture ---- */
+function tvWrap(ctx, text, maxW) {
+  const words = text.split(/\s+/).filter(Boolean);
+  if (!words.length) return [""];
+  const lines = [];
+  let cur = "";
+  const pushLong = (word) => {
+    let piece = "";
+    for (const ch of word) {
+      if (ctx.measureText(piece + ch).width > maxW && piece) { lines.push(piece); piece = ch; }
+      else piece += ch;
+    }
+    return piece;
+  };
+  words.forEach((word) => {
+    const test = cur ? cur + " " + word : word;
+    if (ctx.measureText(test).width <= maxW) { cur = test; return; }
+    if (cur) lines.push(cur);
+    cur = ctx.measureText(word).width <= maxW ? word : pushLong(word);
+  });
+  if (cur) lines.push(cur);
+  return lines;
+}
+
+async function buildTimetableImage(rows, title) {
+  if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch (e) {} }
+  const FONT = "'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif";
+  const FS = 13, LINE = 17, PAD_X = 10, PAD_Y = 8, MARGIN = 18, MAX_COL = 220, MIN_COL = 54;
+  const grid = (rows && rows.length ? rows : [[""]]).map((r) => r.map((c) => (c == null ? "" : String(c).replace(/\r/g, ""))));
+  const width = Math.max(1, ...grid.map((r) => r.length));
+  grid.forEach((r) => { while (r.length < width) r.push(""); });
+  const compact = grid.map((r, i) => i > 0 && tvIsCompact(r));
+  const m = document.createElement("canvas").getContext("2d");
+  const fontOf = (bold) => (bold ? "600 " : "400 ") + FS + "px " + FONT;
+  const isBold = (i, k, count) => i === 0 || (count > 1 && k === 0);
+
+  const colW = new Array(width).fill(MIN_COL);
+  grid.forEach((r, i) => {
+    if (compact[i]) return;
+    r.forEach((cell, c) => {
+      const raw = cell.split("\n");
+      let line = 0, word = 0;
+      raw.forEach((ln, k) => {
+        m.font = fontOf(isBold(i, k, raw.length));
+        const t = i === 0 ? ln.toUpperCase() : ln;
+        line = Math.max(line, m.measureText(t).width);
+        t.split(/\s+/).forEach((w) => { word = Math.max(word, m.measureText(w).width); });
+      });
+      colW[c] = Math.max(colW[c], Math.min(MAX_COL, Math.max(line, word)) + PAD_X * 2);
+    });
+  });
+  const tableW = colW.reduce((a, b) => a + b, 0);
+
+  const layout = grid.map((r, i) => {
+    if (compact[i]) {
+      const word = r.slice(1).map((c) => c.trim()).join(" ");
+      return { compact: true, label: r[0], word, h: LINE + PAD_Y * 2 };
+    }
+    const cells = r.map((cell, c) => {
+      const raw = cell.split("\n");
+      const out = [];
+      raw.forEach((ln, k) => {
+        const bold = isBold(i, k, raw.length);
+        m.font = fontOf(bold);
+        tvWrap(m, i === 0 ? ln.toUpperCase() : ln, colW[c] - PAD_X * 2).forEach((t) => out.push({ t, bold }));
+      });
+      return out.length ? out : [{ t: "", bold: false }];
+    });
+    return { compact: false, cells, h: Math.max(...cells.map((l) => l.length)) * LINE + PAD_Y * 2 };
+  });
+  const tableH = layout.reduce((a, r) => a + r.h, 0);
+  const titleH = title ? 34 : 0;
+  const W = Math.ceil(tableW + MARGIN * 2);
+  const H = Math.ceil(MARGIN * 2 + titleH + tableH);
+  const scale = Math.max(1, Math.min(3, 8000 / W, 8000 / H));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.round(W * scale);
+  canvas.height = Math.round(H * scale);
+  const g = canvas.getContext("2d");
+  g.scale(scale, scale);
+  g.fillStyle = "#ffffff";
+  g.fillRect(0, 0, W, H);
+  g.textBaseline = "middle";
+
+  let y = MARGIN;
+  if (title) {
+    g.font = "700 18px " + FONT;
+    g.fillStyle = "#0b3972";
+    g.textAlign = "left";
+    g.fillText(String(title), MARGIN, y + 14);
+    y += titleH;
+  }
+  layout.forEach((row, i) => {
+    let x = MARGIN;
+    if (row.compact) {
+      g.fillStyle = "#e6edf5";
+      g.fillRect(x, y, tableW, row.h);
+      g.fillStyle = "#3a4a5c";
+      g.font = "italic 600 " + FS + "px " + FONT;
+      g.textAlign = "center";
+      g.fillText(row.label.trim(), x + colW[0] / 2, y + row.h / 2);
+      g.fillText(row.word, x + colW[0] + (tableW - colW[0]) / 2, y + row.h / 2);
+    } else {
+      row.cells.forEach((lines, c) => {
+        g.fillStyle = i === 0 ? "#0b3972" : (i % 2 ? "#ffffff" : "#f3f6fa");
+        g.fillRect(x, y, colW[c], row.h);
+        g.textAlign = "center";
+        const startY = y + row.h / 2 - ((lines.length - 1) * LINE) / 2;
+        lines.forEach((ln, k) => {
+          g.font = fontOf(ln.bold);
+          g.fillStyle = i === 0 ? "#ffffff" : "#1b2733";
+          g.fillText(ln.t, x + colW[c] / 2, startY + k * LINE);
+        });
+        x += colW[c];
+      });
+    }
+    g.strokeStyle = "#cfd8e3";
+    g.lineWidth = 1;
+    g.beginPath();
+    g.moveTo(MARGIN, y + row.h);
+    g.lineTo(MARGIN + tableW, y + row.h);
+    g.stroke();
+    y += row.h;
+  });
+  g.strokeStyle = "#cfd8e3";
+  let vx = MARGIN;
+  for (let c = 0; c <= width; c++) {
+    g.beginPath(); g.moveTo(vx, MARGIN + titleH); g.lineTo(vx, MARGIN + titleH + tableH); g.stroke();
+    vx += colW[c] || 0;
+  }
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+  if (!blob) throw new Error("Could not create the image");
+  return { blob, width: W, height: H, scale };
+}
+
+/* ---- full-screen viewer, like opening a picture in a gallery ---- */
+let tvOpen = false;
+
+function tvInjectStyle() {
+  if (document.getElementById("ttViewerStyle")) return;
+  const style = document.createElement("style");
+  style.id = "ttViewerStyle";
+  style.textContent = [
+    ".tt-viewer{position:fixed;top:0;right:0;bottom:0;left:0;z-index:2000;background:rgba(3,6,10,.97);display:flex;flex-direction:column;color:#e8edf2;touch-action:none;-webkit-user-select:none;user-select:none}",
+    ".tt-viewer-bar{display:flex;align-items:center;gap:10px;padding:calc(10px + env(safe-area-inset-top,0px)) 12px 10px;background:rgba(10,16,24,.9)}",
+    ".tt-viewer-title{flex:1;min-width:0;font-weight:600;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center}",
+    ".tt-viewer-btn{border:1px solid rgba(255,255,255,.28);background:transparent;color:inherit;border-radius:999px;min-width:42px;height:42px;padding:0 16px;font:inherit;font-size:.95rem;cursor:pointer}",
+    ".tt-viewer-btn:disabled{opacity:.55}",
+    ".tt-viewer-close{font-size:1.5rem;line-height:1;padding:0}",
+    ".tt-viewer-stage{position:relative;flex:1;overflow:hidden;touch-action:none}",
+    ".tt-viewer-img{position:absolute;left:0;top:0;transform-origin:0 0;max-width:none;-webkit-user-drag:none;will-change:transform}",
+    ".tt-viewer.tt-anim .tt-viewer-img{transition:transform .2s ease}",
+    ".tt-viewer-note{position:absolute;left:0;right:0;bottom:calc(14px + env(safe-area-inset-bottom,0px));text-align:center;font-size:.8rem;color:rgba(232,237,242,.72);pointer-events:none}",
+    ".tt-viewer-busy{position:absolute;top:50%;left:0;right:0;text-align:center;font-size:.95rem;color:rgba(232,237,242,.8)}",
+    ".tt-enlargeable{cursor:zoom-in}",
+    ".tt-hint{font-size:.78rem;opacity:.7;text-align:center;margin:0 0 6px}",
+  ].join("");
+  document.head.appendChild(style);
+}
+
+async function openTimetableViewer(rows, title) {
+  if (tvOpen) return;
+  tvOpen = true;
+  tvInjectStyle();
+  const root = document.documentElement;
+  const overlay = document.createElement("div");
+  overlay.className = "tt-viewer";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-label", "Timetable image");
+
+  const bar = document.createElement("div");
+  bar.className = "tt-viewer-bar";
+  const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.className = "tt-viewer-btn tt-viewer-close";
+  closeBtn.setAttribute("aria-label", "Close");
+  closeBtn.textContent = "\u00d7";
+  const titleEl = document.createElement("div");
+  titleEl.className = "tt-viewer-title";
+  titleEl.textContent = title || "Timetable";
+  const saveBtn = document.createElement("button");
+  saveBtn.type = "button";
+  saveBtn.className = "tt-viewer-btn";
+  saveBtn.textContent = "Save image";
+  saveBtn.disabled = true;
+  bar.append(closeBtn, titleEl, saveBtn);
+
+  const stage = document.createElement("div");
+  stage.className = "tt-viewer-stage";
+  const img = document.createElement("img");
+  img.className = "tt-viewer-img";
+  img.alt = title || "Timetable";
+  img.draggable = false;
+  img.style.visibility = "hidden";
+  const busy = document.createElement("div");
+  busy.className = "tt-viewer-busy";
+  busy.textContent = "Preparing image\u2026";
+  const note = document.createElement("div");
+  note.className = "tt-viewer-note";
+  note.textContent = "Pinch or double-tap to zoom \u00b7 drag to move";
+  stage.append(img, busy, note);
+  overlay.append(bar, stage);
+  document.body.appendChild(overlay);
+  const prevOverflow = root.style.overflow;
+  root.style.overflow = "hidden";
+
+  let result = null;
+  let objectUrl = null;
+  let S = 1, X = 0, Y = 0, S0 = 1, MAXS = 4, imgW = 1, imgH = 1;
+  const pointers = new Map();
+  let pinch = null, pan = null, lastTap = null;
+
+  function size() { const r = stage.getBoundingClientRect(); return { w: r.width, h: r.height, l: r.left, t: r.top }; }
+  function clampPan() {
+    const { w, h } = size();
+    const cw = imgW * S, ch = imgH * S;
+    X = cw <= w ? (w - cw) / 2 : Math.min(0, Math.max(w - cw, X));
+    Y = ch <= h ? (h - ch) / 2 : Math.min(0, Math.max(h - ch, Y));
+  }
+  function apply() { img.style.transform = "translate(" + X + "px," + Y + "px) scale(" + S + ")"; }
+  function animate() { overlay.classList.add("tt-anim"); setTimeout(() => overlay.classList.remove("tt-anim"), 230); }
+  function fit(animated) {
+    const { w, h } = size();
+    S0 = Math.min(w / imgW, h / imgH);
+    MAXS = Math.max(4, S0 * 6);
+    if (animated) animate();
+    S = S0; X = (w - imgW * S) / 2; Y = (h - imgH * S) / 2;
+    apply();
+  }
+  function zoomAt(px, py, ns, animated) {
+    ns = Math.min(MAXS, Math.max(S0, ns));
+    const k = ns / S;
+    if (animated) animate();
+    X = px - (px - X) * k; Y = py - (py - Y) * k; S = ns;
+    clampPan(); apply();
+  }
+
+  function close() {
+    if (!tvOpen) return;
+    tvOpen = false;
+    document.removeEventListener("keydown", onKey, true);
+    window.removeEventListener("resize", onResize);
+    window.gtiHandleBack = prevBack;
+    root.style.overflow = prevOverflow;
+    overlay.remove();
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+  }
+  const prevBack = window.gtiHandleBack;
+  window.gtiHandleBack = () => { close(); return true; };
+  function onKey(e) {
+    if (e.key === "Escape") { e.preventDefault(); close(); }
+    else if (e.key === "+" || e.key === "=") { const s = size(); zoomAt(s.w / 2, s.h / 2, S * 1.25, true); }
+    else if (e.key === "-") { const s = size(); zoomAt(s.w / 2, s.h / 2, S / 1.25, true); }
+  }
+  function onResize() {
+    if (!result) return;
+    const wasFit = Math.abs(S - S0) < 0.01;
+    const { w, h } = size();
+    S0 = Math.min(w / imgW, h / imgH);
+    MAXS = Math.max(4, S0 * 6);
+    if (wasFit) fit(false); else { S = Math.max(S, S0); clampPan(); apply(); }
+  }
+  document.addEventListener("keydown", onKey, true);
+  window.addEventListener("resize", onResize);
+  closeBtn.addEventListener("click", close);
+
+  saveBtn.addEventListener("click", async () => {
+    if (!result) return;
+    saveBtn.disabled = true;
+    const label = saveBtn.textContent;
+    saveBtn.textContent = "Saving\u2026";
+    try { await saveFile(result.blob, tvSlug(title) + ".png"); }
+    catch (err) { console.error("Image save failed:", err); saveBtn.textContent = "Could not save"; setTimeout(() => { saveBtn.textContent = label; saveBtn.disabled = false; }, 1800); return; }
+    saveBtn.textContent = label;
+    saveBtn.disabled = false;
+  });
+
+  // Gestures: one finger drags, two fingers pinch, double-tap zooms, wheel zooms.
+  stage.addEventListener("pointerdown", (e) => {
+    if (!result) return;
+    try { stage.setPointerCapture(e.pointerId); } catch (err) {}
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const s = size();
+    if (pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, S, X, Y, mx: (a.x + b.x) / 2 - s.l, my: (a.y + b.y) / 2 - s.t };
+      pan = null;
+    } else if (pointers.size === 1) {
+      pan = { x: e.clientX, y: e.clientY, X, Y, moved: false };
+    }
+  });
+  stage.addEventListener("pointermove", (e) => {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const s = size();
+    if (pinch && pointers.size >= 2) {
+      const [a, b] = [...pointers.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+      const ns = Math.min(MAXS, Math.max(S0 * 0.9, pinch.S * d / pinch.d));
+      const k = ns / pinch.S;
+      const cx = (a.x + b.x) / 2 - s.l, cy = (a.y + b.y) / 2 - s.t;
+      X = cx - (pinch.mx - pinch.X) * k;
+      Y = cy - (pinch.my - pinch.Y) * k;
+      S = ns;
+      clampPan(); apply();
+    } else if (pan && pointers.size === 1) {
+      const dx = e.clientX - pan.x, dy = e.clientY - pan.y;
+      if (Math.abs(dx) + Math.abs(dy) > 6) pan.moved = true;
+      X = pan.X + dx; Y = pan.Y + dy;
+      clampPan(); apply();
+    }
+  });
+  function release(e) {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.delete(e.pointerId);
+    const s = size();
+    if (pinch && pointers.size < 2) {
+      pinch = null;
+      if (S < S0) { fit(true); }
+      if (pointers.size === 1) { const p = [...pointers.values()][0]; pan = { x: p.x, y: p.y, X, Y, moved: true }; }
+      return;
+    }
+    if (pointers.size === 0 && pan) {
+      if (!pan.moved && e.type === "pointerup") {
+        const now = Date.now();
+        if (lastTap && now - lastTap.t < 320 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 40) {
+          if (S > S0 * 1.05) fit(true); else zoomAt(e.clientX - s.l, e.clientY - s.t, S0 * 2.6, true);
+          lastTap = null;
+        } else {
+          lastTap = { t: now, x: e.clientX, y: e.clientY };
+        }
+      }
+      pan = null;
+    }
+  }
+  stage.addEventListener("pointerup", release);
+  stage.addEventListener("pointercancel", release);
+  stage.addEventListener("wheel", (e) => {
+    if (!result) return;
+    e.preventDefault();
+    const s = size();
+    zoomAt(e.clientX - s.l, e.clientY - s.t, S * Math.exp(-e.deltaY * 0.0015), false);
+  }, { passive: false });
+
+  try {
+    result = await buildTimetableImage(rows, title);
+    if (!tvOpen) return;
+    objectUrl = URL.createObjectURL(result.blob);
+    imgW = result.width; imgH = result.height;
+    img.style.width = imgW + "px";
+    img.style.height = imgH + "px";
+    await new Promise((resolve) => { img.onload = resolve; img.onerror = resolve; img.src = objectUrl; });
+    if (!tvOpen) return;
+    busy.remove();
+    img.style.visibility = "visible";
+    fit(false);
+    saveBtn.disabled = false;
+  } catch (err) {
+    console.error("Timetable image failed:", err);
+    busy.textContent = "Could not create the image.";
+  }
+}
+
+// Tap the timetable to open it in the viewer.
+function enableTimetableEnlarge(wrap, rows, title) {
+  wrap.classList.add("tt-enlargeable");
+  wrap.setAttribute("role", "button");
+  wrap.setAttribute("tabindex", "0");
+  wrap.setAttribute("aria-label", "Open the timetable full screen");
+  const open = () => openTimetableViewer(rows, title);
+  wrap.addEventListener("click", open);
+  wrap.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); }
+  });
+}
+/* </viewer-kit> */
+
   var root = document.documentElement;
   root.setAttribute('data-theme', 'dark');
   root.style.backgroundColor = '#121A22';
@@ -2380,10 +2880,10 @@ html.gti-net-on .app-header{top:var(--gti-net-h,0px);padding-top:14px}
   var store = null;
   try { store = window.GTIStore && typeof window.GTIStore.load === 'function' ? window.GTIStore : null; } catch (e) {}
   var cap = window.Capacitor;
-  var inApp = !!(cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform()) || !!store;
+  var runningInApp = !!(cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform()) || !!store;
 
   // App only: no long-press text selection or copy menu.
-  if (inApp) {
+  if (runningInApp) {
     root.classList.add('is-app');
     var block = function (e) { e.preventDefault(); };
     document.addEventListener('contextmenu', block);
@@ -2583,8 +3083,12 @@ html.gti-net-on .app-header{top:var(--gti-net-h,0px);padding-top:14px}
     item.appendChild(head);
     var wrap = el('div', 'tt-view-table-wrap');
     wrap.style.marginTop = '12px';
-    wrap.appendChild(renderTable(data.table_data));
+    wrap.appendChild(el('div', 'tt-hint', 'Tap the timetable to enlarge it'));
+    var tableEl = renderTable(data.table_data);
+    wrap.appendChild(tableEl);
     item.appendChild(wrap);
+    fitTimetableToWidth(wrap, tableEl);
+    enableTimetableEnlarge(wrap, data.table_data, data.file_name || 'Timetable');
     list.appendChild(item);
   }
 

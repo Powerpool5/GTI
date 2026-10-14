@@ -341,7 +341,7 @@
       const tableWrap = document.createElement('div');
       tableWrap.className = 'tt-view-table-wrap';
       tableWrap.style.marginTop = '12px';
-      TimetableEditor.renderTimetableView(tableWrap, data.table_data);
+      TimetableEditor.renderTimetableView(tableWrap, data.table_data, { title: data.file_name || 'Timetable' });
       item.appendChild(tableWrap);
 
       const exportRow = document.createElement('div');
@@ -356,7 +356,17 @@
         catch (err) { console.error('Word export failed:', err); toast('Could not create the Word document.', 'error'); }
         finally { docxBtn.disabled = false; }
       });
-      exportRow.append(docxBtn);
+      const imgBtn = document.createElement('button');
+      imgBtn.type = 'button';
+      imgBtn.className = 'btn btn-secondary btn-sm';
+      imgBtn.textContent = 'Download as image';
+      imgBtn.addEventListener('click', async () => {
+        imgBtn.disabled = true;
+        try { await TimetableEditor.exportTimetableImage(data.table_data, data.file_name || 'Timetable'); }
+        catch (err) { console.error('Image export failed:', err); toast('Could not create the image.', 'error'); }
+        finally { imgBtn.disabled = false; }
+      });
+      exportRow.append(imgBtn, docxBtn);
       item.appendChild(exportRow);
     } else if (data.file_url && /\.(png|jpe?g|gif|webp)(\?|$)/i.test(data.file_url)) {
       // Show it inline if it looks like an image; otherwise the header's

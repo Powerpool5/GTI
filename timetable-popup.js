@@ -39,6 +39,11 @@
         statusEl.classList.add('visible', 'success');
       }, 'btn btn-sm'));
     }
+    actions.appendChild(mkBtn('Download as image', async (e) => {
+      e.target.disabled = true;
+      try { await TimetableEditor.exportTimetableImage(currentRows(), title); }
+      finally { e.target.disabled = false; }
+    }));
     actions.appendChild(mkBtn('Download as Word', async (e) => {
       e.target.disabled = true;
       try { await TimetableEditor.exportTimetableDocx(currentRows(), title); }
@@ -56,7 +61,7 @@
       if (mode === 'edit') {
         editorHandle = TimetableEditor.renderTimetableEditor(container, rows, {});
       } else {
-        TimetableEditor.renderTimetableView(container, rows);
+        TimetableEditor.renderTimetableView(container, rows, { title });
       }
       renderActions();
     }

@@ -2292,3 +2292,17 @@ a.auth-alt-btn:hover { background: var(--blueprint-soft); }
     max-width: 460px; width: 100%; margin: 0 auto;
   }
 }
+
+/* =========================
+   Timetable: zoomed-out view that always fits the phone, tap to enlarge.
+   Page zoom is off everywhere (pinch does nothing on normal pages); the
+   timetable viewer handles its own pinch-zoom.
+   ========================= */
+html { touch-action: pan-x pan-y; }
+.tt-enlargeable { cursor: zoom-in; }
+.tt-hint { font-size: 0.78rem; opacity: 0.7; text-align: center; margin: 0 0 6px; }
+.tt-tight td, .tt-tight th { overflow-wrap: anywhere; hyphens: auto; }
+@media (max-width: 760px) {
+  .card:has(.tt-view-table-wrap) { padding: 12px 8px; margin-left: -6px; margin-right: -6px; }
+  .tt-view-table td, .tt-view-table th { min-width: 0; padding: 4px 3px; }
+}
