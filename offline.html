@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#0b3972">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-injv5ZpOWsbmlQNrztOK4a4SuyUq79cK4jaHsJRH03M=' 'sha256-vvt4KWwuNr51XfE5m+hzeNEGhiOfZzG97ccfqGsPwvE='; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data:; base-uri 'self'; form-action 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self' data:; base-uri 'self'; form-action 'self';">
 <title>Student Portal - GTI</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -2215,9 +2215,10 @@ html.using-touch .nav-item:focus { outline: none; box-shadow: none; }
 #themeToggleBtn, .theme-toggle-corner { display: none !important; }
 
 /* =========================
-   Phone: the section menu is a slide-out side panel
+   Section menu: rounded items everywhere, and on phones a slide-out side panel
    (app.js adds the menu button to the header and the dim backdrop)
    ========================= */
+.app-nav .nav-item { border-radius: 999px; }
 .nav-toggle, .nav-backdrop { display: none; }
 
 @media (max-width: 760px) {
@@ -2227,7 +2228,7 @@ html.using-touch .nav-item:focus { outline: none; box-shadow: none; }
     display: block;
     position: fixed; top: 0; right: 0; bottom: 0; left: 0;
     z-index: 59;
-    background: rgba(5, 10, 16, 0.6);
+    background: rgba(5, 10, 16, 0.62);
     opacity: 0; visibility: hidden;
   }
   html.nav-anim .nav-backdrop { transition: opacity 0.25s ease, visibility 0s linear 0.25s; }
@@ -2237,29 +2238,74 @@ html.using-touch .nav-item:focus { outline: none; box-shadow: none; }
   .app-shell .app-nav {
     position: fixed; top: 0; bottom: 0; left: 0;
     z-index: 60;
-    width: min(80vw, 300px); height: 100%; max-height: none;
+    width: min(82vw, 310px); height: 100%; max-height: none;
     display: flex; flex-direction: column; align-items: stretch;
     overflow-x: hidden; overflow-y: auto;
+    overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
     scroll-snap-type: none;
     gap: 0;
-    padding: calc(18px + env(safe-area-inset-top, 0px)) 0 calc(18px + env(safe-area-inset-bottom, 0px));
+    padding: calc(12px + env(safe-area-inset-top, 0px)) 0 calc(20px + env(safe-area-inset-bottom, 0px));
+    background: var(--surface);
     border-right: 1px solid var(--paper-line); border-bottom: none;
-    box-shadow: 8px 0 30px rgba(0, 0, 0, 0.45);
-    transform: translateX(-102%); visibility: hidden;
+    border-radius: 0 26px 26px 0;
+    box-shadow: 10px 0 36px rgba(0, 0, 0, 0.5);
+    transform: translateX(-104%); visibility: hidden;
   }
   html.nav-anim .app-shell .app-nav { transition: transform 0.25s ease, visibility 0s linear 0.25s; }
   html.nav-open .app-shell .app-nav { transform: none; visibility: visible; transition-delay: 0s; }
 
-  .app-shell .app-nav .nav-logo { display: flex; }
+  .app-shell .app-nav .nav-logo {
+    display: flex;
+    padding: 6px 20px 14px;
+    margin: 0 14px 10px;
+    border-bottom: 1px solid var(--paper-line);
+  }
+  .app-shell .app-nav .nav-logo img { width: 150px; }
   .app-shell .app-nav .nav-item {
-    width: calc(100% - 20px); margin: 2px 10px; min-width: 0;
+    width: calc(100% - 24px); margin: 2px 12px; min-width: 0;
     flex-direction: row; justify-content: flex-start; align-items: center;
-    gap: 10px; padding: 13px 14px;
-    font-size: 0.98rem; text-align: left;
+    gap: 10px; padding: 11px 18px;
+    border-radius: 999px;
+    font-size: 0.96rem; text-align: left;
     white-space: normal; overflow: visible; text-overflow: clip;
     border-bottom: none;
+    flex: 0 0 auto;
   }
   html .app-shell .app-nav .nav-item.active { background: var(--ink-navy); color: #fff; font-weight: 600; }
+}
+
+/* =========================
+   Sign-in pages on phones: keep the card (it was losing its padding, border
+   and shadow, so the form touched the card's edge), and add a Staff / Student
+   switch button.
+   ========================= */
+.auth-alt {
+  margin-top: 22px; padding-top: 18px;
+  border-top: 1px solid var(--paper-line);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.auth-alt-label { color: var(--slate); font-size: 0.82rem; }
+a.auth-alt-btn {
+  display: block; text-align: center; text-decoration: none;
+  padding: 12px 20px; border-radius: 10px;
+  border: 1px solid var(--blueprint); color: var(--blueprint);
+  font-weight: 600; font-size: 0.95rem;
+  transition: background 0.15s var(--ease);
+}
+a.auth-alt-btn:hover { background: var(--blueprint-soft); }
+[data-theme="dark"] a.auth-alt-btn { color: var(--ink); border-color: var(--border-input); }
+
+@media (max-width: 860px) {
+  .auth-visual { padding: calc(16px + env(safe-area-inset-top, 0px)) 20px 16px; }
+  .auth-visual h1 { display: block; font-size: 1rem; margin: 0; line-height: 1.25; font-weight: 600; }
+  .auth-panel { padding: 22px 16px calc(28px + env(safe-area-inset-bottom, 0px)); align-items: stretch; }
+  .auth-panel-card {
+    border: 1px solid var(--paper-line);
+    border-radius: 22px;
+    box-shadow: var(--shadow-md);
+    padding: 28px 22px;
+    max-width: 460px; width: 100%; margin: 0 auto;
+  }
 }
 
 
@@ -2319,7 +2365,7 @@ html.gti-net-on .app-header{top:var(--gti-net-h,0px);padding-top:14px}
     <section id="timetable" class="tab-content active">
       <h2>Timetable</h2>
       <p class="status-message" id="offlineNotice" role="alert"></p>
-      <div class="card"><ul class="record-list" id="timetableList"></ul></div>
+      <div class="card"><ul class="record-list" id="timetableList"><li class="empty-state"><span>Your saved timetable could not be shown here. Connect to the internet and open the portal once; after that it will be available offline.</span></li></ul></div>
     </section>
   </main>
 </div>
@@ -2407,6 +2453,54 @@ html.gti-net-on .app-header{top:var(--gti-net-h,0px);padding-top:14px}
     backdrop.addEventListener('click', function () { setOpen(false); });
     nav.addEventListener('click', function (e) { if (e.target.closest('.nav-item')) setOpen(false); });
     window.gtiHandleBack = function () { if (isOpen()) { setOpen(false); return true; } return false; };
+    var startX = 0, startY = 0, dx = 0, tracking = false, decided = false, horizontal = false;
+    function onStart(e) {
+      if (!isOpen() || !e.touches || e.touches.length !== 1) return;
+      startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+      dx = 0; tracking = true; decided = false; horizontal = false;
+    }
+    function onMove(e) {
+      if (!tracking || !e.touches || !e.touches.length) return;
+      var mx = e.touches[0].clientX - startX, my = e.touches[0].clientY - startY;
+      if (!decided) {
+        if (Math.abs(mx) < 8 && Math.abs(my) < 8) return;
+        decided = true;
+        horizontal = Math.abs(mx) > Math.abs(my) && mx < 0;
+        if (!horizontal) { tracking = false; return; }
+        nav.style.transition = 'none';
+        backdrop.style.transition = 'none';
+      }
+      dx = Math.min(0, mx);
+      nav.style.transform = 'translateX(' + dx + 'px)';
+      backdrop.style.opacity = String(Math.max(0, 1 + dx / nav.offsetWidth));
+    }
+    function onEnd() {
+      if (!tracking) return;
+      tracking = false;
+      if (!horizontal) return;
+      var close = dx < -Math.min(80, nav.offsetWidth * 0.3);
+      nav.style.transition = 'transform 0.2s ease';
+      backdrop.style.transition = 'opacity 0.2s ease';
+      if (close) {
+        nav.style.transform = 'translateX(-104%)';
+        backdrop.style.opacity = '0';
+        setTimeout(function () {
+          nav.style.transition = ''; nav.style.transform = '';
+          backdrop.style.transition = ''; backdrop.style.opacity = '';
+          setOpen(false);
+        }, 210);
+      } else {
+        nav.style.transform = '';
+        backdrop.style.opacity = '';
+        setTimeout(function () { nav.style.transition = ''; backdrop.style.transition = ''; }, 210);
+      }
+    }
+    [nav, backdrop].forEach(function (el) {
+      el.addEventListener('touchstart', onStart, { passive: true });
+      el.addEventListener('touchmove', onMove, { passive: true });
+      el.addEventListener('touchend', onEnd);
+      el.addEventListener('touchcancel', onEnd);
+    });
     requestAnimationFrame(function () { requestAnimationFrame(function () { root.classList.add('nav-anim'); }); });
   })();
 
@@ -2466,6 +2560,7 @@ html.gti-net-on .app-header{top:var(--gti-net-h,0px);padding-top:14px}
   }
 
   var list = document.getElementById('timetableList');
+  list.innerHTML = '';
   var rec = parse('gti-offline-timetable');
   var data = rec && rec.data;
   if (!data || !Array.isArray(data.table_data) || !data.table_data.length) {

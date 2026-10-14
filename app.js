@@ -227,8 +227,9 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // Phone: the section menu is a slide-out side panel. The menu button is added
-// to the header here (so no page needs its HTML edited), and
-// window.gtiHandleBack lets the Android app's back button close the panel first.
+// to the header here (so no page needs its HTML edited), swiping the open panel
+// to the left closes it, and window.gtiHandleBack lets the Android app's back
+// button close the panel first.
 (function initNavDrawer() {
   function setup() {
     const nav = document.querySelector(".app-shell .app-nav");
@@ -264,6 +265,59 @@ document.addEventListener("DOMContentLoaded", () => {
     const onWide = (e) => { if (e.matches) setOpen(false); };
     if (wide.addEventListener) wide.addEventListener("change", onWide); else if (wide.addListener) wide.addListener(onWide);
     window.gtiHandleBack = () => { if (isOpen()) { setOpen(false); return true; } return false; };
+
+    // Swipe left on the open panel (or on the dimmed area) to close it. The
+    // panel follows the finger, then either finishes closing or springs back.
+    let startX = 0, startY = 0, dx = 0, tracking = false, decided = false, horizontal = false;
+    function onStart(e) {
+      if (!isOpen() || !e.touches || e.touches.length !== 1) return;
+      startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+      dx = 0; tracking = true; decided = false; horizontal = false;
+    }
+    function onMove(e) {
+      if (!tracking || !e.touches || !e.touches.length) return;
+      const mx = e.touches[0].clientX - startX;
+      const my = e.touches[0].clientY - startY;
+      if (!decided) {
+        if (Math.abs(mx) < 8 && Math.abs(my) < 8) return;
+        decided = true;
+        horizontal = Math.abs(mx) > Math.abs(my) && mx < 0;
+        if (!horizontal) { tracking = false; return; }
+        nav.style.transition = "none";
+        backdrop.style.transition = "none";
+      }
+      dx = Math.min(0, mx);
+      nav.style.transform = "translateX(" + dx + "px)";
+      backdrop.style.opacity = String(Math.max(0, 1 + dx / nav.offsetWidth));
+    }
+    function onEnd() {
+      if (!tracking) return;
+      tracking = false;
+      if (!horizontal) return;
+      const close = dx < -Math.min(80, nav.offsetWidth * 0.3);
+      nav.style.transition = "transform 0.2s ease";
+      backdrop.style.transition = "opacity 0.2s ease";
+      if (close) {
+        nav.style.transform = "translateX(-104%)";
+        backdrop.style.opacity = "0";
+        setTimeout(() => {
+          nav.style.transition = ""; nav.style.transform = "";
+          backdrop.style.transition = ""; backdrop.style.opacity = "";
+          setOpen(false);
+        }, 210);
+      } else {
+        nav.style.transform = "";
+        backdrop.style.opacity = "";
+        setTimeout(() => { nav.style.transition = ""; backdrop.style.transition = ""; }, 210);
+      }
+    }
+    [nav, backdrop].forEach((el) => {
+      el.addEventListener("touchstart", onStart, { passive: true });
+      el.addEventListener("touchmove", onMove, { passive: true });
+      el.addEventListener("touchend", onEnd);
+      el.addEventListener("touchcancel", onEnd);
+    });
+
     // Switch the slide animation on only after first paint, so nothing slides on load.
     requestAnimationFrame(() => requestAnimationFrame(() => root.classList.add("nav-anim")));
   }
