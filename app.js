@@ -226,6 +226,23 @@ document.addEventListener("DOMContentLoaded", () => {
   gtiTabHistoryReady = true;
 });
 
+// While any dialog (edit window, grades, confirm sheet, ...) is open, the page
+// behind it can't scroll; html.modal-open is styled in styles.css.
+(function lockScrollBehindDialogs() {
+  const root = document.documentElement;
+  function sync() {
+    root.classList.toggle("modal-open", !!document.querySelector(".modal-backdrop:not([hidden])"));
+  }
+  function start() {
+    sync();
+    new MutationObserver(sync).observe(document.body, {
+      subtree: true, childList: true, attributes: true, attributeFilter: ["hidden"],
+    });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);
+  else start();
+})();
+
 // Phone: the section menu is a slide-out side panel. The menu button is added
 // to the header here (so no page needs its HTML edited), swiping the open panel
 // to the left closes it, and window.gtiHandleBack lets the Android app's back
