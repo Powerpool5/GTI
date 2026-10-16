@@ -1077,6 +1077,11 @@ function syncCourseSelectDisplay(select) {
 let statusBanner = null;
 let statusBannerTrack = null;
 let connectivityDown = false;
+// True the moment the phone/browser itself reports no network (instant: it does
+// not wait for the database checks below to time out and fail twice).
+let deviceOffline = typeof navigator !== "undefined" && navigator.onLine === false;
+const OFFLINE_BANNER_MESSAGE =
+  "You're offline. Check your internet connection. Saved data is shown where available, and some features won't work until you reconnect.";
 let maintenanceActive = false;
 let maintenanceMessage = "";
 let maintenanceStyle = "warning"; // 'info' | 'warning' | 'danger' — set by root from admin.html
@@ -1315,7 +1320,9 @@ function hideStatusBanner() {
 }
 
 function updateStatusBanner() {
-  if (lockdownActive) {
+  if (deviceOffline) {
+    renderStatusBanner(OFFLINE_BANNER_MESSAGE, "offline");
+  } else if (lockdownActive) {
     renderStatusBanner(lockdownMessage || DEFAULT_LOCKDOWN_BANNER_MESSAGE, "lockdown-" + (lockdownStyle || "warning"));
   } else if (maintenanceActive) {
     renderStatusBanner(maintenanceMessage || DEFAULT_MAINTENANCE_MESSAGE, "maintenance-" + (maintenanceStyle || "warning"));
@@ -1335,6 +1342,14 @@ const DB_RETRY_RECHECK_MS = 1500;    // how often to recheck while a check just 
 const DB_HEALTH_CHECK_TIMEOUT_MS = 3000;
 
 async function checkDbHealth() {
+  // No network at all: that is not a database problem, so say "offline"
+  // (see updateStatusBanner) and try again shortly instead of pinging.
+  if (deviceOffline) {
+    dbDownFailureStreak = 0;
+    connectivityDown = false;
+    window.setTimeout(checkDbHealth, DB_RETRY_RECHECK_MS);
+    return;
+  }
   // A hidden tab doesn't need to ping the server: skip the request and look
   // again at the normal interval (it re-checks within a minute of being shown).
   if (document.visibilityState === "hidden") {
@@ -1424,6 +1439,14 @@ function watchSystemStatus() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  window.addEventListener("offline", () => { deviceOffline = true; updateStatusBanner(); });
+  window.addEventListener("online", () => {
+    deviceOffline = false;
+    dbDownFailureStreak = 0;
+    connectivityDown = false;
+    updateStatusBanner();
+  });
+  if (deviceOffline) updateStatusBanner();
   checkDbHealth();
   watchSystemStatus();
   initPasswordToggles();

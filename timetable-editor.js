@@ -1633,7 +1633,6 @@ const TimetableEditor = (function () {
     root.style.overflow = "hidden";
 
     let result = null;
-    let objectUrl = null;
     let S = 1, X = 0, Y = 0, S0 = 1, MAXS = 4, imgW = 1, imgH = 1;
     const pointers = new Map();
     let pinch = null, pan = null, lastTap = null;
@@ -1671,7 +1670,6 @@ const TimetableEditor = (function () {
       window.gtiHandleBack = prevBack;
       root.style.overflow = prevOverflow;
       overlay.remove();
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
     }
     const prevBack = window.gtiHandleBack;
     window.gtiHandleBack = () => { close(); return true; };
@@ -1773,12 +1771,16 @@ const TimetableEditor = (function () {
     try {
       result = await buildTimetableImage(rows, title);
       if (!tvOpen) return;
-      objectUrl = URL.createObjectURL(result.blob);
+      // A data: URL, not a blob: URL. The pages' security policy allows data: images
+      // but not blob: ones, which is what made the picture come up blank.
+      const dataUrl = "data:image/png;base64," + await blobToBase64(result.blob);
       imgW = result.width; imgH = result.height;
       img.style.width = imgW + "px";
       img.style.height = imgH + "px";
-      await new Promise((resolve) => { img.onload = resolve; img.onerror = resolve; img.src = objectUrl; });
+      let failed = false;
+      await new Promise((resolve) => { img.onload = resolve; img.onerror = () => { failed = true; resolve(); }; img.src = dataUrl; });
       if (!tvOpen) return;
+      if (failed) throw new Error("The picture could not be displayed");
       busy.remove();
       img.style.visibility = "visible";
       fit(false);
@@ -1926,6 +1928,13 @@ const TimetableEditor = (function () {
   // (a manual "Open in new tab" click, or a read-only view) so there's
   // no loading phase to stream.
   function openTimetablePopup(rows, title, mode, onSave) {
+    // Pop-up windows do not work inside the Android app (they open blank), and
+    // are awkward on a phone, so "View table" uses the in-page viewer there.
+    const onPhone = window.matchMedia && window.matchMedia("(max-width: 760px)").matches;
+    if (mode !== "edit" && (inApp() || onPhone)) {
+      openTimetableViewer(rows, title);
+      return null;
+    }
     const handle = openTimetablePopupWindow(mode);
     if (!handle) return null;
     if (onSave) handle.onSave(onSave);

@@ -49,6 +49,8 @@
   }
 
   function showOffline() {
+    // Pages that load app.js already show an offline banner of their own.
+    if (typeof window.updateStatusBanner === 'function') return;
     build();
     window.clearTimeout(hideTimer);
     banner.classList.remove('online');
