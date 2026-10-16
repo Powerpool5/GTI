@@ -3,7 +3,7 @@
   "short_name": "GTI",
   "description": "Government Technical Institute student portal: timetable, announcements and course record.",
   "lang": "en",
-  "start_url": "home.html",
+  "start_url": "index.html",
   "scope": "./",
   "display": "standalone",
   "background_color": "#121A22",

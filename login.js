@@ -59,6 +59,27 @@
   document.getElementById('forgotPasswordBtn').addEventListener('click', () => showForm('reset'));
   document.getElementById('backToSignIn').addEventListener('click', () => showForm('signin'));
 
+  // Where a signed-in person belongs: staff, admins and root go to the staff
+  // dashboard, everyone else to the student portal. The answer is remembered
+  // per account, so a weak connection at launch still sends them to the right
+  // place instead of guessing.
+  async function landingPageFor(user) {
+    const key = 'gti-landing';
+    let remembered = null;
+    try { remembered = JSON.parse(localStorage.getItem(key) || 'null'); } catch {}
+    try {
+      const [hasAccess, isSuper] = await Promise.all([getStaffAccess(), getIsSuperAdmin()]);
+      const known = (v) => v === true || v === false;
+      if (known(hasAccess) || known(isSuper)) {
+        const page = (hasAccess === true || isSuper === true) ? 'lecturer-home.html' : 'home.html';
+        try { localStorage.setItem(key, JSON.stringify({ uid: user && user.id, page })); } catch {}
+        return page;
+      }
+    } catch {}
+    if (remembered && user && remembered.uid === user.id && remembered.page) return remembered.page;
+    return 'home.html';
+  }
+
   // Lockdown mode blocks students outright ("only admins can use the
   // portal"), so this checks *before* anyone can type a password or
   // submit, not only after a login attempt — a locked-out student is
@@ -104,7 +125,7 @@
 
     // Already signed in? Skip straight to the portal.
     const { data: { session } } = await supabaseClient.auth.getSession();
-    if (session) window.location.replace('home.html');
+    if (session) window.location.replace(await landingPageFor(session.user));
   })();
 
   const signInThrottle = new AttemptThrottle('signin', { maxFreeAttempts: 3, baseDelayMs: 2000, maxDelayMs: 60000 });
@@ -130,7 +151,7 @@
     submitBtn.disabled = true;
     setStatus(status, '', null);
 
-    const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    const { data: signInData, error } = await supabaseClient.auth.signInWithPassword({ email, password });
 
     if (error) {
       signInThrottle.recordFailure();
@@ -152,7 +173,7 @@
 
     signInThrottle.reset();
     setStatus(status, 'Signed in. Redirecting…', 'success');
-    window.location.replace('home.html');
+    window.location.replace(await landingPageFor(signInData && signInData.user));
   });
 
   // SIGN UP

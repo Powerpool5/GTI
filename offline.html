@@ -2512,6 +2512,104 @@ html.modal-open, html.modal-open body { overflow: hidden; }
   .modal .form-footer .btn-link { flex: 0 0 auto; }
 }
 
+/* =========================
+   Staff dashboard on phones: compact people lists, and Input Grades laid out
+   as one card per subject so nothing needs swiping sideways.
+   ========================= */
+.sd-actions { display: flex; gap: 10px; margin-bottom: 14px; }
+.sd-actions .btn { flex: 1; min-height: 44px; }
+
+@media (max-width: 760px) {
+  /* ---- Students / Staff: name, badge and course; tap for the rest ---- */
+  table.compact-people, table.compact-people tbody { display: block; width: 100%; }
+  table.compact-people thead { display: none; }
+  table.compact-people tr.pc-row {
+    display: grid;
+    grid-template-columns: 46px minmax(0, 1fr) auto;
+    grid-template-areas: "av name status" "av course status";
+    column-gap: 12px; row-gap: 2px; align-items: center;
+    padding: 12px 4px;
+    border-bottom: 1px solid var(--paper-line);
+    cursor: pointer;
+  }
+  table.compact-people tr.pc-row::before {
+    content: attr(data-initial);
+    grid-area: av;
+    width: 46px; height: 46px; border-radius: 50%;
+    display: grid; place-items: center;
+    background: var(--ink-navy); color: #fff;
+    font-weight: 700; font-size: 1.05rem;
+  }
+  table.compact-people tr.pc-row td { display: none; padding: 0; border: 0; background: none; }
+  table.compact-people tr.pc-row td.pc-name { display: block; grid-area: name; min-width: 0; }
+  table.compact-people tr.pc-row td.pc-course {
+    display: block; grid-area: course; min-width: 0;
+    color: var(--slate); font-size: 0.84rem;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  table.compact-people tr.pc-row td.pc-status { display: block; grid-area: status; }
+  table.compact-people .name-link {
+    font-size: 1rem; font-weight: 600; color: var(--ink);
+    text-decoration: none; text-align: left; padding: 0; white-space: normal;
+  }
+
+  /* ---- Input Grades: one card per subject, fields in two columns ---- */
+  table.admin-table:has(#gradesTbody), table.admin-table:has(#studentGradesTbody) { display: block; width: 100%; }
+  table.admin-table:has(#gradesTbody) > thead, table.admin-table:has(#studentGradesTbody) > thead { display: none; }
+  #gradesTbody, #studentGradesTbody { display: block; }
+  #gradesTbody > tr, #studentGradesTbody > tr { display: block; }
+  #gradesTbody > tr > td, #studentGradesTbody > tr > td { display: block; }
+  .final-grade-tr > td { padding: 4px 0 12px !important; border: 0 !important; }
+
+  #gradesTbody > tr:not(.grades-student-row):not(.final-grade-tr),
+  #studentGradesTbody > tr:not(.grades-student-row):not(.final-grade-tr) {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    margin: 0 0 12px; padding: 14px;
+    border: 1px solid var(--paper-line); border-radius: 14px;
+    background: var(--surface);
+  }
+  #gradesTbody > tr:not(.grades-student-row):not(.final-grade-tr) > td,
+  #studentGradesTbody > tr:not(.grades-student-row):not(.final-grade-tr) > td {
+    padding: 0 !important; border: 0 !important; min-width: 0; white-space: normal !important;
+  }
+  #gradesTbody > tr:not(.grades-student-row):not(.final-grade-tr) > td::before,
+  #studentGradesTbody > tr:not(.grades-student-row):not(.final-grade-tr) > td::before {
+    display: block; margin-bottom: 5px;
+    font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--slate);
+  }
+  #gradesTbody > tr:not(.grades-student-row):not(.final-grade-tr) > td:nth-child(1),
+  #studentGradesTbody > tr:not(.grades-student-row):not(.final-grade-tr) > td:nth-child(1) { grid-column: 1 / -1; }
+  #gradesTbody > tr > td:nth-child(1)::before, #studentGradesTbody > tr > td:nth-child(1)::before { content: "Subject"; }
+  #gradesTbody > tr > td:nth-child(2)::before, #studentGradesTbody > tr > td:nth-child(2)::before { content: "Attendance"; }
+  #gradesTbody > tr > td:nth-child(3)::before, #studentGradesTbody > tr > td:nth-child(3)::before { content: "Class work"; }
+  #gradesTbody > tr > td:nth-child(4)::before, #studentGradesTbody > tr > td:nth-child(4)::before { content: "Home work"; }
+  #gradesTbody > tr > td:nth-child(5)::before, #studentGradesTbody > tr > td:nth-child(5)::before { content: "Examination"; }
+  #gradesTbody > tr > td:nth-child(6)::before, #studentGradesTbody > tr > td:nth-child(6)::before { content: "Grade (100%)"; }
+  #gradesTbody > tr > td:nth-child(7)::before, #studentGradesTbody > tr > td:nth-child(7)::before { content: "Letter grade"; }
+  #gradesTbody > tr:not(.grades-student-row):not(.final-grade-tr) > td:nth-child(8),
+  #studentGradesTbody > tr:not(.grades-student-row):not(.final-grade-tr) > td:nth-child(8) {
+    grid-column: 1 / -1; display: flex; gap: 10px;
+  }
+  #gradesTbody > tr:not(.grades-student-row):not(.final-grade-tr) > td:nth-child(8)::before,
+  #studentGradesTbody > tr:not(.grades-student-row):not(.final-grade-tr) > td:nth-child(8)::before { content: none; }
+  #gradesTbody > tr:not(.grades-student-row):not(.final-grade-tr) > td:nth-child(8) .btn,
+  #studentGradesTbody > tr:not(.grades-student-row):not(.final-grade-tr) > td:nth-child(8) .btn {
+    flex: 1; margin: 0 !important; min-height: 44px; font-size: 0.9rem;
+  }
+  #gradesTbody > tr:not(.grades-student-row):not(.final-grade-tr) input,
+  #gradesTbody > tr:not(.grades-student-row):not(.final-grade-tr) select,
+  #studentGradesTbody > tr:not(.grades-student-row):not(.final-grade-tr) input,
+  #studentGradesTbody > tr:not(.grades-student-row):not(.final-grade-tr) select {
+    width: 100% !important; min-height: 44px; text-align: left; margin: 0;
+  }
+  .grades-student-id-block select { width: 100% !important; }
+  .grades-student-row-inner { align-items: stretch; }
+  .grades-student-row-inner > .btn { width: 100%; min-height: 44px; }
+  .final-controls input[type="number"], .final-controls select { width: 100%; min-height: 44px; }
+  .final-controls { gap: 10px; }
+}
+
 
 .gti-net-banner{position:sticky;top:0;z-index:40;display:none;align-items:center;justify-content:center;gap:8px;padding:8px 14px;padding-top:calc(8px + env(safe-area-inset-top,0px));font-size:.88rem;font-weight:600;text-align:center;background:#fde8b0;color:#4a3200;border-bottom:1px solid rgba(74,50,0,.25)}
 .gti-net-banner.show{display:flex}
@@ -3295,8 +3393,8 @@ function enableTimetableEnlarge(wrap, rows, title) {
 
   // ---- back to the real portal as soon as a connection exists ----
   // The Android app opens this page from its own storage and sets
-  // GTI_HOME_URL (see gti-app/prepare.js); on the website it is just home.html.
-  var home = window.GTI_HOME_URL || 'home.html';
+  // GTI_HOME_URL (see gti-app/prepare.js); on the website it is index.html, which sends staff and students to the right place.
+  var home = window.GTI_HOME_URL || 'index.html';
   function goOnline() { window.location.replace(home); }
   window.addEventListener('online', goOnline);
   setInterval(function () {

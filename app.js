@@ -226,6 +226,16 @@ document.addEventListener("DOMContentLoaded", () => {
   gtiTabHistoryReady = true;
 });
 
+// The staff dashboard's phone layout (compact people lists) lives in
+// staff-mobile.js; load it only on pages that actually have those tables.
+(function loadStaffMobile() {
+  if (!document.getElementById("studentsTbody") && !document.getElementById("staffTbody")) return;
+  const script = document.createElement("script");
+  script.src = "staff-mobile.js?v=1";
+  script.defer = true;
+  document.head.appendChild(script);
+})();
+
 // While any dialog (edit window, grades, confirm sheet, ...) is open, the page
 // behind it can't scroll; html.modal-open is styled in styles.css.
 (function lockScrollBehindDialogs() {
